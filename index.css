@@ -1,0 +1,35 @@
+css
+    @tailwind base;
+    @tailwind components;
+    @tailwind utilities;
+
+    /* Custom scrollbar styles */
+    .scrollbar-thin {
+        scrollbar-width: thin;
+        scrollbar-color: #4a5568 #2d3748; /* thumb and track color */
+    }
+
+    /* For Webkit browsers (Chrome, Safari) */
+    .scrollbar-thin::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-track {
+        background: transparent;
+    }
+
+    .scrollbar-thin::-webkit-scrollbar-thumb {
+        background-color: #4a5568; /* thumb color */
+        border-radius: 20px;
+        border: 2px solid transparent;
+    }
+
+    /* Custom styles for the app background if needed */
+    html, body, #root {
+        height: 100%;
+        margin: 0;
+        padding: 0;
+        overflow-x: hidden; /* Prevent horizontal scroll */
+    }
+    
