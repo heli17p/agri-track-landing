@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Chat } from "@google/genai";
 
 // Initialize Gemini Client
@@ -66,3 +67,4 @@ export const sendMessageToAI = async (message: string) => {
   const chat = getChatSession();
   return chat.sendMessageStream({ message });
 };
+

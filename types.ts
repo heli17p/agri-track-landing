@@ -1,3 +1,4 @@
+
 import { LucideIcon } from 'lucide-react';
 
 // --- HUB SPECIFIC TYPES ---
@@ -28,6 +29,39 @@ export interface FeedbackTicket {
   date: string;
   author: string; // z.B. "Betrieb Huber"
 }
+
+export interface AppSettings {
+  slurryLoadSize: number;
+  manureLoadSize: number;
+  minSpeed: number; // km/h for GPS auto-start
+  maxSpeed: number; // km/h for GPS validation
+  storageRadius: number; // meters to detect storage
+  spreadWidth: number; // meters
+  slurrySpreadWidth?: number; // Optional specific width
+  manureSpreadWidth?: number; // Optional specific width
+  // serverUrl: string; // Removed - now using AgriCloud
+  farmName?: string;
+  appIcon?: string;
+  // WhatsApp Settings
+  adminPhone?: string;
+  enableWhatsApp?: boolean;
+}
+
+export const DEFAULT_SETTINGS: AppSettings = {
+  slurryLoadSize: 10,
+  manureLoadSize: 8,
+  minSpeed: 2.0,
+  maxSpeed: 8.0,
+  storageRadius: 15,
+  spreadWidth: 12,
+  slurrySpreadWidth: 12,
+  manureSpreadWidth: 10,
+  // serverUrl: 'http://192.168.1.x:3000', // Removed - now using AgriCloud
+  appIcon: 'standard',
+  // Vordefinierte Admin Einstellungen
+  adminPhone: '436765624502',
+  enableWhatsApp: true
+};
 
 export enum Tab {
   HOME = 'HOME',
@@ -115,10 +149,10 @@ export interface ActivityRecord {
   date: string; // ISO String
   type: ActivityType | string;
   year: number;
-  
+
   // Relations
   fieldIds: string[]; // IDs of fields involved
-  
+
   // Amounts
   amount?: number; // Total amount
   unit?: string; // m3, t, Stk, ha
@@ -131,11 +165,11 @@ export interface ActivityRecord {
 
   // Tracking Data
   trackPoints?: TrackPoint[];
-  
+
   // Distributions (Calculated shares)
   fieldDistribution?: Record<string, number>; // FieldID -> Amount
   storageDistribution?: Record<string, number>; // StorageID -> Amount taken
-  
+
   // Advanced Traceability
   fieldSources?: Record<string, string[]>; // FieldID -> Array of StorageIDs used on this field
   detailedFieldSources?: Record<string, Record<string, number>>; // FieldID -> { StorageID: Amount }
@@ -145,35 +179,3 @@ export interface ActivityRecord {
 export type Activity = ActivityRecord;
 export type Trip = ActivityRecord;
 
-export interface AppSettings {
-  slurryLoadSize: number;
-  manureLoadSize: number;
-  minSpeed: number; // km/h for GPS auto-start
-  maxSpeed: number; // km/h for GPS validation
-  storageRadius: number; // meters to detect storage
-  spreadWidth: number; // meters
-  slurrySpreadWidth?: number; // Optional specific width
-  manureSpreadWidth?: number; // Optional specific width
-  serverUrl: string; // Unraid Server URL
-  farmName?: string;
-  appIcon?: string;
-  // WhatsApp Settings
-  adminPhone?: string;
-  enableWhatsApp?: boolean;
-}
-
-export const DEFAULT_SETTINGS: AppSettings = {
-  slurryLoadSize: 10,
-  manureLoadSize: 8,
-  minSpeed: 2.0,
-  maxSpeed: 8.0,
-  storageRadius: 15,
-  spreadWidth: 12,
-  slurrySpreadWidth: 12,
-  manureSpreadWidth: 10,
-  serverUrl: 'http://192.168.1.x:3000',
-  appIcon: 'standard',
-  // Vordefinierte Admin Einstellungen
-  adminPhone: '436765624502',
-  enableWhatsApp: true
-};

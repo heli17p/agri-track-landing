@@ -12,7 +12,7 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp }) => {
   return (
     <div className="relative bg-soil-900 text-white overflow-hidden">
       <div className="absolute inset-0 opacity-10 bg-[url('https://picsum.photos/1920/1080')] bg-cover bg-center" />
-      
+
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32">
         <div className="lg:w-2/3">
           <div className="flex items-center space-x-2 text-agri-500 mb-4 font-semibold tracking-wide uppercase">
@@ -26,19 +26,19 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp }) => {
           <p className="text-xl text-gray-300 mb-8 max-w-2xl">
             Tätigkeiten erfassen & Fuhren tracken. Einfach. Schnell. Kostenlos.
             <br />
-            Synchronisiert automatisch über die <span className="text-white font-bold">AgriCloud</span>. 
+            Synchronisiert automatisch über die <span className="text-white font-bold">AgriCloud</span>.
             Direkt im Browser nutzbar.
           </p>
-          
+
           <div className="flex flex-col sm:flex-row gap-4">
-            <button 
+            <button
               onClick={onLaunchApp}
               className="bg-agri-500 hover:bg-agri-700 text-white font-bold py-4 px-8 rounded-lg flex items-center justify-center transition-all shadow-lg shadow-agri-900/50"
             >
               <PlayCircle className="mr-2 w-6 h-6" />
               App Jetzt Starten
             </button>
-            <button 
+            <button
               onClick={() => setShowSyncModal(true)}
               className="bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 text-white font-bold py-4 px-8 rounded-lg flex items-center justify-center transition-all"
             >
@@ -68,13 +68,13 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp }) => {
       {showSyncModal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
           <div className="bg-white text-gray-900 rounded-2xl max-w-2xl w-full p-6 shadow-2xl relative overflow-hidden">
-            <button 
+            <button
               onClick={() => setShowSyncModal(false)}
               className="absolute top-4 right-4 text-gray-400 hover:text-gray-600"
             >
               <X className="w-6 h-6" />
             </button>
-            
+
             <div className="text-center mb-8">
               <div className="bg-green-100 w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4">
                 <Cloud className="w-8 h-8 text-green-600" />
@@ -86,7 +86,7 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp }) => {
             </div>
 
             <div className="grid gap-6">
-              
+
               <div className="flex items-start bg-gray-50 p-4 rounded-xl border border-gray-100">
                 <div className="bg-white p-2 rounded-lg shadow-sm border border-gray-200 shrink-0">
                   <Lock className="w-6 h-6 text-agri-600" />
@@ -107,7 +107,7 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp }) => {
                 <div className="ml-4">
                   <h4 className="font-bold text-gray-900">2. Funktioniert auch Offline</h4>
                   <p className="text-sm text-gray-600 mt-1">
-                    Kein Netz am Acker? Kein Problem. AgriTrack speichert alles auf dem Handy. 
+                    Kein Netz am Acker? Kein Problem. AgriTrack speichert alles auf dem Handy.
                     Sobald du wieder Empfang hast, wird automatisch synchronisiert.
                   </p>
                 </div>
@@ -116,7 +116,7 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp }) => {
             </div>
 
             <div className="mt-8 pt-6 border-t border-gray-100 text-center">
-               <button 
+               <button
                 onClick={() => setShowSyncModal(false)}
                 className="bg-agri-600 hover:bg-agri-700 text-white font-bold py-3 px-8 rounded-lg transition-colors"
               >
@@ -129,3 +129,4 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp }) => {
     </div>
   );
 };
+

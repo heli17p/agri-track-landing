@@ -37,8 +37,8 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
                 </div>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
-                        <input 
-                            type="password" 
+                        <input
+                            type="password"
                             autoFocus
                             placeholder="Passwort eingeben"
                             className="w-full border border-slate-300 p-3 rounded-lg outline-none focus:ring-2 focus:ring-red-500"
@@ -61,7 +61,7 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.HOME);
-  
+
   // Auth State
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
@@ -86,7 +86,7 @@ const App: React.FC = () => {
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
-      
+
       {showLoginModal && <AdminLoginModal onLogin={handleAdminLogin} onClose={() => setShowLoginModal(false)} />}
 
       {/* Navigation */}
@@ -97,7 +97,7 @@ const App: React.FC = () => {
               <Sprout className="h-8 w-8 text-agri-600" />
               <span className="ml-2 text-xl font-bold text-gray-900 tracking-tight">AgriTrack<span className="text-agri-600">.AT</span></span>
             </div>
-            
+
             <div className="flex items-center">
                 <div className="hidden md:flex space-x-8 items-center mr-8">
                 <button
@@ -122,7 +122,7 @@ const App: React.FC = () => {
                     <Smartphone className="w-4 h-4 mr-2" />
                     Web App
                 </button>
-                
+
                 {/* Admin Tab (Protected) */}
                 {isAdmin && (
                     <button
@@ -154,14 +154,14 @@ const App: React.FC = () => {
                 {/* Login/Logout Button */}
                 <div className="border-l border-gray-200 pl-4">
                     {isAdmin ? (
-                        <button 
+                        <button
                             onClick={handleLogout}
                             className="flex items-center text-xs font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors"
                         >
                             <User size={14} className="mr-2"/> Abmelden
                         </button>
                     ) : (
-                        <button 
+                        <button
                             onClick={() => setShowLoginModal(true)}
                             className="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100 transition-colors"
                             title="Admin Login"
@@ -180,7 +180,7 @@ const App: React.FC = () => {
         {activeTab === Tab.HOME && (
           <>
             <Hero onLaunchApp={launchApp} />
-            
+
             {/* Visual Showcase of the App */}
             <AppShowcase />
 
@@ -201,7 +201,7 @@ const App: React.FC = () => {
                 <div className="relative bg-agri-50 rounded-2xl p-8 md:p-12 border border-agri-100 overflow-hidden">
                   <div className="absolute top-0 right-0 -mt-4 -mr-4 w-32 h-32 bg-agri-200 rounded-full opacity-50 blur-2xl"></div>
                   <div className="absolute bottom-0 left-0 -mb-4 -ml-4 w-32 h-32 bg-green-200 rounded-full opacity-50 blur-2xl"></div>
-                  
+
                   <div className="relative z-10 grid grid-cols-1 md:grid-cols-3 gap-8 md:gap-12">
                     {/* Feature 1 */}
                     <div className="flex flex-col items-center text-center">
@@ -247,7 +247,7 @@ const App: React.FC = () => {
                   <div className="prose text-gray-600">
                     <p>
                       Entwickelt von Landwirten für Landwirte. Im Gegensatz zu großen Agrarkonzernen gehören
-                      die Daten bei uns dir. 
+                      die Daten bei uns dir.
                     </p>
                     <p className="mt-4">
                       Dieses Projekt ist als "Living Software" konzipiert. Über den Support-Chat kannst
@@ -347,3 +347,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

@@ -1,8 +1,10 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Cpu, Terminal, Loader2, Copy, MessageSquarePlus, ThumbsUp, CheckCircle2, Lock, Phone, ExternalLink } from 'lucide-react';
 import { ChatMessage, FeedbackTicket, AppSettings } from '../types';
 import { sendMessageToAI } from '../services/gemini';
-import { dbService, generateId } from '../services/db';
+import { dbService, generateId } from '../services/db'; // Stelle sicher, dass dbService und generateId korrekt importiert werden
+
 import { GenerateContentResponse } from '@google/genai';
 
 interface Props {
@@ -11,14 +13,14 @@ interface Props {
 
 export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
   const [activeTab, setActiveTab] = useState<'CHAT' | 'WISHES' | 'ADMIN_SETTINGS'>('CHAT');
-  
+
   // Chat State
   const [input, setInput] = useState('');
   const [messages, setMessages] = useState<ChatMessage[]>([
     {
       id: 'init',
       role: 'model',
-      text: isAdmin 
+      text: isAdmin
         ? 'Servus Admin! 👋 \n\nIch bin bereit für technische Aufgaben. Soll ich Code prüfen oder Tickets bearbeiten?'
         : 'Servus! Ich bin AgriBot. \n\nIch helfe dir bei Fragen zur App oder nehme deine Wünsche auf. Was liegt dir am Herzen?',
       timestamp: Date.now()
@@ -83,10 +85,10 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
 
     try {
       const streamResponse = await sendMessageToAI(contextInput);
-      
+
       let fullResponseText = '';
       const modelMsgId = (Date.now() + 1).toString();
-      
+
       setMessages(prev => [...prev, {
         id: modelMsgId,
         role: 'model',
@@ -98,7 +100,7 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
         const c = chunk as GenerateContentResponse;
         if (c.text) {
             fullResponseText += c.text;
-            setMessages(prev => prev.map(msg => 
+            setMessages(prev => prev.map(msg =>
                 msg.id === modelMsgId ? { ...msg, text: fullResponseText } : msg
             ));
         }
@@ -129,11 +131,11 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
           status: 'OPEN',
           votes: 1
       };
-      
+
       await dbService.saveFeedback(ticket);
       loadTickets();
       if(isAdmin) setActiveTab('WISHES');
-      
+
       // WhatsApp Logic
       const settings = await dbService.getSettings();
       let whatsappTriggered = false;
@@ -142,17 +144,17 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
       if (settings.enableWhatsApp && settings.adminPhone && !isAdmin) {
           const text = `Hallo Admin! 👋\n\nNeuer Wunsch in AgriTrack:\n"${ticket.description}"`;
           waUrl = `https://wa.me/${settings.adminPhone.replace('+', '')}?text=${encodeURIComponent(text)}`;
-          
+
           // Try to open automatically (works best on mobile, might be blocked on PC)
-          const newWindow = window.open(waUrl, '_blank');
+          window.open(waUrl, '_blank');
           whatsappTriggered = true;
       }
-      
+
       setMessages(prev => [...prev, {
           id: Date.now().toString(),
           role: 'model',
-          text: whatsappTriggered 
-            ? '✅ Ich öffne WhatsApp für dich!\n\nFalls sich kein Fenster geöffnet hat (passiert oft am PC), klicke bitte auf den Button unten:' 
+          text: whatsappTriggered
+            ? '✅ Ich öffne WhatsApp für dich!\n\nFalls sich kein Fenster geöffnet hat (passiert oft am PC), klicke bitte auf den Button unten:'
             : '✅ Ich habe das als Wunsch auf die Liste gesetzt! Danke für deinen Input.',
           timestamp: Date.now(),
           actionLink: whatsappTriggered ? waUrl : undefined,
@@ -165,7 +167,7 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
       await dbService.saveFeedback(updated);
       loadTickets();
   };
-  
+
   const handleStatusChange = async (ticket: FeedbackTicket, newStatus: 'OPEN' | 'IN_PROGRESS' | 'DONE') => {
       const updated = { ...ticket, status: newStatus };
       await dbService.saveFeedback(updated);
@@ -173,14 +175,17 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
   };
 
   const renderMessageText = (text: string) => {
-    const parts = text.split(/(```[\s\S]*?```)/g);
+    const parts = text.split(/(
+
+)/g);
     return parts.map((part, index) => {
-      if (part.startsWith('```') && part.endsWith('```')) {
-        const content = part.slice(3, -3).replace(/^typescript|js|tsx|json\n/, '');
+      if (part.startsWith('')) {
+        
+    const content = part.slice(3, -3).replace(/^typescript||tsx|json\n/, '');
         return (
           <div key={index} className="my-3 relative group">
             <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                <button 
+                <button
                     onClick={() => navigator.clipboard.writeText(content)}
                     className="p-1 bg-gray-700 text-gray-300 rounded hover:bg-gray-600"
                     title="Code kopieren"
@@ -200,7 +205,7 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
 
   return (
     <div className="flex flex-col h-[600px] bg-slate-900 rounded-xl overflow-hidden border border-slate-700 shadow-2xl relative">
-      
+
       {notificationToast && (
           <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-green-600 text-white px-4 py-2 rounded-full shadow-lg z-50 animate-in fade-in slide-in-from-top-4 flex items-center text-sm">
               <CheckCircle2 className="w-4 h-4 mr-2" />
@@ -222,10 +227,10 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
             </p>
           </div>
         </div>
-        
+
         {/* Tabs - Only show advanced tabs for Admin */}
         <div className="flex bg-slate-900 rounded-lg p-1">
-            <button 
+            <button
                 onClick={() => setActiveTab('CHAT')}
                 className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${activeTab === 'CHAT' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}
             >
@@ -233,14 +238,14 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
             </button>
             {isAdmin && (
                 <>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('WISHES')}
                         className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center ${activeTab === 'WISHES' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}
                     >
                         Tickets
                         {tickets.length > 0 && <span className="ml-2 bg-agri-600 text-white text-[10px] px-1.5 rounded-full">{tickets.length}</span>}
                     </button>
-                    <button 
+                    <button
                         onClick={() => setActiveTab('ADMIN_SETTINGS')}
                         className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all flex items-center ${activeTab === 'ADMIN_SETTINGS' ? 'bg-slate-700 text-white shadow' : 'text-slate-400 hover:text-white'}`}
                     >
@@ -268,11 +273,11 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
                         }`}
                     >
                         <div>{renderMessageText(msg.text)}</div>
-                        
+
                         {/* Action: Create Ticket from User Message (Available to both but behaves differently) */}
                         {msg.role === 'user' && (
                             <div className="absolute -left-10 top-1/2 -translate-y-1/2 opacity-0 group-hover:opacity-100 transition-opacity">
-                                <button 
+                                <button
                                     onClick={createTicketFromChat}
                                     className="p-2 bg-slate-700 rounded-full hover:bg-green-600 text-white shadow-lg"
                                     title="Wunsch senden (WhatsApp)"
@@ -289,10 +294,10 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
                             </div>
                         )}
                     </div>
-                    
+
                     {/* ACTION BUTTON (e.g. WhatsApp Link) */}
                     {msg.actionLink && (
-                        <a 
+                        <a
                             href={msg.actionLink}
                             target="_blank"
                             rel="noopener noreferrer"
@@ -320,7 +325,7 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
                 <textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); /* Manual linebreak only via code */ } }}
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); } }} // Enter to prevent new line, not send
                     placeholder={isAdmin ? "Befehl eingeben (z.B. 'Generiere neuen Code für...')" : "Schreibe deinen Wunsch oder Fehler hier..."}
                     className="w-full bg-slate-900 text-white rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-agri-500 border border-slate-700 resize-none h-20"
                 />
@@ -337,7 +342,7 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
                         {isAdmin ? 'Admin Mode: Code-Generierung aktiviert.' : 'Tipp: Beschreibe Probleme so genau wie möglich.'}
                     </p>
                     {input.length > 10 && !isAdmin && (
-                        <button 
+                        <button
                             onClick={createTicketFromChat}
                             className="text-xs bg-green-900/50 text-green-400 border border-green-800 px-3 py-1 rounded hover:bg-green-900 flex items-center"
                         >
@@ -368,7 +373,7 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
                           <div key={ticket.id} className="bg-slate-800 border border-slate-700 p-4 rounded-xl hover:border-slate-600 transition-all">
                               <div className="flex justify-between items-start mb-2">
                                   <h3 className="text-white font-bold">{ticket.title}</h3>
-                                  <select 
+                                  <select
                                     value={ticket.status}
                                     onChange={(e) => handleStatusChange(ticket, e.target.value as any)}
                                     className={`px-2 py-0.5 rounded text-[10px] font-bold uppercase border-none focus:ring-0 cursor-pointer ${
@@ -390,7 +395,7 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
                                       {new Date(ticket.date).toLocaleDateString()} • {ticket.author}
                                   </div>
                                   <div className="flex items-center space-x-2">
-                                    <button 
+                                    <button
                                         onClick={() => handleVote(ticket)}
                                         className="flex items-center space-x-1.5 text-xs font-medium text-slate-300 hover:text-white bg-slate-700 hover:bg-slate-600 px-3 py-1.5 rounded-full transition-colors"
                                     >
@@ -415,7 +420,7 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
               </h2>
 
               <div className="bg-slate-800 p-4 rounded-xl border border-slate-700 space-y-6">
-                  
+
                   {/* WhatsApp Settings */}
                   <div className="space-y-3">
                       <div className="flex items-start space-x-3">
@@ -424,7 +429,7 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
                           </div>
                           <div className="flex-1">
                               <label className="block text-sm font-bold text-gray-300 mb-1">Admin Handynummer (WhatsApp)</label>
-                              <input 
+                              <input
                                   type="text"
                                   value={appSettings.adminPhone || ''}
                                   onChange={(e) => setAppSettings({...appSettings, adminPhone: e.target.value})}
@@ -438,7 +443,7 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
                       </div>
 
                       <div className="flex items-center space-x-3 pt-2 pl-12">
-                          <input 
+                          <input
                               type="checkbox"
                               id="waNotify"
                               checked={appSettings.enableWhatsApp || false}
@@ -453,7 +458,7 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
 
               </div>
 
-              <button 
+              <button
                   onClick={handleSaveAdminSettings}
                   className="mt-6 w-full bg-red-700 hover:bg-red-600 text-white font-bold py-3 rounded-xl transition-colors shadow-lg"
               >
@@ -464,3 +469,9 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
     </div>
   );
 };
+
+
+
+
+
+
