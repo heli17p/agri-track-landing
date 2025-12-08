@@ -1,9 +1,8 @@
-
 import React, { useState, useRef, useEffect } from 'react';
 import { Send, Cpu, Terminal, Loader2, Copy, MessageSquarePlus, ThumbsUp, CheckCircle2, Lock, Phone, ExternalLink } from 'lucide-react';
 import { ChatMessage, FeedbackTicket, AppSettings } from '../types';
 import { sendMessageToAI } from '../services/gemini';
-import { dbService, generateId } from '../services/db'; // Stelle sicher, dass dbService und generateId korrekt importiert werden
+import { dbService, generateId } from '../services/db';
 
 import { GenerateContentResponse } from '@google/genai';
 
@@ -175,13 +174,12 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
   };
 
   const renderMessageText = (text: string) => {
-    const parts = text.split(/(
-
-)/g);
+    // Diese Zeile ist kritisch! Stelle sicher, dass sie exakt so aussieht.
+    // Die Backticks () innerhalb der Klammern sind wichtig für den Regex.
+    const parts = text.split(/()/g); // <--- HIER SIND DIE DREI BACKTICKS WICHTIG!
     return parts.map((part, index) => {
-      if (part.startsWith('')) {
-        
-    const content = part.slice(3, -3).replace(/^typescript||tsx|json\n/, '');
+      if (part.startsWith('')) { // <--- UND HIER!
+        const content = part.slice(3, -3).replace(/^typescript||tsx|json\n/, '');
         return (
           <div key={index} className="my-3 relative group">
             <div className="absolute right-2 top-2 opacity-0 group-hover:opacity-100 transition-opacity">
@@ -325,7 +323,7 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
                 <textarea
                     value={input}
                     onChange={(e) => setInput(e.target.value)}
-                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); } }} // Enter to prevent new line, not send
+                    onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); } }}
                     placeholder={isAdmin ? "Befehl eingeben (z.B. 'Generiere neuen Code für...')" : "Schreibe deinen Wunsch oder Fehler hier..."}
                     className="w-full bg-slate-900 text-white rounded-lg pl-4 pr-12 py-3 focus:outline-none focus:ring-2 focus:ring-agri-500 border border-slate-700 resize-none h-20"
                 />
@@ -469,9 +467,4 @@ export const DevConsole: React.FC<Props> = ({ isAdmin = false }) => {
     </div>
   );
 };
-
-
-
-
-
 
