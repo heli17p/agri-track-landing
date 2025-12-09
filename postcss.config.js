@@ -1,4 +1,3 @@
-javascript
     export default {
       plugins: {
         tailwindcss: {},
