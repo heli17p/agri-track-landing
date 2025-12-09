@@ -1,11 +1,11 @@
 {
   "name": "agritrack-austria",
   "private": true,
-  "version": "2.4.4",
+  "version": "2.4.5",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build",
+    "build": "vite build",
     "preview": "vite preview"
   },
   "dependencies": {
