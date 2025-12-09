@@ -1,8 +1,4 @@
-
 import { GoogleGenAI, Chat } from "@google/genai";
-
-// Initialize Gemini Client
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 const SYSTEM_INSTRUCTION = `
 Du bist "AgriBot", der leitende KI-Software-Architekt für AgriTrack Austria.
@@ -48,11 +44,27 @@ STIL:
 Österreichisch, professionell aber "per Du". Wir sind Landwirte und Techniker.
 `;
 
+// Lazy Singleton State
+let ai: GoogleGenAI | null = null;
 let chatSession: Chat | null = null;
+
+// Helper to safely get client
+const getClient = () => {
+    if (!ai) {
+        const apiKey = process.env.API_KEY;
+        if (!apiKey) {
+            console.warn("AgriBot: API Key is missing. Chat functionality disabled.");
+            throw new Error("API Key nicht konfiguriert. Bitte API_KEY in Vercel Settings setzen.");
+        }
+        ai = new GoogleGenAI({ apiKey });
+    }
+    return ai;
+};
 
 export const getChatSession = (): Chat => {
   if (!chatSession) {
-    chatSession = ai.chats.create({
+    const client = getClient();
+    chatSession = client.chats.create({
       model: 'gemini-2.5-flash',
       config: {
         systemInstruction: SYSTEM_INSTRUCTION,
@@ -64,7 +76,11 @@ export const getChatSession = (): Chat => {
 };
 
 export const sendMessageToAI = async (message: string) => {
-  const chat = getChatSession();
-  return chat.sendMessageStream({ message });
+  try {
+      const chat = getChatSession();
+      return chat.sendMessageStream({ message });
+  } catch (error) {
+      console.error("Failed to send message:", error);
+      throw error;
+  }
 };
-
