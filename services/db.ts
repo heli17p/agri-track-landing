@@ -25,7 +25,7 @@ export const dbService = {
   getFeedback: async (): Promise<FeedbackTicket[]> => {
       const s = localStorage.getItem('agritrack_feedback');
       return s ? JSON.parse(s) : [
-          { id: '1', title: 'Mineraldünger Erfassung', description: 'Ich brauche eine Auswahl für NPK Dünger bei den Tätigkeiten.', votes: 3, status: 'OPEN', date: new Date().toISOString(), author: 'Betrieb Mayer' }
+          { id: '1', title: 'Mineraldünger Erfassung', description: 'Ich brauche eine Auswahl für NPK Dünger bei den Tätigkeiten.', votes: 3, status: 'OPEN', date: new Date().toISOString(), author: 'Betrieb Mayer', comments: [] }
       ];
   },
 
@@ -221,3 +221,4 @@ export const dbService = {
     return () => { listeners.change = listeners.change.filter(l => l !== cb); };
   }
 };
+
