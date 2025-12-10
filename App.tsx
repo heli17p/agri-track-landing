@@ -108,11 +108,21 @@ const App: React.FC = () => {
   };
 
   const handleUserLogout = async () => {
+      const wasGuest = isGuest; // Capture state before reset
+      
       await authService.logout();
-      setIsGuest(false); // Reset guest state too
+      setIsGuest(false);
       setIsAuthenticated(false);
       localStorage.removeItem('agritrack_guest_mode');
-      setActiveTab(Tab.HOME);
+      
+      // UX Improvement: 
+      // If it was a guest clicking "Exit/Login", send them to Login Page (Tab.APP).
+      // If it was a real user logging out, send them to Home (Tab.HOME).
+      if (wasGuest) {
+          setActiveTab(Tab.APP);
+      } else {
+          setActiveTab(Tab.HOME);
+      }
   };
 
   const handleGuestAccess = () => {
@@ -133,22 +143,23 @@ const App: React.FC = () => {
       );
   }
 
-  // --- CHANGE: REMOVED GLOBAL LOGIN BLOCKER ---
-  // The app is now accessible, AuthPage is only shown inside the APP tab.
-
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       
       {showLoginModal && <AdminLoginModal onLogin={handleAdminLogin} onClose={() => setShowLoginModal(false)} />}
 
-      {/* Guest Banner */}
-      {isGuest && activeTab === Tab.APP && (
-          <div className="bg-slate-800 text-slate-300 text-xs py-1 px-4 text-center flex justify-center items-center">
+      {/* Guest Banner - Now visible on ALL tabs for better awareness */}
+      {isGuest && (
+          <div className="bg-slate-800 text-slate-300 text-xs py-1 px-4 text-center flex justify-center items-center relative z-[60]">
               <CloudOff size={12} className="mr-2"/>
-              <span>Gastmodus: Daten werden nur auf diesem Gerät gespeichert.</span>
+              <span>Gastmodus: Daten werden nur lokal gespeichert.</span>
               <button 
-                onClick={() => { setIsGuest(false); localStorage.removeItem('agritrack_guest_mode'); }} 
-                className="ml-4 underline hover:text-white"
+                onClick={() => { 
+                    setIsGuest(false); 
+                    localStorage.removeItem('agritrack_guest_mode'); 
+                    setActiveTab(Tab.APP); // Force Navigation to Login
+                }} 
+                className="ml-4 underline hover:text-white font-bold"
               >
                   Jetzt anmelden
               </button>
@@ -244,11 +255,20 @@ const App: React.FC = () => {
                         <div className="relative group">
                             <button 
                                 onClick={handleUserLogout}
-                                className="flex items-center text-sm font-medium text-slate-600 hover:text-slate-900 bg-slate-100 px-3 py-1.5 rounded-lg transition-colors"
+                                className={`flex items-center text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${
+                                    isGuest 
+                                    ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' 
+                                    : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+                                }`}
+                                title={isGuest ? "Jetzt anmelden" : "Abmelden"}
                             >
                                 <User size={16} className="mr-2"/>
                                 <span className="max-w-[100px] truncate hidden sm:block">{isAuthenticated ? (currentUserEmail || 'User') : 'Gast'}</span>
-                                <LogOut size={14} className="ml-2 text-slate-400 group-hover:text-red-500"/>
+                                {isGuest ? (
+                                    <ArrowRight size={14} className="ml-2"/>
+                                ) : (
+                                    <LogOut size={14} className="ml-2 text-slate-400 group-hover:text-red-500"/>
+                                )}
                             </button>
                         </div>
                     ) : (
