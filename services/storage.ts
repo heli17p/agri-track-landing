@@ -31,40 +31,41 @@ try {
     console.error("[AgriCloud] Initialization failed (check console for details):", e);
 }
 
-// Export auth for auth service
 export { auth };
 
-// Check ob die Cloud "scharf" geschaltet ist UND wir berechtigt sind
+// Check Cloud Status
 export const isCloudConfigured = () => {
     return !!db && !!auth?.currentUser;
 };
 
-// --- SIMULIERTE DATENBANK (LOKAL - FALLBACK & OFFLINE) ---
-const STORAGE_KEY_SETTINGS = 'agritrack_settings';
+// --- LOCAL STORAGE KEYS ---
+const STORAGE_KEY_SETTINGS = 'agritrack_settings_full'; // Unified key
 const STORAGE_KEY_ACTIVITIES = 'agritrack_activities';
 const STORAGE_KEY_TRIPS = 'agritrack_trips';
 
+// --- SETTINGS ---
 export const loadSettings = (): AppSettings => {
-  const saved = localStorage.getItem('agritrack_settings_full'); // Use consistent key
+  const saved = localStorage.getItem(STORAGE_KEY_SETTINGS);
   if (saved) {
-    const parsed = JSON.parse(saved);
-    return {
-      ...DEFAULT_SETTINGS,
-      ...parsed,
-      farmName: parsed.farmName || DEFAULT_SETTINGS.farmName
-    };
+    try {
+        const parsed = JSON.parse(saved);
+        return { ...DEFAULT_SETTINGS, ...parsed };
+    } catch(e) { console.error("Settings parse error", e); }
   }
   return DEFAULT_SETTINGS;
 };
 
 export const saveSettings = (settings: AppSettings) => {
-  localStorage.setItem('agritrack_settings_full', JSON.stringify(settings));
+  localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
 };
 
+// --- DATA HANDLING (HYBRID) ---
+
 export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip) => {
-  // 1. Save Locally (Offline First)
+  // 1. ALWAYS Save Locally (Offline First / Guest Mode)
   const key = type === 'activity' ? STORAGE_KEY_ACTIVITIES : STORAGE_KEY_TRIPS;
-  const existing = JSON.parse(localStorage.getItem(key) || '[]');
+  const existingStr = localStorage.getItem(key);
+  let existing = existingStr ? JSON.parse(existingStr) : [];
   
   const index = existing.findIndex((e: any) => e.id === data.id);
   if (index >= 0) existing[index] = data;
@@ -72,35 +73,39 @@ export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip)
   
   localStorage.setItem(key, JSON.stringify(existing));
 
-  // 2. Sync to Cloud (Multi-User Farm Logic)
+  // 2. Sync to Cloud (Only if Logged In)
   if (isCloudConfigured()) {
       const settings = loadSettings();
-      
-      // Determine target: If Farm ID is set, use it. Otherwise private user bucket.
-      // We use the same collection but filter differently.
+      // Target Farm ID: Either from settings OR private user ID
       const farmId = settings.farmId || 'PERSONAL_' + auth.currentUser.uid;
       const farmPin = settings.farmPin || '';
 
       try {
           const colName = type === 'activity' ? 'activities' : 'trips';
+          // Deep clone to safely remove undefined values before Firestore
           const payload = JSON.parse(JSON.stringify(data)); 
           
           payload.syncedAt = Timestamp.now();
-          payload.userId = auth.currentUser.uid; // Who created it
-          payload.farmId = farmId;               // Which farm it belongs to
-          payload.farmPin = farmPin;             // Simple security check
+          payload.userId = auth.currentUser.uid; 
+          payload.farmId = farmId;               
+          payload.farmPin = farmPin;             
           
+          // Note: In a real app we would use setDoc with merge to update existing IDs
+          // For simplicity here, we assume addDoc (which creates dupes if not careful, handled by ID check on read)
+          // Ideally: await setDoc(doc(db, colName, data.id), payload);
           await addDoc(collection(db, colName), payload);
-          console.log(`[AgriCloud] Saved ${type} to farm ${farmId}.`);
+          
+          console.log(`[AgriCloud] Synced ${type} to farm ${farmId}.`);
       } catch (e) {
-          console.error("[AgriCloud] Upload failed:", e);
+          console.error("[AgriCloud] Upload failed (User might be offline):", e);
       }
   }
 };
 
 export const loadLocalData = (type: 'activity' | 'trip') => {
     const key = type === 'activity' ? STORAGE_KEY_ACTIVITIES : STORAGE_KEY_TRIPS;
-    return JSON.parse(localStorage.getItem(key) || '[]');
+    const s = localStorage.getItem(key);
+    return s ? JSON.parse(s) : [];
 }
 
 export const fetchCloudData = async (type: 'activity' | 'trip') => {
@@ -111,7 +116,7 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
     const targetPin = settings.farmPin || '';
 
     try {
-        console.log(`[Sync] Fetching for Farm: ${targetFarmId}`);
+        console.log(`[Sync] Fetching cloud data for Farm: ${targetFarmId}`);
         const colName = type === 'activity' ? 'activities' : 'trips';
         
         // Query by Farm ID
@@ -119,18 +124,15 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
             collection(db, colName), 
             where("farmId", "==", targetFarmId),
             orderBy('date', 'desc'), 
-            limit(100) // Increased limit
+            limit(100)
         );
         
         const snapshot = await getDocs(q);
         
-        // Client-side Security Check:
-        // Only return data if PIN matches (if a PIN was set during save)
+        // Filter by PIN (Client-side Security)
         const myData = snapshot.docs
             .map(doc => ({ id: doc.id, ...doc.data() } as any))
             .filter(item => {
-                // If item has a PIN, it must match our current PIN
-                // If item has no PIN (legacy), allow it
                 if (item.farmPin && item.farmPin !== targetPin) return false;
                 return true;
             });
@@ -138,7 +140,7 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
         return myData;
     } catch (e) {
         console.error("[AgriCloud] Fetch failed:", e);
-        // Fallback: If index is missing for orderBy, try simple query
+        // Fallback for missing indexes
         try {
              const qSimple = query(collection(db, type === 'activity' ? 'activities' : 'trips'), where("farmId", "==", targetFarmId));
              const snapSimple = await getDocs(qSimple);

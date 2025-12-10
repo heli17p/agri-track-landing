@@ -2,9 +2,9 @@ import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, DEFAU
 import { saveData, loadLocalData, saveSettings as saveSettingsToStorage, loadSettings as loadSettingsFromStorage, fetchCloudData, isCloudConfigured } from './storage';
 
 /*
-  DB SERVICE ADAPTER
-  ==================
-  Dieser Service verbindet die lokale 'localStorage' Datenbank mit der neuen 'AgriCloud'.
+  DB SERVICE ADAPTER (REPAIRED)
+  =============================
+  Ensures data availability for both Guests (Local) and Users (Cloud+Local).
 */
 
 type Listener = () => void;
@@ -22,54 +22,29 @@ export const generateId = () => Math.random().toString(36).substr(2, 9);
 export const dbService = {
   // --- MIGRATION (GUEST -> CLOUD) ---
   migrateGuestDataToCloud: async () => {
-      if (!isCloudConfigured()) return; // Nur wenn User eingeloggt ist
-      
-      console.log("[Migration] Prüfe lokale Daten für Cloud-Upload...");
-      
-      // 1. Aktivitäten
+      if (!isCloudConfigured()) return;
+      console.log("[Migration] Starte Upload lokaler Daten...");
       const localActivities = loadLocalData('activity') as ActivityRecord[];
-      // Wir prüfen nicht ob sie schon da sind (da wir keine Cloud-Liste haben), 
-      // wir senden einfach alles. Firebase IDs verhindern Duplikate normalerweise, 
-      // aber hier senden wir einfach "Blind".
-      // Besser: Wir markieren lokal, was schon gesynced ist.
-      // Für diesen einfachen Fall: Wir senden einfach alle lokalen Daten.
-      
-      let count = 0;
       for (const act of localActivities) {
-          // Prüfen ob schon Zeitstempel für Sync da ist, um unnötigen Traffic zu vermeiden?
-          // Wir senden einfach alles, was lokal ist.
           await saveData('activity', act);
-          count++;
       }
-      
-      console.log(`[Migration] ${count} Aktivitäten in die Cloud kopiert.`);
+      console.log(`[Migration] Abgeschlossen.`);
   },
 
-  // --- Feedback / Tickets ---
+  // --- Feedback ---
   getFeedback: async (): Promise<FeedbackTicket[]> => {
       const s = localStorage.getItem('agritrack_feedback');
-      return s ? JSON.parse(s) : [
-          { id: '1', title: 'Mineraldünger Erfassung', description: 'Ich brauche eine Auswahl für NPK Dünger bei den Tätigkeiten.', votes: 3, status: 'OPEN', date: new Date().toISOString(), author: 'Betrieb Mayer', comments: [] }
-      ];
+      return s ? JSON.parse(s) : [];
   },
 
   saveFeedback: async (ticket: FeedbackTicket) => {
       const all = await dbService.getFeedback();
       const index = all.findIndex(t => t.id === ticket.id);
-      let newList;
-      if (index >= 0) {
-          newList = [...all];
-          newList[index] = ticket;
-      } else {
-          newList = [ticket, ...all];
-      }
+      let newList = index >= 0 ? [...all] : [ticket, ...all];
+      if(index >= 0) newList[index] = ticket;
+      
       localStorage.setItem('agritrack_feedback', JSON.stringify(newList));
       notify('change');
-      
-      // Sync Ticket to Cloud (Activity Stream hack for now)
-      if (isCloudConfigured()) {
-          saveData('activity', { ...ticket, type: 'TICKET_SYNC' } as any); 
-      }
   },
 
   deleteFeedback: async (id: string) => {
@@ -81,26 +56,25 @@ export const dbService = {
 
   // --- Activities ---
   getActivities: async (): Promise<ActivityRecord[]> => {
-    // Priority: Local Cache for speed
+    // ALWAYS return local data first for speed and offline support
     const local = loadLocalData('activity') as ActivityRecord[];
     return local;
   },
   
-  // Explicit Cloud Sync Trigger
+  // Trigger Cloud Sync manually (e.g. via Button)
   syncActivities: async () => {
       if (!isCloudConfigured()) return;
       
       const cloudData = await fetchCloudData('activity') as ActivityRecord[];
       const localData = loadLocalData('activity') as ActivityRecord[];
       
-      // Simple Merge: Add missing cloud items to local
-      // (In a real app, we would handle conflicts and updates more carefully)
+      // Merge Strategy: Cloud wins for new items, Local keeps unsynced changes (simplified)
+      // We identify items by ID.
       const localIds = new Set(localData.map(a => a.id));
       let newItemsCount = 0;
       
       cloudData.forEach(cloudItem => {
-          // Ignore ticket syncs
-          if ((cloudItem as any).type === 'TICKET_SYNC') return;
+          if ((cloudItem as any).type === 'TICKET_SYNC') return; // Filter internal types
           
           if (!localIds.has(cloudItem.id)) {
               localData.push(cloudItem);
@@ -110,8 +84,8 @@ export const dbService = {
       
       if (newItemsCount > 0) {
           localStorage.setItem('agritrack_activities', JSON.stringify(localData));
-          notify('change');
-          console.log(`[Sync] ${newItemsCount} neue Einträge aus der Cloud geladen.`);
+          notify('change'); // Updates UI
+          console.log(`[Sync] ${newItemsCount} Einträge geladen.`);
       }
   },
   
@@ -122,22 +96,7 @@ export const dbService = {
 
   saveActivity: async (record: ActivityRecord) => {
     if (!record.id) record.id = generateId();
-    
-    // 1. Update Local
-    const all = await dbService.getActivities();
-    const index = all.findIndex(a => a.id === record.id);
-    let newActivities;
-    if (index >= 0) {
-        newActivities = [...all];
-        newActivities[index] = record;
-    } else {
-        newActivities = [record, ...all];
-    }
-    localStorage.setItem('agritrack_activities', JSON.stringify(newActivities));
-    
-    // 2. Send to Cloud
-    await saveData('activity', record);
-    
+    await saveData('activity', record); // Handles both Local and Cloud
     notify('change');
   },
 
@@ -146,7 +105,6 @@ export const dbService = {
     const filtered = all.filter(a => a.id !== id);
     localStorage.setItem('agritrack_activities', JSON.stringify(filtered));
     notify('change');
-    // Note: Deletion in cloud not implemented in this version for safety
   },
 
   // --- Fields ---
@@ -159,13 +117,9 @@ export const dbService = {
     if (!field.id) field.id = generateId();
     const all = await dbService.getFields();
     const index = all.findIndex(f => f.id === field.id);
-    let newList;
-    if (index >= 0) {
-        newList = [...all];
-        newList[index] = field;
-    } else {
-        newList = [...all, field];
-    }
+    let newList = index >= 0 ? [...all] : [...all, field];
+    if (index >= 0) newList[index] = field;
+    
     localStorage.setItem('agritrack_fields', JSON.stringify(newList));
     notify('change');
   },
@@ -192,13 +146,9 @@ export const dbService = {
   saveStorageLocation: async (storage: StorageLocation) => {
     const all = await dbService.getStorageLocations();
     const index = all.findIndex(s => s.id === storage.id);
-    let newList;
-    if (index >= 0) {
-        newList = [...all];
-        newList[index] = storage;
-    } else {
-        newList = [...all, storage];
-    }
+    let newList = index >= 0 ? [...all] : [...all, storage];
+    if (index >= 0) newList[index] = storage;
+    
     localStorage.setItem('agritrack_storage', JSON.stringify(newList));
     notify('change');
   },
@@ -231,12 +181,10 @@ export const dbService = {
   },
 
   getSettings: async (): Promise<AppSettings> => {
-    const s = localStorage.getItem('agritrack_settings_full');
-    return s ? JSON.parse(s) : DEFAULT_SETTINGS;
+    return loadSettingsFromStorage();
   },
 
   saveSettings: async (settings: AppSettings) => {
-    localStorage.setItem('agritrack_settings_full', JSON.stringify(settings));
     saveSettingsToStorage(settings);
     notify('change');
   },
