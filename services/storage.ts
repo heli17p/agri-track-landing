@@ -1,6 +1,6 @@
 import { Activity, AppSettings, Trip, DEFAULT_SETTINGS } from '../types';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, Timestamp, where } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 /* 
@@ -45,7 +45,7 @@ const STORAGE_KEY_ACTIVITIES = 'agritrack_activities';
 const STORAGE_KEY_TRIPS = 'agritrack_trips';
 
 export const loadSettings = (): AppSettings => {
-  const saved = localStorage.getItem(STORAGE_KEY_SETTINGS);
+  const saved = localStorage.getItem('agritrack_settings_full'); // Use consistent key
   if (saved) {
     const parsed = JSON.parse(saved);
     return {
@@ -58,36 +58,42 @@ export const loadSettings = (): AppSettings => {
 };
 
 export const saveSettings = (settings: AppSettings) => {
-  localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+  localStorage.setItem('agritrack_settings_full', JSON.stringify(settings));
 };
 
 export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip) => {
-  // 1. Save Locally (Offline First) - Immer sofort speichern für schnelle UI
+  // 1. Save Locally (Offline First)
   const key = type === 'activity' ? STORAGE_KEY_ACTIVITIES : STORAGE_KEY_TRIPS;
   const existing = JSON.parse(localStorage.getItem(key) || '[]');
   
-  // Update or Add
   const index = existing.findIndex((e: any) => e.id === data.id);
   if (index >= 0) existing[index] = data;
   else existing.unshift(data);
   
   localStorage.setItem(key, JSON.stringify(existing));
 
-  // 2. Sync to Cloud (Only if Logged In)
+  // 2. Sync to Cloud (Multi-User Farm Logic)
   if (isCloudConfigured()) {
+      const settings = loadSettings();
+      
+      // Determine target: If Farm ID is set, use it. Otherwise private user bucket.
+      // We use the same collection but filter differently.
+      const farmId = settings.farmId || 'PERSONAL_' + auth.currentUser.uid;
+      const farmPin = settings.farmPin || '';
+
       try {
           const colName = type === 'activity' ? 'activities' : 'trips';
-          // Deep clone to remove potential reactive proxies or undefined values
           const payload = JSON.parse(JSON.stringify(data)); 
-          // Add timestamp if missing or update it
+          
           payload.syncedAt = Timestamp.now();
-          // Add User ID for security rules (if we had them enabled for owner-only)
-          payload.userId = auth.currentUser.uid;
+          payload.userId = auth.currentUser.uid; // Who created it
+          payload.farmId = farmId;               // Which farm it belongs to
+          payload.farmPin = farmPin;             // Simple security check
           
           await addDoc(collection(db, colName), payload);
-          console.log(`[AgriCloud] Saved ${type} to cloud for user ${auth.currentUser.uid}.`);
+          console.log(`[AgriCloud] Saved ${type} to farm ${farmId}.`);
       } catch (e) {
-          console.error("[AgriCloud] Upload failed (User might be offline or guest):", e);
+          console.error("[AgriCloud] Upload failed:", e);
       }
   }
 };
@@ -100,23 +106,43 @@ export const loadLocalData = (type: 'activity' | 'trip') => {
 export const fetchCloudData = async (type: 'activity' | 'trip') => {
     if (!isCloudConfigured()) return [];
     
+    const settings = loadSettings();
+    const targetFarmId = settings.farmId || 'PERSONAL_' + auth.currentUser.uid;
+    const targetPin = settings.farmPin || '';
+
     try {
-        // NOTE: In a real multi-user app, we would query: where("userId", "==", auth.currentUser.uid)
-        // For this demo, we assume the collection is shared or rules handle it.
-        // We will filter client-side just to be safe if rules aren't set.
-        
+        console.log(`[Sync] Fetching for Farm: ${targetFarmId}`);
         const colName = type === 'activity' ? 'activities' : 'trips';
-        const q = query(collection(db, colName), orderBy('date', 'desc'), limit(50));
+        
+        // Query by Farm ID
+        const q = query(
+            collection(db, colName), 
+            where("farmId", "==", targetFarmId),
+            orderBy('date', 'desc'), 
+            limit(100) // Increased limit
+        );
+        
         const snapshot = await getDocs(q);
         
-        // Client-side filter for owned data (simulation of security rules)
+        // Client-side Security Check:
+        // Only return data if PIN matches (if a PIN was set during save)
         const myData = snapshot.docs
             .map(doc => ({ id: doc.id, ...doc.data() } as any))
-            .filter(item => !item.userId || item.userId === auth.currentUser.uid);
+            .filter(item => {
+                // If item has a PIN, it must match our current PIN
+                // If item has no PIN (legacy), allow it
+                if (item.farmPin && item.farmPin !== targetPin) return false;
+                return true;
+            });
 
         return myData;
     } catch (e) {
         console.error("[AgriCloud] Fetch failed:", e);
-        return [];
+        // Fallback: If index is missing for orderBy, try simple query
+        try {
+             const qSimple = query(collection(db, type === 'activity' ? 'activities' : 'trips'), where("farmId", "==", targetFarmId));
+             const snapSimple = await getDocs(qSimple);
+             return snapSimple.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
+        } catch(e2) { return []; }
     }
 }

@@ -142,6 +142,10 @@ export interface ActivityRecord {
   // Advanced Traceability
   fieldSources?: Record<string, string[]>; // FieldID -> Array of StorageIDs used on this field
   detailedFieldSources?: Record<string, Record<string, number>>; // FieldID -> { StorageID: Amount }
+  
+  // Sync Meta
+  farmId?: string; // The Farm Group ID
+  userId?: string; // The User who created it
 }
 
 // Legacy Alias for compatibility
@@ -166,12 +170,15 @@ export interface AppSettings {
   spreadWidth: number; // meters
   slurrySpreadWidth?: number; // Optional specific width
   manureSpreadWidth?: number; // Optional specific width
-  serverUrl: string; // Unraid Server URL
+  serverUrl: string; // Legacy
   farmName?: string;
   appIcon?: string;
   // WhatsApp Settings
   adminPhone?: string;
   enableWhatsApp?: boolean;
+  // Multi-User Cloud Sync
+  farmId?: string; // LFBIS Nummer als Gruppen-ID
+  farmPin?: string; // Passwort für die Gruppe
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -183,9 +190,11 @@ export const DEFAULT_SETTINGS: AppSettings = {
   spreadWidth: 12,
   slurrySpreadWidth: 12,
   manureSpreadWidth: 10,
-  serverUrl: 'http://192.168.1.x:3000',
+  serverUrl: '',
   appIcon: 'standard',
   // Vordefinierte Admin Einstellungen
   adminPhone: '436765624502',
-  enableWhatsApp: true
+  enableWhatsApp: true,
+  farmId: '',
+  farmPin: ''
 };
