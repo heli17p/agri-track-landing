@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { MessageSquarePlus, ThumbsUp, CheckCircle2, Circle, Clock, MessageCircle, Send, User, ChevronDown, ChevronUp } from 'lucide-react';
+import { MessageSquarePlus, ThumbsUp, CheckCircle2, Circle, Clock, MessageCircle, Send, User, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { FeedbackTicket, FeedbackComment } from '../types';
 import { dbService, generateId } from '../services/db';
 
@@ -42,6 +42,14 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
       const updated = { ...ticket, status: newStatus };
       await dbService.saveFeedback(updated);
       loadTickets();
+  };
+
+  const handleDeleteTicket = async (id: string, e: React.MouseEvent) => {
+      e.stopPropagation();
+      if(window.confirm('Möchtest du dieses Ticket wirklich unwiderruflich löschen?')) {
+          await dbService.deleteFeedback(id);
+          loadTickets();
+      }
   };
 
   const handleSubmitTicket = async () => {
@@ -211,6 +219,16 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
                                         <ThumbsUp size={18} className="text-slate-400 group-hover:text-green-600 mb-0.5" />
                                         <span className="text-xs font-bold text-slate-600 group-hover:text-green-700">{ticket.votes}</span>
                                     </button>
+
+                                    {isAdmin && (
+                                        <button 
+                                            onClick={(e) => handleDeleteTicket(ticket.id, e)}
+                                            className="flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-slate-200 hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-slate-300 transition-colors"
+                                            title="Ticket löschen"
+                                        >
+                                            <Trash2 size={14} />
+                                        </button>
+                                    )}
                                 </div>
                             </div>
                             

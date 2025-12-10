@@ -48,6 +48,13 @@ export const dbService = {
       }
   },
 
+  deleteFeedback: async (id: string) => {
+      const all = await dbService.getFeedback();
+      const filtered = all.filter(t => t.id !== id);
+      localStorage.setItem('agritrack_feedback', JSON.stringify(filtered));
+      notify('change');
+  },
+
   // --- Activities ---
   getActivities: async (): Promise<ActivityRecord[]> => {
     // Priority: Local Cache for speed
@@ -221,4 +228,3 @@ export const dbService = {
     return () => { listeners.change = listeners.change.filter(l => l !== cb); };
   }
 };
-
