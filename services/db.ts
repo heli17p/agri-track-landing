@@ -1,4 +1,3 @@
-
 import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, DEFAULT_SETTINGS, FeedbackTicket } from '../types';
 import { saveData, loadLocalData, saveSettings as saveSettingsToStorage, loadSettings as loadSettingsFromStorage, fetchCloudData, isCloudConfigured } from './storage';
 
@@ -21,6 +20,31 @@ const notify = (type: 'sync' | 'change') => {
 export const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export const dbService = {
+  // --- MIGRATION (GUEST -> CLOUD) ---
+  migrateGuestDataToCloud: async () => {
+      if (!isCloudConfigured()) return; // Nur wenn User eingeloggt ist
+      
+      console.log("[Migration] Prüfe lokale Daten für Cloud-Upload...");
+      
+      // 1. Aktivitäten
+      const localActivities = loadLocalData('activity') as ActivityRecord[];
+      // Wir prüfen nicht ob sie schon da sind (da wir keine Cloud-Liste haben), 
+      // wir senden einfach alles. Firebase IDs verhindern Duplikate normalerweise, 
+      // aber hier senden wir einfach "Blind".
+      // Besser: Wir markieren lokal, was schon gesynced ist.
+      // Für diesen einfachen Fall: Wir senden einfach alle lokalen Daten.
+      
+      let count = 0;
+      for (const act of localActivities) {
+          // Prüfen ob schon Zeitstempel für Sync da ist, um unnötigen Traffic zu vermeiden?
+          // Wir senden einfach alles, was lokal ist.
+          await saveData('activity', act);
+          count++;
+      }
+      
+      console.log(`[Migration] ${count} Aktivitäten in die Cloud kopiert.`);
+  },
+
   // --- Feedback / Tickets ---
   getFeedback: async (): Promise<FeedbackTicket[]> => {
       const s = localStorage.getItem('agritrack_feedback');

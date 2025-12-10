@@ -1,12 +1,14 @@
-
 import React, { useState, useEffect } from 'react';
 import { Hero } from './components/Hero';
 import { FeedbackBoard } from './components/FeedbackBoard';
 import { VersionHistory } from './components/VersionHistory';
 import { AgriTrackApp } from './components/AgriTrackApp';
 import { AppShowcase } from './components/AppShowcase';
+import { AuthPage } from './pages/AuthPage';
 import { Tab } from './types';
-import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight } from 'lucide-react';
+import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight, LogOut, CloudOff } from 'lucide-react';
+import { authService } from './services/auth';
+import { dbService } from './services/db';
 
 const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: () => void }) => {
     const [pass, setPass] = useState('');
@@ -14,7 +16,6 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
 
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
-        // Simple demo password check
         if (pass === 'admin' || pass === '1234') {
             onLogin();
         } else {
@@ -51,9 +52,6 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
                         Anmelden <ArrowRight size={16} className="ml-2"/>
                     </button>
                 </form>
-                <div className="mt-4 text-center text-xs text-slate-400">
-                    (Demo Passwort: admin)
-                </div>
             </div>
         </div>
     );
@@ -65,9 +63,34 @@ const App: React.FC = () => {
   // Auth State
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  
+  // User Auth State
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [isGuest, setIsGuest] = useState(false);
+  const [isLoadingAuth, setIsLoadingAuth] = useState(true);
+  const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
   useEffect(() => {
-      console.log("AgriTrack Austria: System Check - Online v2.4.8");
+      // 1. Check Guest Mode Preference
+      const guestPref = localStorage.getItem('agritrack_guest_mode');
+      if (guestPref === 'true') {
+          setIsGuest(true);
+      }
+
+      // 2. Listen to Firebase Auth
+      const unsubscribe = authService.onAuthStateChanged((user) => {
+          if (user) {
+              setIsAuthenticated(true);
+              setIsGuest(false); // Logged in overrides guest
+              localStorage.removeItem('agritrack_guest_mode'); // Clear guest flag
+              setCurrentUserEmail(user.email);
+          } else {
+              setIsAuthenticated(false);
+          }
+          setIsLoadingAuth(false);
+      });
+
+      return () => unsubscribe();
   }, []);
 
   // Helper to allow Hero to switch tab
@@ -76,18 +99,62 @@ const App: React.FC = () => {
   const handleAdminLogin = () => {
       setIsAdmin(true);
       setShowLoginModal(false);
-      setActiveTab(Tab.ADMIN); // Go straight to admin console
+      setActiveTab(Tab.ADMIN);
   };
 
-  const handleLogout = () => {
+  const handleAdminLogout = () => {
       setIsAdmin(false);
       setActiveTab(Tab.HOME);
   };
+
+  const handleUserLogout = async () => {
+      await authService.logout();
+      setIsGuest(false); // Reset guest state too
+      setIsAuthenticated(false);
+      setActiveTab(Tab.HOME);
+  };
+
+  const handleGuestAccess = () => {
+      setIsGuest(true);
+      localStorage.setItem('agritrack_guest_mode', 'true');
+  };
+
+  // --- RENDERING ---
+
+  if (isLoadingAuth) {
+      return (
+          <div className="min-h-screen bg-slate-50 flex items-center justify-center">
+              <div className="animate-pulse flex flex-col items-center">
+                  <div className="w-12 h-12 bg-agri-200 rounded-full mb-4"></div>
+                  <div className="h-4 bg-slate-200 rounded w-32"></div>
+              </div>
+          </div>
+      );
+  }
+
+  // SHOW LOGIN PAGE if not authenticated AND not guest
+  if (!isAuthenticated && !isGuest) {
+      return <AuthPage onLoginSuccess={() => {}} onGuestAccess={handleGuestAccess} />;
+  }
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
       
       {showLoginModal && <AdminLoginModal onLogin={handleAdminLogin} onClose={() => setShowLoginModal(false)} />}
+
+      {/* Guest Banner */}
+      {isGuest && (
+          <div className="bg-slate-800 text-slate-300 text-xs py-1 px-4 text-center flex justify-center items-center">
+              <CloudOff size={12} className="mr-2"/>
+              <span>Gastmodus: Daten werden nur auf diesem Gerät gespeichert.</span>
+              <button 
+                onClick={() => { setIsGuest(false); localStorage.removeItem('agritrack_guest_mode'); }} 
+                className="ml-4 underline hover:text-white"
+              >
+                  Jetzt anmelden
+              </button>
+          </div>
+      )}
 
       {/* Navigation */}
       <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
@@ -151,24 +218,39 @@ const App: React.FC = () => {
                 </button>
                 </div>
 
-                {/* Login/Logout Button */}
-                <div className="border-l border-gray-200 pl-4">
+                {/* Login/Logout Button Group */}
+                <div className="border-l border-gray-200 pl-4 flex items-center space-x-2">
+                    
+                    {/* Admin Toggle */}
                     {isAdmin ? (
                         <button 
-                            onClick={handleLogout}
-                            className="flex items-center text-xs font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors"
+                            onClick={handleAdminLogout}
+                            className="text-xs font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors"
+                            title="Admin Logout"
                         >
-                            <User size={14} className="mr-2"/> Abmelden
+                            <Lock size={14}/>
                         </button>
                     ) : (
                         <button 
                             onClick={() => setShowLoginModal(true)}
-                            className="text-gray-400 hover:text-gray-600 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                            className="text-gray-300 hover:text-gray-500 p-2 rounded-full hover:bg-gray-100 transition-colors"
                             title="Admin Login"
                         >
-                            <Lock size={18} />
+                            <Lock size={16} />
                         </button>
                     )}
+
+                    {/* User Profile / Logout */}
+                    <div className="relative group">
+                        <button 
+                            onClick={handleUserLogout}
+                            className="flex items-center text-sm font-medium text-slate-600 hover:text-slate-900 bg-slate-100 px-3 py-1.5 rounded-lg transition-colors"
+                        >
+                            <User size={16} className="mr-2"/>
+                            <span className="max-w-[100px] truncate hidden sm:block">{currentUserEmail || 'Gast'}</span>
+                            <LogOut size={14} className="ml-2 text-slate-400 group-hover:text-red-500"/>
+                        </button>
+                    </div>
                 </div>
             </div>
           </div>
@@ -180,11 +262,7 @@ const App: React.FC = () => {
         {activeTab === Tab.HOME && (
           <>
             <Hero onLaunchApp={launchApp} />
-            
-            {/* Visual Showcase of the App */}
             <AppShowcase />
-
-            {/* AgriCloud Focused Section */}
             <div className="bg-white border-b border-gray-200">
               <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
                 <div className="lg:text-center mb-16">
@@ -240,48 +318,7 @@ const App: React.FC = () => {
               </div>
             </div>
 
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-12">
-                <div>
-                  <h3 className="text-2xl font-bold text-gray-900 mb-4">Warum AgriTrack?</h3>
-                  <div className="prose text-gray-600">
-                    <p>
-                      Entwickelt von Landwirten für Landwirte. Im Gegensatz zu großen Agrarkonzernen gehören
-                      die Daten bei uns dir. 
-                    </p>
-                    <p className="mt-4">
-                      Dieses Projekt lebt von euren Ideen. Über die Wunschliste könnt ihr direkt neue Funktionen vorschlagen.
-                    </p>
-                  </div>
-                </div>
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
-                  <h3 className="text-lg font-semibold mb-4 text-gray-800">Aktueller Status</h3>
-                  <div className="space-y-4">
-                    <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                      <span className="text-gray-500">Neueste Version</span>
-                      <span className="font-mono font-bold text-agri-700">v2.4.8</span>
-                    </div>
-                    <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                      <span className="text-gray-500">Aktive Installationen</span>
-                      <span className="font-bold text-gray-900">1.240</span>
-                    </div>
-                    <div className="flex justify-between items-center border-b border-gray-100 pb-2">
-                      <span className="text-gray-500">Letztes Update</span>
-                      <span className="text-gray-900">Vor 2 Tagen</span>
-                    </div>
-                    <div className="flex justify-between items-center">
-                      <span className="text-gray-500">System Gesundheit</span>
-                      <span className="text-green-600 font-medium flex items-center">
-                        <div className="w-2 h-2 bg-green-500 rounded-full mr-2"></div>
-                        Operational
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* Public Feedback Section (statt Chatbot) */}
+            {/* Public Feedback Section */}
             {!isAdmin && (
                 <div className="bg-slate-900 py-16">
                     <div className="max-w-4xl mx-auto px-4">
@@ -313,8 +350,6 @@ const App: React.FC = () => {
                 Willkommen im Maschinenraum. Hier kannst du die Wünsche der Kollegen verwalten und priorisieren.
               </p>
             </div>
-            
-            {/* Feedback Board in Admin Mode */}
             <FeedbackBoard isAdmin={true} />
           </div>
         )}
@@ -348,4 +383,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-

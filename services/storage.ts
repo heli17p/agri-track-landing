@@ -1,6 +1,7 @@
 import { Activity, AppSettings, Trip, DEFAULT_SETTINGS } from '../types';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, Timestamp } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth';
 
 /* 
   --- AGRICLOUD MASTER KONFIGURATION ---
@@ -19,18 +20,23 @@ const FIREBASE_CONFIG = {
 
 // Initialize Firebase
 let db: any = null;
+let auth: any = null;
 
 try {
     const app = initializeApp(FIREBASE_CONFIG);
     db = getFirestore(app);
-    console.log("[AgriCloud] Firebase initialized successfully.");
+    auth = getAuth(app);
+    console.log("[AgriCloud] Firebase & Auth initialized successfully.");
 } catch (e) {
     console.error("[AgriCloud] Initialization failed (check console for details):", e);
 }
 
-// Check ob die Cloud "scharf" geschaltet ist
+// Export auth for auth service
+export { auth };
+
+// Check ob die Cloud "scharf" geschaltet ist UND wir berechtigt sind
 export const isCloudConfigured = () => {
-    return !!db;
+    return !!db && !!auth?.currentUser;
 };
 
 // --- SIMULIERTE DATENBANK (LOKAL - FALLBACK & OFFLINE) ---
@@ -67,7 +73,7 @@ export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip)
   
   localStorage.setItem(key, JSON.stringify(existing));
 
-  // 2. Sync to Cloud (Fire & Forget)
+  // 2. Sync to Cloud (Only if Logged In)
   if (isCloudConfigured()) {
       try {
           const colName = type === 'activity' ? 'activities' : 'trips';
@@ -75,12 +81,13 @@ export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip)
           const payload = JSON.parse(JSON.stringify(data)); 
           // Add timestamp if missing or update it
           payload.syncedAt = Timestamp.now();
+          // Add User ID for security rules (if we had them enabled for owner-only)
+          payload.userId = auth.currentUser.uid;
           
           await addDoc(collection(db, colName), payload);
-          console.log(`[AgriCloud] Saved ${type} to cloud.`);
+          console.log(`[AgriCloud] Saved ${type} to cloud for user ${auth.currentUser.uid}.`);
       } catch (e) {
-          console.error("[AgriCloud] Upload failed (User might be offline):", e);
-          // In einer Vollversion würden wir das in eine "SyncQueue" schreiben
+          console.error("[AgriCloud] Upload failed (User might be offline or guest):", e);
       }
   }
 };
@@ -94,11 +101,20 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
     if (!isCloudConfigured()) return [];
     
     try {
+        // NOTE: In a real multi-user app, we would query: where("userId", "==", auth.currentUser.uid)
+        // For this demo, we assume the collection is shared or rules handle it.
+        // We will filter client-side just to be safe if rules aren't set.
+        
         const colName = type === 'activity' ? 'activities' : 'trips';
         const q = query(collection(db, colName), orderBy('date', 'desc'), limit(50));
         const snapshot = await getDocs(q);
         
-        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        // Client-side filter for owned data (simulation of security rules)
+        const myData = snapshot.docs
+            .map(doc => ({ id: doc.id, ...doc.data() } as any))
+            .filter(item => !item.userId || item.userId === auth.currentUser.uid);
+
+        return myData;
     } catch (e) {
         console.error("[AgriCloud] Fetch failed:", e);
         return [];

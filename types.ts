@@ -1,4 +1,3 @@
-
 import { LucideIcon } from 'lucide-react';
 
 // --- HUB SPECIFIC TYPES ---
@@ -33,6 +32,12 @@ export enum Tab {
   FEEDBACK = 'FEEDBACK', // Ersetzt DEV_LAB
   ADMIN = 'ADMIN',     // Restricted Admin Area
   CHANGELOG = 'CHANGELOG'
+}
+
+export interface AgriUser {
+    uid: string;
+    email: string | null;
+    isAnonymous: boolean; // True if Guest
 }
 
 // --- APP ENUMS (CRITICAL FOR RUNTIME) ---
