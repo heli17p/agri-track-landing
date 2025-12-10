@@ -111,6 +111,7 @@ const App: React.FC = () => {
       await authService.logout();
       setIsGuest(false); // Reset guest state too
       setIsAuthenticated(false);
+      localStorage.removeItem('agritrack_guest_mode');
       setActiveTab(Tab.HOME);
   };
 
@@ -132,10 +133,8 @@ const App: React.FC = () => {
       );
   }
 
-  // SHOW LOGIN PAGE if not authenticated AND not guest
-  if (!isAuthenticated && !isGuest) {
-      return <AuthPage onLoginSuccess={() => {}} onGuestAccess={handleGuestAccess} />;
-  }
+  // --- CHANGE: REMOVED GLOBAL LOGIN BLOCKER ---
+  // The app is now accessible, AuthPage is only shown inside the APP tab.
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
@@ -143,7 +142,7 @@ const App: React.FC = () => {
       {showLoginModal && <AdminLoginModal onLogin={handleAdminLogin} onClose={() => setShowLoginModal(false)} />}
 
       {/* Guest Banner */}
-      {isGuest && (
+      {isGuest && activeTab === Tab.APP && (
           <div className="bg-slate-800 text-slate-300 text-xs py-1 px-4 text-center flex justify-center items-center">
               <CloudOff size={12} className="mr-2"/>
               <span>Gastmodus: Daten werden nur auf diesem Gerät gespeichert.</span>
@@ -241,16 +240,26 @@ const App: React.FC = () => {
                     )}
 
                     {/* User Profile / Logout */}
-                    <div className="relative group">
+                    {isAuthenticated || isGuest ? (
+                        <div className="relative group">
+                            <button 
+                                onClick={handleUserLogout}
+                                className="flex items-center text-sm font-medium text-slate-600 hover:text-slate-900 bg-slate-100 px-3 py-1.5 rounded-lg transition-colors"
+                            >
+                                <User size={16} className="mr-2"/>
+                                <span className="max-w-[100px] truncate hidden sm:block">{isAuthenticated ? (currentUserEmail || 'User') : 'Gast'}</span>
+                                <LogOut size={14} className="ml-2 text-slate-400 group-hover:text-red-500"/>
+                            </button>
+                        </div>
+                    ) : (
+                        // Show Login Button in Header if not logged in
                         <button 
-                            onClick={handleUserLogout}
-                            className="flex items-center text-sm font-medium text-slate-600 hover:text-slate-900 bg-slate-100 px-3 py-1.5 rounded-lg transition-colors"
+                            onClick={() => setActiveTab(Tab.APP)}
+                            className="text-sm font-bold text-agri-600 hover:text-agri-700 px-3 py-1"
                         >
-                            <User size={16} className="mr-2"/>
-                            <span className="max-w-[100px] truncate hidden sm:block">{currentUserEmail || 'Gast'}</span>
-                            <LogOut size={14} className="ml-2 text-slate-400 group-hover:text-red-500"/>
+                            Anmelden
                         </button>
-                    </div>
+                    )}
                 </div>
             </div>
           </div>
@@ -333,9 +342,16 @@ const App: React.FC = () => {
           </>
         )}
 
+        {/* --- PROTECTED APP TAB --- */}
         {activeTab === Tab.APP && (
           <div className="bg-gray-100 min-h-[calc(100vh-64px)] py-4">
-            <AgriTrackApp />
+            {isAuthenticated || isGuest ? (
+               <AgriTrackApp />
+            ) : (
+               <div className="h-full flex flex-col items-center justify-center min-h-[60vh]">
+                   <AuthPage onLoginSuccess={() => {}} onGuestAccess={handleGuestAccess} />
+               </div>
+            )}
           </div>
         )}
 
