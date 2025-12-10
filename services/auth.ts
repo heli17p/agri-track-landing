@@ -66,7 +66,7 @@ export const authService = {
     }
 };
 
-// Hilfsfunktion für deutsche Fehlermeldungen
+// Verbesserte Fehlerübersetzung
 const translateAuthError = (code: string): Error => {
     switch (code) {
         case 'auth/invalid-email': return new Error('Ungültige E-Mail-Adresse.');
@@ -76,6 +76,8 @@ const translateAuthError = (code: string): Error => {
         case 'auth/email-already-in-use': return new Error('E-Mail wird bereits verwendet.');
         case 'auth/weak-password': return new Error('Passwort muss mindestens 6 Zeichen haben.');
         case 'auth/invalid-credential': return new Error('Zugangsdaten ungültig.');
-        default: return new Error('Ein unbekannter Fehler ist aufgetreten.');
+        case 'auth/operation-not-allowed': return new Error('Login-Methode nicht aktiviert. Bitte Admin kontaktieren (Firebase Console).');
+        case 'auth/network-request-failed': return new Error('Netzwerkfehler. Bitte Internetverbindung prüfen.');
+        default: return new Error(`Fehler: ${code}`); // Zeigt den echten Code an, falls unbekannt
     }
 };
