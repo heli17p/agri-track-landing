@@ -9,7 +9,9 @@ import { FieldDetailView } from '../components/FieldDetailView';
 import { StorageDetailView } from '../components/StorageDetailView';
 import { ActivityDetailView } from '../components/ActivityDetailView';
 import { ManualFertilizationForm, HarvestForm, TillageForm } from '../components/ManualActivityForms';
-import { NO_SLEEP_VIDEO_WEBM } from '../utils/media';
+
+// Removed broken Base64 Video to fix console error. using simple stub.
+const NO_SLEEP_VIDEO_WEBM = ""; 
 
 // --- Custom Icons Setup ---
 const createCustomIcon = (color: string, svgPath: string) => {
@@ -100,7 +102,6 @@ const MapController = ({
             if (lastPosition) {
                 map.panTo([lastPosition.lat, lastPosition.lng], { animate: true });
             } else if (profile?.addressGeo) {
-                // If no last position but profile, center there initially
                 map.setView([profile.addressGeo.lat, profile.addressGeo.lng], 18, { animate: true });
             }
             return () => { clearTimeout(t1); clearTimeout(t2); };
@@ -201,6 +202,9 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
 
   // REF PATTERN FOR PROCESS POSITION
   const processPositionRef = useRef<(pos: GeolocationPosition) => void>(() => {});
+  
+  // Fix for ReferenceError: detectedFieldId needs to be a state derived variable in render scope
+  const detectedFieldId = currentField?.id || null; // Derived from state
 
   const loadData = async () => {
     const s = await dbService.getSettings();
@@ -244,12 +248,6 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
           active = true;
         } catch (err: any) { console.warn('Native Wake Lock error:', err.message); }
       }
-      if (noSleepVideoRef.current) {
-          try {
-              if (noSleepVideoRef.current.paused) await noSleepVideoRef.current.play();
-              active = true;
-          } catch (e) {}
-      }
       setWakeLockActive(active);
   };
 
@@ -258,11 +256,6 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
           try {
             await wakeLockRef.current.release();
             wakeLockRef.current = null;
-          } catch(e) {}
-      }
-      if (noSleepVideoRef.current) {
-          try {
-            noSleepVideoRef.current.pause();
           } catch(e) {}
       }
       setWakeLockActive(false);
