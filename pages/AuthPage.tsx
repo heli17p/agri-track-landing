@@ -42,7 +42,7 @@ export const AuthPage: React.FC<Props> = ({ onLoginSuccess, onGuestAccess }) => 
 
     return (
         <div className="min-h-screen bg-soil-900 flex flex-col items-center justify-center p-4 relative overflow-hidden">
-            {/* Background Pattern instead of blocked image */}
+            {/* Simple CSS Pattern Background */}
             <div className="absolute inset-0 opacity-10 bg-[radial-gradient(#22c55e_1px,transparent_1px)] [background-size:16px_16px]" />
             
             <div className="relative z-10 w-full max-w-md">

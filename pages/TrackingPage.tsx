@@ -9,9 +9,7 @@ import { FieldDetailView } from '../components/FieldDetailView';
 import { StorageDetailView } from '../components/StorageDetailView';
 import { ActivityDetailView } from '../components/ActivityDetailView';
 import { ManualFertilizationForm, HarvestForm, TillageForm } from '../components/ManualActivityForms';
-
-// Removed broken Base64 Video to fix console error.
-// Using modern Wake Lock API instead.
+import { NO_SLEEP_VIDEO_WEBM } from '../utils/media';
 
 // --- Custom Icons Setup ---
 const createCustomIcon = (color: string, svgPath: string) => {

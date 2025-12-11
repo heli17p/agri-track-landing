@@ -8,7 +8,7 @@ import { StorageDetailView } from '../components/StorageDetailView';
 import { calculateArea, splitPolygon } from '../utils/geo';
 import L from 'leaflet';
 
-// --- Custom Icons Setup ---
+// ... (Custom Icons Code bleibt gleich - kopiere ich hier nicht rein um Platz zu sparen, ist aber notwendig) ...
 const createCustomIcon = (color: string, svgPath: string) => {
   return L.divIcon({
     className: 'custom-pin-icon',
@@ -43,7 +43,7 @@ const createCustomIcon = (color: string, svgPath: string) => {
       </div>
     `,
     iconSize: [32, 40],
-    iconAnchor: [16, 40], // Point of the pin
+    iconAnchor: [16, 40], 
     popupAnchor: [0, -42]
   });
 };
@@ -58,10 +58,9 @@ const farmIcon = createCustomIcon('#2563eb', iconPaths.house);
 const slurryIcon = createCustomIcon('#78350f', iconPaths.droplet); 
 const manureIcon = createCustomIcon('#d97706', iconPaths.layers); 
 
-// FIX: Draggable Marker Component
+// ... (VertexMarker und MapClickHandler bleiben gleich) ...
 const VertexMarker = ({ position, index, onDragEnd, onDelete }: { position: GeoPoint, index: number, onDragEnd: (i: number, lat: number, lng: number) => void, onDelete: (i: number) => void }) => {
     const markerRef = useRef<L.Marker>(null);
-    
     const eventHandlers = useMemo(() => ({
         dragend() {
             const marker = markerRef.current;
@@ -72,7 +71,6 @@ const VertexMarker = ({ position, index, onDragEnd, onDelete }: { position: GeoP
         },
         click(e: any) {
             L.DomEvent.stopPropagation(e);
-            // Delete on click (maybe confirm?)
             onDelete(index);
         }
     }), [index, onDragEnd, onDelete]);
@@ -89,12 +87,10 @@ const VertexMarker = ({ position, index, onDragEnd, onDelete }: { position: GeoP
                 iconSize: [14, 14],
                 iconAnchor: [7, 7]
             })}
-        >
-        </Marker>
+        />
     );
 };
 
-// FIX: Map Click Handler
 const MapClickHandler = ({ isEditing, splitMode, onMapClick }: { isEditing: boolean, splitMode: boolean, onMapClick: (lat: number, lng: number) => void }) => {
     useMapEvents({
         click(e) {
@@ -106,19 +102,20 @@ const MapClickHandler = ({ isEditing, splitMode, onMapClick }: { isEditing: bool
     return null;
 };
 
-// FIX: Map Bounds Controller
+// FIX: Map Bounds Controller with Resize Trigger
 const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: FarmProfile | null, focusField?: Field | null }) => {
     const map = useMap();
 
-    // Force resize on mount to prevent gray tiles
+    // Aggressive Resize Fix
     useEffect(() => {
-        const t = setTimeout(() => {
-            map.invalidateSize();
-        }, 100);
+        const resize = () => map.invalidateSize();
+        resize();
+        const t = setTimeout(resize, 200);
         return () => clearTimeout(t);
     }, [map]);
 
     useEffect(() => {
+        // If we have a focus field (Edit mode), zoom to it
         if (focusField && focusField.boundary.length > 0) {
              const polygon = L.polygon(focusField.boundary.map(p => [p.lat, p.lng]));
              try {
@@ -127,6 +124,7 @@ const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: 
              return;
         }
 
+        // Otherwise zoom to all content
         const layers = [];
         if (fields.length > 0) {
             fields.forEach(f => {
@@ -169,8 +167,6 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   // Editing State
   const [isEditing, setIsEditing] = useState(false);
   const [editingField, setEditingField] = useState<Field | null>(null);
-
-  // Split State
   const [isSplitting, setIsSplitting] = useState(false);
   const [splitPoints, setSplitPoints] = useState<GeoPoint[]>([]);
   
@@ -203,10 +199,7 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     return field.type === 'Acker' ? '#92400E' : '#15803D'; 
   };
 
-  const getStorageIcon = (type: FertilizerType) => {
-      return type === FertilizerType.SLURRY ? slurryIcon : manureIcon;
-  };
-
+  // ... (Editing Handlers remain same) ...
   const handleStartEditGeometry = (field: Field) => {
       setSelectedField(null);
       setEditingField({ ...field });
@@ -219,47 +212,27 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
       if (!editingField || isSplitting) return;
       const newBoundary = [...editingField.boundary];
       newBoundary[index] = { lat, lng };
-      
       const newArea = calculateArea(newBoundary);
-      
-      setEditingField({
-          ...editingField,
-          boundary: newBoundary,
-          areaHa: newArea
-      });
+      setEditingField({ ...editingField, boundary: newBoundary, areaHa: newArea });
   };
 
   const handleVertexDelete = (index: number) => {
       if (!editingField || isSplitting) return;
       const newBoundary = editingField.boundary.filter((_, i) => i !== index);
       const newArea = calculateArea(newBoundary);
-      setEditingField({
-          ...editingField,
-          boundary: newBoundary,
-          areaHa: newArea
-      });
+      setEditingField({ ...editingField, boundary: newBoundary, areaHa: newArea });
   };
 
   const handleMapClickAddPoint = (lat: number, lng: number) => {
       if (!editingField) return;
-      
       if (isSplitting) {
-          if (splitPoints.length < 2) {
-              setSplitPoints(prev => [...prev, { lat, lng }]);
-          }
+          if (splitPoints.length < 2) setSplitPoints(prev => [...prev, { lat, lng }]);
       } else {
           const newBoundary = [...editingField.boundary, { lat, lng }];
           const newArea = calculateArea(newBoundary);
-          setEditingField({
-              ...editingField,
-              boundary: newBoundary,
-              areaHa: newArea
-          });
+          setEditingField({ ...editingField, boundary: newBoundary, areaHa: newArea });
       }
   };
-
-  // ... (Split Logic remains same, keeping it concise for this block) ...
-  const handleExecuteSplit = async () => { /* ... see previous ... */ };
 
   const saveGeometry = async () => {
       if (!editingField) return;
@@ -281,101 +254,102 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
       setIsSplitting(false);
       setSplitPoints([]);
   };
-
+  
   const hasAcker = useMemo(() => fields.some(f => f.type === 'Acker'), [fields]);
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
     <div className="h-full w-full relative bg-slate-200">
-         <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }}>
-            <TileLayer 
-                attribution='&copy; OpenStreetMap'
-                url={mapStyle === 'standard' 
-                    ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                }
-            />
-            
-            <MapBounds fields={fields} profile={profile} focusField={editingField} />
-            <MapClickHandler isEditing={isEditing} splitMode={isSplitting} onMapClick={handleMapClickAddPoint} />
+         {/* ABSOLUTE MAP CONTAINER TO FORCE FULL HEIGHT */}
+         <div className="absolute inset-0 z-0">
+             <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }}>
+                <TileLayer 
+                    attribution='&copy; OpenStreetMap'
+                    url={mapStyle === 'standard' 
+                        ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                    }
+                />
+                
+                <MapBounds fields={fields} profile={profile} focusField={editingField} />
+                <MapClickHandler isEditing={isEditing} splitMode={isSplitting} onMapClick={handleMapClickAddPoint} />
 
-            {/* Farm Location */}
-            {profile?.addressGeo && !isEditing && (
-                <Marker position={[profile.addressGeo.lat, profile.addressGeo.lng]} icon={farmIcon}>
-                    <Popup>
-                        <div className="flex items-center space-x-2">
-                             <Building2 size={16} className="text-blue-600"/>
-                             <div><strong>Hof / Betrieb</strong><br/>{profile.operatorName}</div>
-                        </div>
-                    </Popup>
-                </Marker>
-            )}
+                {/* Farm Location */}
+                {profile?.addressGeo && !isEditing && (
+                    <Marker position={[profile.addressGeo.lat, profile.addressGeo.lng]} icon={farmIcon}>
+                        <Popup>
+                            <div className="flex items-center space-x-2">
+                                <Building2 size={16} className="text-blue-600"/>
+                                <div><strong>Hof / Betrieb</strong><br/>{profile.operatorName}</div>
+                            </div>
+                        </Popup>
+                    </Marker>
+                )}
 
-            {/* Standard Fields */}
-            {fields.map(f => {
-                if (isEditing && editingField?.id === f.id) return null; 
-                return (
-                    <Polygon 
-                        key={`${f.id}-${f.color || 'default'}-${mapStyle}`} 
-                        positions={f.boundary.map(p => [p.lat, p.lng])} 
-                        color={getFieldColor(f)}
-                        weight={2}
-                        fillOpacity={0.5}
+                {/* Standard Fields */}
+                {fields.map(f => {
+                    if (isEditing && editingField?.id === f.id) return null; 
+                    return (
+                        <Polygon 
+                            key={`${f.id}-${f.color || 'default'}-${mapStyle}`} 
+                            positions={f.boundary.map(p => [p.lat, p.lng])} 
+                            color={getFieldColor(f)}
+                            weight={2}
+                            fillOpacity={0.5}
+                            eventHandlers={{
+                                click: (e) => {
+                                    if (isEditing) return;
+                                    L.DomEvent.stopPropagation(e);
+                                    setSelectedField(f);
+                                }
+                            }}
+                        >
+                          <Popup>
+                            <div className="font-bold">{f.name}</div>
+                            <div className="text-xs">{f.areaHa.toFixed(2)} ha | {f.type}</div>
+                          </Popup>
+                        </Polygon>
+                    );
+                })}
+
+                {/* EDIT MODE */}
+                {isEditing && editingField && (
+                    <>
+                        <Polygon 
+                            positions={editingField.boundary.map(p => [p.lat, p.lng])}
+                            pathOptions={{ color: '#2563eb', dashArray: '5, 10', weight: 3, fillOpacity: 0.2 }}
+                        />
+                        {!isSplitting && editingField.boundary.map((p, i) => (
+                            <VertexMarker 
+                                key={`vertex-${i}`} 
+                                index={i} 
+                                position={p} 
+                                onDragEnd={handleVertexDragEnd}
+                                onDelete={handleVertexDelete}
+                            />
+                        ))}
+                    </>
+                )}
+
+                {/* Storages */}
+                {!isEditing && storages.map(s => (
+                    <Marker 
+                        key={s.id} 
+                        position={[s.geo.lat, s.geo.lng]}
+                        icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
                         eventHandlers={{
                             click: (e) => {
-                                if (isEditing) return;
                                 L.DomEvent.stopPropagation(e);
-                                setSelectedField(f);
+                                setSelectedStorage(s);
                             }
                         }}
-                    >
-                      <Popup>
-                        <div className="font-bold">{f.name}</div>
-                        <div className="text-xs">{f.areaHa.toFixed(2)} ha | {f.type}</div>
-                      </Popup>
-                    </Polygon>
-                );
-            })}
-
-            {/* EDIT MODE */}
-            {isEditing && editingField && (
-                <>
-                    <Polygon 
-                         positions={editingField.boundary.map(p => [p.lat, p.lng])}
-                         pathOptions={{ color: '#2563eb', dashArray: '5, 10', weight: 3, fillOpacity: 0.2 }}
                     />
-                    
-                    {/* Vertices */}
-                    {!isSplitting && editingField.boundary.map((p, i) => (
-                        <VertexMarker 
-                            key={`vertex-${i}`} 
-                            index={i} 
-                            position={p} 
-                            onDragEnd={handleVertexDragEnd}
-                            onDelete={handleVertexDelete}
-                        />
-                    ))}
-                </>
-            )}
-
-            {/* Storages */}
-            {!isEditing && storages.map(s => (
-                <Marker 
-                    key={s.id} 
-                    position={[s.geo.lat, s.geo.lng]}
-                    icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
-                    eventHandlers={{
-                        click: (e) => {
-                            L.DomEvent.stopPropagation(e);
-                            setSelectedStorage(s);
-                        }
-                    }}
-                />
-            ))}
-         </MapContainer>
+                ))}
+             </MapContainer>
+         </div>
 
          {/* Map Controls */}
-         <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400]">
+         <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400] pointer-events-auto">
             <button 
                 onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')}
                 className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 hover:text-green-600"
@@ -386,8 +360,6 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
             <button 
                 onClick={() => {
                     navigator.geolocation.getCurrentPosition(pos => {
-                        const map = document.querySelector('.leaflet-container') as any; // Quick hack to access leaflet context if needed, better via ref
-                        // Actually better to use state or event bus, but standard GPS button logic:
                         alert(`Position: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`);
                     });
                 }}
