@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Square, Truck, CheckCircle, AlertTriangle, History, PenTool, Wheat, Hammer, ChevronLeft, Droplets, Layers, Minimize2, ShoppingBag, Trash2, X, Clock, Calendar } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
-import { AppSettings, Field, StorageLocation, TrackPoint, ActivityRecord, ActivityType, FertilizerType, FarmProfile, HarvestType, TillageType, GeoPoint } from '../types';
+import { AppSettings, DEFAULT_SETTINGS, StorageLocation, FertilizerType, ActivityType, HarvestType, TillageType, FarmProfile, TrackPoint, ActivityRecord } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
 import { MapContainer, TileLayer, Polygon, Polyline, Marker, useMap, Circle } from 'react-leaflet';
 import L from 'leaflet';
@@ -86,34 +86,38 @@ const MapController = ({
     const hasCenteredRef = useRef(false);
 
     useEffect(() => {
-        // FIX: Force resize immediately and after delay
-        map.invalidateSize();
-        const t = setTimeout(() => map.invalidateSize(), 300);
+        // FIX: Force resize aggressively
+        const resize = () => {
+             map.invalidateSize();
+        };
+        
+        // Immediate and delayed resize to handle layout transitions
+        resize();
+        const t1 = setTimeout(resize, 100);
+        const t2 = setTimeout(resize, 500);
 
         if (isTracking) {
             if (lastPosition) {
                 map.panTo([lastPosition.lat, lastPosition.lng], { animate: true });
+            } else if (profile?.addressGeo) {
+                // If no last position but profile, center there initially
+                map.setView([profile.addressGeo.lat, profile.addressGeo.lng], 18, { animate: true });
             }
-            return () => clearTimeout(t);
+            return () => { clearTimeout(t1); clearTimeout(t2); };
         }
 
-        // Initial Center Logic
-        if (!hasCenteredRef.current) {
-            if (profile?.addressGeo) {
-                map.setView([profile.addressGeo.lat, profile.addressGeo.lng], 15);
-                hasCenteredRef.current = true;
-            } else if (storages.length > 0) {
-                map.setView([storages[0].geo.lat, storages[0].geo.lng], 15);
-                hasCenteredRef.current = true;
-            } else {
-                // Try getting current location once
-                navigator.geolocation.getCurrentPosition(pos => {
-                    map.setView([pos.coords.latitude, pos.coords.longitude], 15);
-                    hasCenteredRef.current = true;
-                });
-            }
+        if (!hasCenteredRef.current && !isTracking && (storages.length > 0 || profile?.addressGeo)) {
+             const points: L.LatLng[] = [];
+             if (profile?.addressGeo) points.push(L.latLng(profile.addressGeo.lat, profile.addressGeo.lng));
+             storages.forEach(s => points.push(L.latLng(s.geo.lat, s.geo.lng)));
+
+             if (points.length > 0) {
+                 const bounds = L.latLngBounds(points);
+                 map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
+                 hasCenteredRef.current = true;
+             }
         }
-        return () => clearTimeout(t);
+        return () => { clearTimeout(t1); clearTimeout(t2); };
     }, [map, storages, profile, isTracking, lastPosition]);
 
     return null;
@@ -751,6 +755,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
     });
   };
 
+  // --- MANUAL SAVE HANDLER ---
   const handleManualActivitySave = async (record: ActivityRecord, summary: string[]) => {
       await dbService.saveActivity(record);
       setSuccessModal({
@@ -813,6 +818,15 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
       return field.type === 'Acker' ? '#F59E0B' : '#84CC16'; // Lighter colors for satellite
     }
     return field.type === 'Acker' ? '#92400E' : '#15803D'; // Darker/Standard
+  };
+
+  const getTrackWeight = () => {
+      if (!isSpreading) return 4;
+      if (activityType === ActivityType.FERTILIZATION) {
+          if (fertilizerType === FertilizerType.SLURRY) return (settings?.slurrySpreadWidth || 12);
+          if (fertilizerType === FertilizerType.MANURE) return (settings?.manureSpreadWidth || 10);
+      }
+      return settings?.spreadWidth || 12;
   };
 
   const getSmartDateHeader = (dateStr: string) => {
@@ -1032,75 +1046,79 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
       {isTracking && (
         <div className="h-full relative flex flex-col">
             <div className="flex-1 relative bg-slate-200">
-                <MapContainer center={[47.5, 14.5]} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-                    <TileLayer 
-                        attribution='&copy; OpenStreetMap'
-                        url={mapStyle === 'standard' 
-                            ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                            : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                        }
-                    />
-                    <MapController storages={storages} profile={profile} isTracking={isTracking} lastPosition={lastPositionRef.current} />
-                    
-                    {showGhostTracks && ghostTracks.map((track, i) => (
-                        <Polyline 
-                            key={`ghost-${i}`} 
-                            positions={track.points.map(p => [p.lat, p.lng])} 
-                            pathOptions={{ color: track.type === FertilizerType.SLURRY ? '#78350f' : '#d97706', weight: 3, opacity: 0.3, dashArray: '5, 10' }} 
+                {/* FIXED: Map Container z-index and positioning */}
+                <div className="absolute inset-0 z-0 bg-slate-200">
+                    <MapContainer center={[47.5, 14.5]} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                        <TileLayer 
+                            attribution='&copy; OpenStreetMap'
+                            url={mapStyle === 'standard' 
+                                ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                            }
                         />
-                    ))}
-
-                    {/* LIVE TRACK - UPDATED to Segment by Source ID */}
-                    {trackSegments.map((segment, index) => {
-                         const isSpreading = segment.isSpreading;
-                         const storageColor = getStorageColor(segment.storageId, index);
-                         
-                         if (isSpreading) {
-                             return (
-                                 <React.Fragment key={`live-seg-${index}`}>
-                                     <Polyline positions={segment.points} pathOptions={{ color: storageColor, weight: (settings?.spreadWidth || 6) * 2, opacity: 0.8 }} />
-                                     <Polyline positions={segment.points} pathOptions={{ color: 'white', weight: 2, opacity: 0.9, dashArray: '5, 5' }} />
-                                 </React.Fragment>
-                             );
-                         } else {
-                             return (
-                                 <Polyline key={`live-seg-${index}`} positions={segment.points} pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.8 }} />
-                             );
-                         }
-                    })}
-
-                    {lastPositionRef.current && (
-                        <Marker position={[lastPositionRef.current.lat, lastPositionRef.current.lng]} icon={createCustomIcon('#22c55e', '<circle cx="12" cy="12" r="6" fill="white"/>')} />
-                    )}
-
-                    {fields.map(f => (
-                         <Polygon 
-                            key={f.id} 
-                            positions={f.boundary.map(p => [p.lat, p.lng])} 
-                            color={getFieldColor(f)}
-                            fillOpacity={currentField?.id === f.id ? 0.4 : 0.2}
-                            weight={currentField?.id === f.id ? 2 : 1}
-                         />
-                    ))}
-                    
-                    {storages.map(s => (
-                        <React.Fragment key={s.id}>
-                            <Circle 
-                                center={[s.geo.lat, s.geo.lng]} 
-                                radius={settings?.storageRadius || 15}
-                                pathOptions={{ color: '#94a3b8', fillColor: '#94a3b8', fillOpacity: 0.1, weight: 1, dashArray: '4, 4' }} 
+                        <MapController storages={storages} profile={profile} isTracking={isTracking} lastPosition={lastPositionRef.current} />
+                        
+                        {showGhostTracks && ghostTracks.map((track, i) => (
+                            <Polyline 
+                                key={`ghost-${i}`} 
+                                positions={track.points.map(p => [p.lat, p.lng])} 
+                                pathOptions={{ color: track.type === FertilizerType.SLURRY ? '#78350f' : '#d97706', weight: 3, opacity: 0.3, dashArray: '5, 10' }} 
                             />
-                            <Marker 
-                                position={[s.geo.lat, s.geo.lng]} 
-                                icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
+                        ))}
+
+                        {/* LIVE TRACK */}
+                        {trackSegments.map((segment, index) => {
+                             const isSpreading = segment.isSpreading;
+                             const storageColor = getStorageColor(segment.storageId, index);
+                             
+                             if (isSpreading) {
+                                 return (
+                                     <React.Fragment key={`live-seg-${index}`}>
+                                         <Polyline positions={segment.points} pathOptions={{ color: storageColor, weight: getTrackWeight(), opacity: 0.8 }} />
+                                         <Polyline positions={segment.points} pathOptions={{ color: 'white', weight: 2, opacity: 0.9, dashArray: '5, 5' }} />
+                                     </React.Fragment>
+                                 );
+                             } else {
+                                 return (
+                                     <Polyline key={`live-seg-${index}`} positions={segment.points} pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.8 }} />
+                                 );
+                             }
+                        })}
+
+                        {lastPositionRef.current && (
+                            <Marker position={[lastPositionRef.current.lat, lastPositionRef.current.lng]} icon={createCustomIcon('#22c55e', '<circle cx="12" cy="12" r="6" fill="white"/>')} />
+                        )}
+
+                        {fields.map(f => (
+                            <Polygon 
+                                key={f.id} 
+                                positions={f.boundary.map((p:any) => [p.lat, p.lng])}
+                                pathOptions={{ 
+                                    color: detectedFieldId === f.id ? '#22c55e' : 'white', 
+                                    fillOpacity: 0.1, 
+                                    weight: detectedFieldId === f.id ? 2 : 1 
+                                }}
                             />
-                        </React.Fragment>
-                    ))}
-                </MapContainer>
+                        ))}
+                        
+                        {storages.map(s => (
+                            <React.Fragment key={s.id}>
+                                <Circle 
+                                    center={[s.geo.lat, s.geo.lng]} 
+                                    radius={settings?.storageRadius || 15}
+                                    pathOptions={{ color: '#94a3b8', fillColor: '#94a3b8', fillOpacity: 0.1, weight: 1, dashArray: '4, 4' }} 
+                                />
+                                <Marker 
+                                    position={[s.geo.lat, s.geo.lng]} 
+                                    icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
+                                />
+                            </React.Fragment>
+                        ))}
+                    </MapContainer>
+                </div>
                 
                 {/* HUD Overlay */}
                 <div className="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none z-[400]">
-                     
                      {onMinimize && (
                          <button 
                             onClick={onMinimize}
@@ -1110,16 +1128,13 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
                             <Minimize2 size={24} />
                          </button>
                      )}
-                     
                     <div className="bg-white/90 backdrop-blur p-3 rounded-xl shadow-lg border border-slate-200">
                         <div className="text-[10px] uppercase font-bold text-slate-400">Tempo</div>
                         <div className="text-2xl font-bold text-slate-800 tabular-nums">{currentSpeed.toFixed(1)} <span className="text-sm text-slate-500">km/h</span></div>
                     </div>
                     
-                    {/* DYNAMIC LOAD COUNTER WITH BREAKDOWN */}
                     <div className="bg-white/90 backdrop-blur p-3 rounded-xl shadow-lg border border-slate-200 min-w-[100px]">
                         <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Fuhren</div>
-                        
                         {storageBreakdown.breakdown.length > 1 && (
                             <div className="flex flex-col space-y-1 mb-1 border-b border-slate-200/50 pb-1">
                                 {storageBreakdown.breakdown.map((item, idx) => (
@@ -1130,20 +1145,17 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
                                 ))}
                             </div>
                         )}
-
                         <div className={`text-right font-bold text-slate-800 tabular-nums ${storageBreakdown.breakdown.length > 1 ? 'text-xl' : 'text-2xl'}`}>
                             {storageBreakdown.totalPlusActive} {storageBreakdown.breakdown.length > 1 && <span className="text-[10px] font-normal text-slate-500">Akt.</span>}
                         </div>
                     </div>
                 </div>
 
-                {/* Status Indicator */}
                 <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg border border-slate-200 flex items-center space-x-2 z-[400]">
                     {trackingState === 'IDLE' && <div className="w-3 h-3 bg-slate-400 rounded-full animate-pulse"></div>}
                     {trackingState === 'LOADING' && <div className="w-3 h-3 bg-blue-500 rounded-full animate-bounce"></div>}
                     {trackingState === 'TRANSIT' && <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>}
                     {trackingState === 'SPREADING' && <div className="w-3 h-3 bg-green-600 rounded-full animate-pulse"></div>}
-                    
                     <span className="font-bold text-sm text-slate-700">
                         {detectionCountdown 
                             ? `Erkenne ${pendingStorageName}: ${detectionCountdown}s...` 
@@ -1177,7 +1189,6 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
                             </button>
                         )}
                     </div>
-                    
                     <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="p-2 bg-white rounded-lg shadow-lg text-xs font-bold text-slate-700 w-full">{mapStyle === 'standard' ? 'Sat' : 'Karte'}</button>
                 </div>
             </div>
