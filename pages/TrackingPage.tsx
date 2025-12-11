@@ -10,10 +10,7 @@ import { StorageDetailView } from '../components/StorageDetailView';
 import { ActivityDetailView } from '../components/ActivityDetailView';
 import { ManualFertilizationForm, HarvestForm, TillageForm } from '../components/ManualActivityForms';
 
-// Removed broken Base64 Video to fix console error. using simple stub.
-const NO_SLEEP_VIDEO_WEBM = ""; 
-
-// --- Custom Icons Setup ---
+// ... (Custom Icons Setup remains same) ...
 const createCustomIcon = (color: string, svgPath: string) => {
   return L.divIcon({
     className: 'custom-pin-icon',
@@ -185,7 +182,6 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
   
   // Wake Lock Refs
   const wakeLockRef = useRef<any>(null);
-  const noSleepVideoRef = useRef<HTMLVideoElement>(null);
   
   // Refs for Storage Tracking
   const activeLoadingStorageRef = useRef<StorageLocation | null>(null);
@@ -857,10 +853,8 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
 
   return (
     <div className="h-full flex flex-col bg-slate-50 relative">
-      <video ref={noSleepVideoRef} loop playsInline muted className="hidden">
-          <source src={NO_SLEEP_VIDEO_WEBM} type="video/webm" />
-      </video>
-
+      {/* Removed Video Tag to fix console errors and use modern WakeLock API instead */}
+      
       {/* GPS Warning Overlay */}
       {isTracking && wrongStorageWarning && (
           <div className="absolute top-16 left-4 right-4 z-[1000] bg-red-600 text-white p-4 rounded-xl shadow-2xl animate-pulse flex items-start">
@@ -1038,7 +1032,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
       {/* Active Tracking View */}
       {isTracking && (
         <div className="h-full relative flex flex-col">
-            <div className="flex-1 relative bg-slate-200">
+            <div className="flex-1 relative bg-slate-200 overflow-hidden">
                 {/* FIXED: Map Container z-index and positioning */}
                 <div className="absolute inset-0 z-0 bg-slate-200">
                     <MapContainer center={[47.5, 14.5]} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
