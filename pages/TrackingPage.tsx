@@ -10,7 +10,10 @@ import { StorageDetailView } from '../components/StorageDetailView';
 import { ActivityDetailView } from '../components/ActivityDetailView';
 import { ManualFertilizationForm, HarvestForm, TillageForm } from '../components/ManualActivityForms';
 
-// ... (Custom Icons Setup remains same) ...
+// Removed broken Base64 Video to fix console error.
+// Using modern Wake Lock API instead.
+
+// --- Custom Icons Setup ---
 const createCustomIcon = (color: string, svgPath: string) => {
   return L.divIcon({
     className: 'custom-pin-icon',
@@ -853,7 +856,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
 
   return (
     <div className="h-full flex flex-col bg-slate-50 relative">
-      {/* Removed Video Tag to fix console errors and use modern WakeLock API instead */}
+      {/* NO VIDEO TAG - Using WakeLock API exclusively */}
       
       {/* GPS Warning Overlay */}
       {isTracking && wrongStorageWarning && (
@@ -1031,11 +1034,11 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
 
       {/* Active Tracking View */}
       {isTracking && (
-        <div className="h-full relative flex flex-col">
-            <div className="flex-1 relative bg-slate-200 overflow-hidden">
-                {/* FIXED: Map Container z-index and positioning */}
-                <div className="absolute inset-0 z-0 bg-slate-200">
-                    <MapContainer center={[47.5, 14.5]} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+        <div className="h-full relative flex flex-col bg-slate-900">
+            <div className="flex-1 relative overflow-hidden" style={{ minHeight: '300px' }}>
+                {/* FIXED: Map Container z-index and positioning with INLINE STYLES */}
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}>
+                    <MapContainer center={[47.5, 14.5]} zoom={15} style={{ height: '100%', width: '100%', minHeight: '100%' }} zoomControl={false}>
                         <TileLayer 
                             attribution='&copy; OpenStreetMap'
                             url={mapStyle === 'standard' 
@@ -1105,7 +1108,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
                 </div>
                 
                 {/* HUD Overlay */}
-                <div className="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none z-[400]">
+                <div className="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none" style={{ zIndex: 1000 }}>
                      {onMinimize && (
                          <button 
                             onClick={onMinimize}
@@ -1138,7 +1141,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
                     </div>
                 </div>
 
-                <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg border border-slate-200 flex items-center space-x-2 z-[400]">
+                <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg border border-slate-200 flex items-center space-x-2" style={{ zIndex: 1000 }}>
                     {trackingState === 'IDLE' && <div className="w-3 h-3 bg-slate-400 rounded-full animate-pulse"></div>}
                     {trackingState === 'LOADING' && <div className="w-3 h-3 bg-blue-500 rounded-full animate-bounce"></div>}
                     {trackingState === 'TRANSIT' && <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>}
@@ -1158,7 +1161,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
                     </span>
                 </div>
 
-                <div className="absolute top-32 right-4 pointer-events-auto flex flex-col space-y-2 z-[400]">
+                <div className="absolute top-32 right-4 pointer-events-auto flex flex-col space-y-2" style={{ zIndex: 1000 }}>
                     <div className="flex bg-white rounded-lg shadow-lg overflow-hidden border border-slate-200">
                         <button 
                             onClick={() => setShowGhostTracks(!showGhostTracks)} 
@@ -1180,7 +1183,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
                 </div>
             </div>
             
-            <div className="bg-white p-4 border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] z-[1000] pb-20">
+            <div className="bg-white p-4 border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] pb-20" style={{ zIndex: 1001 }}>
                 <div className="flex justify-between items-center mb-4">
                     <div>
                         <div className="text-xs font-bold text-slate-400 uppercase">Aktuelles Feld</div>
