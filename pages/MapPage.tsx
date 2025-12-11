@@ -8,7 +8,7 @@ import { StorageDetailView } from '../components/StorageDetailView';
 import { calculateArea, splitPolygon } from '../utils/geo';
 import L from 'leaflet';
 
-// ... (Custom Icons Code bleibt gleich - kopiere ich hier nicht rein um Platz zu sparen, ist aber notwendig) ...
+// ... (Custom Icons Code - Same as before) ...
 const createCustomIcon = (color: string, svgPath: string) => {
   return L.divIcon({
     className: 'custom-pin-icon',
@@ -259,10 +259,10 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
-    <div className="h-full w-full relative bg-slate-200">
+    <div className="h-full w-full relative bg-slate-900"> {/* Set BG to dark to see if container exists */}
          {/* ABSOLUTE MAP CONTAINER TO FORCE FULL HEIGHT */}
          <div className="absolute inset-0 z-0">
-             <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }}>
+             <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%', minHeight: '100%' }}>
                 <TileLayer 
                     attribution='&copy; OpenStreetMap'
                     url={mapStyle === 'standard' 
