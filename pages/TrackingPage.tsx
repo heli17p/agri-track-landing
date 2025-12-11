@@ -9,8 +9,9 @@ import { FieldDetailView } from '../components/FieldDetailView';
 import { StorageDetailView } from '../components/StorageDetailView';
 import { ActivityDetailView } from '../components/ActivityDetailView';
 import { ManualFertilizationForm, HarvestForm, TillageForm } from '../components/ManualActivityForms';
+import { NO_SLEEP_VIDEO_WEBM } from '../utils/media';
 
-// ... (Custom Icons Setup remains same) ...
+// --- Custom Icons Setup ---
 const createCustomIcon = (color: string, svgPath: string) => {
   return L.divIcon({
     className: 'custom-pin-icon',
@@ -853,8 +854,10 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
 
   return (
     <div className="h-full flex flex-col bg-slate-50 relative">
-      {/* NO VIDEO TAG - Using WakeLock API exclusively */}
-      
+      <video ref={noSleepVideoRef} loop playsInline muted className="hidden">
+          <source src={NO_SLEEP_VIDEO_WEBM} type="video/webm" />
+      </video>
+
       {/* GPS Warning Overlay */}
       {isTracking && wrongStorageWarning && (
           <div className="absolute top-16 left-4 right-4 z-[1000] bg-red-600 text-white p-4 rounded-xl shadow-2xl animate-pulse flex items-start">
@@ -1031,182 +1034,70 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
 
       {/* Active Tracking View */}
       {isTracking && (
-        <div className="h-full relative flex flex-col bg-slate-900">
-            <div className="flex-1 relative overflow-hidden" style={{ minHeight: '300px' }}>
-                {/* FIXED: Map Container z-index and positioning with INLINE STYLES */}
-                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, zIndex: 0 }}>
-                    <MapContainer center={[47.5, 14.5]} zoom={15} style={{ height: '100%', width: '100%', minHeight: '100%' }} zoomControl={false}>
-                        <TileLayer 
-                            attribution='&copy; OpenStreetMap'
-                            url={mapStyle === 'standard' 
-                                ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                                : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                            }
-                        />
-                        <MapController storages={storages} profile={profile} isTracking={isTracking} lastPosition={lastPositionRef.current} />
-                        
-                        {showGhostTracks && ghostTracks.map((track, i) => (
-                            <Polyline 
-                                key={`ghost-${i}`} 
-                                positions={track.points.map(p => [p.lat, p.lng])} 
-                                pathOptions={{ color: track.type === FertilizerType.SLURRY ? '#78350f' : '#d97706', weight: 3, opacity: 0.3, dashArray: '5, 10' }} 
-                            />
-                        ))}
-
-                        {/* LIVE TRACK */}
-                        {trackSegments.map((segment, index) => {
-                             const isSpreading = segment.isSpreading;
-                             const storageColor = getStorageColor(segment.storageId, index);
-                             
-                             if (isSpreading) {
-                                 return (
-                                     <React.Fragment key={`live-seg-${index}`}>
-                                         <Polyline positions={segment.points} pathOptions={{ color: storageColor, weight: getTrackWeight(), opacity: 0.8 }} />
-                                         <Polyline positions={segment.points} pathOptions={{ color: 'white', weight: 2, opacity: 0.9, dashArray: '5, 5' }} />
-                                     </React.Fragment>
-                                 );
-                             } else {
-                                 return (
-                                     <Polyline key={`live-seg-${index}`} positions={segment.points} pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.8 }} />
-                                 );
-                             }
-                        })}
-
-                        {lastPositionRef.current && (
-                            <Marker position={[lastPositionRef.current.lat, lastPositionRef.current.lng]} icon={createCustomIcon('#22c55e', '<circle cx="12" cy="12" r="6" fill="white"/>')} />
-                        )}
-
-                        {fields.map(f => (
-                            <Polygon 
-                                key={f.id} 
-                                positions={f.boundary.map((p:any) => [p.lat, p.lng])}
-                                pathOptions={{ 
-                                    color: detectedFieldId === f.id ? '#22c55e' : 'white', 
-                                    fillOpacity: 0.1, 
-                                    weight: detectedFieldId === f.id ? 2 : 1 
-                                }}
-                            />
-                        ))}
-                        
-                        {storages.map(s => (
-                            <React.Fragment key={s.id}>
-                                <Circle 
-                                    center={[s.geo.lat, s.geo.lng]} 
-                                    radius={settings?.storageRadius || 15}
-                                    pathOptions={{ color: '#94a3b8', fillColor: '#94a3b8', fillOpacity: 0.1, weight: 1, dashArray: '4, 4' }} 
-                                />
-                                <Marker 
-                                    position={[s.geo.lat, s.geo.lng]} 
-                                    icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
-                                />
-                            </React.Fragment>
-                        ))}
-                    </MapContainer>
-                </div>
-                
-                {/* HUD Overlay */}
-                <div className="absolute top-4 left-4 right-4 flex justify-between items-start pointer-events-none" style={{ zIndex: 1000 }}>
-                     {onMinimize && (
-                         <button 
-                            onClick={onMinimize}
-                            className="pointer-events-auto bg-white/90 backdrop-blur p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 flex items-center justify-center hover:bg-slate-100 active:scale-95 transition"
-                            title="Zurück zur Übersicht (Tracking läuft weiter)"
-                         >
-                            <Minimize2 size={24} />
-                         </button>
-                     )}
-                    <div className="bg-white/90 backdrop-blur p-3 rounded-xl shadow-lg border border-slate-200">
-                        <div className="text-[10px] uppercase font-bold text-slate-400">Tempo</div>
-                        <div className="text-2xl font-bold text-slate-800 tabular-nums">{currentSpeed.toFixed(1)} <span className="text-sm text-slate-500">km/h</span></div>
-                    </div>
+        <div className="absolute inset-0 z-50 flex flex-col bg-slate-900 overflow-hidden">
+            
+            {/* 1. MAP LAYER (FULLSCREEN BACKGROUND) */}
+            <div className="absolute inset-0 z-0">
+                <MapContainer center={[47.5, 14.5]} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                    <TileLayer 
+                        attribution='&copy; OpenStreetMap'
+                        url={mapStyle === 'standard' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"}
+                    />
+                    <MapController storages={storages} profile={profile} isTracking={isTracking} lastPosition={lastPositionRef.current} />
                     
-                    <div className="bg-white/90 backdrop-blur p-3 rounded-xl shadow-lg border border-slate-200 min-w-[100px]">
-                        <div className="text-[10px] uppercase font-bold text-slate-400 mb-1">Fuhren</div>
-                        {storageBreakdown.breakdown.length > 1 && (
-                            <div className="flex flex-col space-y-1 mb-1 border-b border-slate-200/50 pb-1">
-                                {storageBreakdown.breakdown.map((item, idx) => (
-                                    <div key={idx} className="flex justify-between items-center text-[10px] text-white px-2 py-0.5 rounded" style={{backgroundColor: getStorageColor(item.id, idx)}}>
-                                        <span className="truncate max-w-[80px] mr-2 font-medium shadow-sm">{item.name}:</span>
-                                        <span className="font-bold shadow-sm">{item.count}</span>
-                                    </div>
-                                ))}
-                            </div>
-                        )}
-                        <div className={`text-right font-bold text-slate-800 tabular-nums ${storageBreakdown.breakdown.length > 1 ? 'text-xl' : 'text-2xl'}`}>
-                            {storageBreakdown.totalPlusActive} {storageBreakdown.breakdown.length > 1 && <span className="text-[10px] font-normal text-slate-500">Akt.</span>}
-                        </div>
-                    </div>
-                </div>
-
-                <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg border border-slate-200 flex items-center space-x-2" style={{ zIndex: 1000 }}>
-                    {trackingState === 'IDLE' && <div className="w-3 h-3 bg-slate-400 rounded-full animate-pulse"></div>}
-                    {trackingState === 'LOADING' && <div className="w-3 h-3 bg-blue-500 rounded-full animate-bounce"></div>}
-                    {trackingState === 'TRANSIT' && <div className="w-3 h-3 bg-yellow-500 rounded-full"></div>}
-                    {trackingState === 'SPREADING' && <div className="w-3 h-3 bg-green-600 rounded-full animate-pulse"></div>}
-                    <span className="font-bold text-sm text-slate-700">
-                        {detectionCountdown 
-                            ? `Erkenne ${pendingStorageName}: ${detectionCountdown}s...` 
-                            : (
-                                <>
-                                {trackingState === 'IDLE' && 'Bereit / Warten'}
-                                {trackingState === 'LOADING' && `LADEN (${detectedStorageName})`}
-                                {trackingState === 'TRANSIT' && 'Transferfahrt'}
-                                {trackingState === 'SPREADING' && 'Ausbringung'}
-                                </>
-                            )
-                        }
-                    </span>
-                </div>
-
-                <div className="absolute top-32 right-4 pointer-events-auto flex flex-col space-y-2" style={{ zIndex: 1000 }}>
-                    <div className="flex bg-white rounded-lg shadow-lg overflow-hidden border border-slate-200">
-                        <button 
-                            onClick={() => setShowGhostTracks(!showGhostTracks)} 
-                            className={`p-2 text-xs font-bold transition-colors ${showGhostTracks ? 'bg-blue-100 text-blue-700' : 'bg-white text-slate-500'}`}
-                        >
-                            Spur
-                        </button>
-                        {showGhostTracks && (
-                            <button 
-                                onClick={() => setGhostTrackRange(prev => prev === 'year' ? '12m' : 'year')}
-                                className="p-2 border-l border-slate-200 bg-slate-50 text-xs font-bold text-slate-600 hover:bg-slate-100 w-[42px]"
-                                title="Zeitraum wechseln"
-                            >
-                                {ghostTrackRange === 'year' ? new Date().getFullYear() : '12M'}
-                            </button>
-                        )}
-                    </div>
-                    <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="p-2 bg-white rounded-lg shadow-lg text-xs font-bold text-slate-700 w-full">{mapStyle === 'standard' ? 'Sat' : 'Karte'}</button>
-                </div>
+                    {/* Map Elements */}
+                    {showGhostTracks && ghostTracks.map((track, i) => <Polyline key={`g-${i}`} positions={track.points} pathOptions={{color: 'brown', opacity: 0.3}} />)}
+                    {trackSegments.map((s, i) => <Polyline key={`t-${i}`} positions={s.points} pathOptions={{color: s.isSpreading ? 'green' : 'blue', weight: 4}} />)}
+                    {lastPositionRef.current && <Marker position={[lastPositionRef.current.lat, lastPositionRef.current.lng]} icon={createCustomIcon('#22c55e', '')} />}
+                    {fields.map(f => <Polygon key={f.id} positions={f.boundary.map((p:any) => [p.lat, p.lng])} pathOptions={{color: detectedFieldId === f.id ? 'green' : 'white', fillOpacity: 0.2}} />)}
+                </MapContainer>
             </div>
             
-            <div className="bg-white p-4 border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.1)] pb-20" style={{ zIndex: 1001 }}>
+            {/* 2. TOP HUD (FLOATING) */}
+            <div className="absolute top-4 left-4 right-4 z-10 pointer-events-none flex justify-between items-start">
+                 {onMinimize && (
+                     <button onClick={onMinimize} className="pointer-events-auto bg-white/90 p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700">
+                        <Minimize2 size={24} />
+                     </button>
+                 )}
+                <div className="bg-white/90 backdrop-blur p-3 rounded-xl shadow-lg border border-slate-200 ml-auto mr-2">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">km/h</div>
+                    <div className="text-2xl font-bold text-slate-800 tabular-nums">{currentSpeed.toFixed(1)}</div>
+                </div>
+                <div className="bg-white/90 backdrop-blur p-3 rounded-xl shadow-lg border border-slate-200">
+                    <div className="text-[10px] uppercase font-bold text-slate-400">Fuhren</div>
+                    <div className="text-2xl font-bold text-slate-800 tabular-nums">{loads}</div>
+                </div>
+            </div>
+
+            {/* 3. STATUS PILL (FLOATING) */}
+            <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg border border-slate-200 z-10 flex items-center space-x-2 pointer-events-none">
+                <div className={`w-3 h-3 rounded-full ${trackingState === 'SPREADING' ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></div>
+                <span className="font-bold text-sm text-slate-700">{trackingState}</span>
+            </div>
+
+            {/* 4. BOTTOM CONTROLS (FLOATING OVERLAY) */}
+            <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-auto bg-white/95 backdrop-blur-md p-4 rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)] border-t border-slate-200/50 pb-safe">
                 <div className="flex justify-between items-center mb-4">
                     <div>
-                        <div className="text-xs font-bold text-slate-400 uppercase">Aktuelles Feld</div>
+                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aktuelles Feld</div>
                         <div className="font-bold text-lg text-slate-800 truncate max-w-[200px]">
-                            {currentField ? currentField.name : 'Unbekannt / Unterwegs'}
+                            {currentField ? currentField.name : 'Unterwegs...'}
                         </div>
                     </div>
                     {gpsError && <div className="bg-red-100 text-red-600 px-3 py-1 rounded-full text-xs font-bold animate-pulse">{gpsError}</div>}
                 </div>
 
                 <div className="flex space-x-3">
-                    <button 
-                        onClick={() => setShowCancelModal(true)}
-                        className="bg-red-100 text-red-600 p-4 rounded-xl font-bold shadow-sm hover:bg-red-200 transition-colors"
-                        title="Abbrechen"
-                    >
+                    <button onClick={() => setShowCancelModal(true)} className="bg-red-50 text-red-600 p-4 rounded-2xl font-bold shadow-sm hover:bg-red-100 transition-colors border border-red-100">
                         <Trash2 size={24} />
                     </button>
-                    <button 
-                        onClick={saveSession} 
-                        className="flex-1 bg-slate-800 text-white py-4 rounded-xl font-bold text-lg shadow-lg flex items-center justify-center hover:bg-slate-900 active:scale-[0.98] transition-all"
-                    >
-                        <Square className="mr-2 fill-current" /> STOP & SPEICHERN
+                    <button onClick={saveSession} className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-slate-900/20 flex items-center justify-center hover:bg-black active:scale-[0.98] transition-all">
+                        <Square className="mr-2 fill-current" size={20} /> STOP & SPEICHERN
                     </button>
                 </div>
             </div>
+
         </div>
       )}
 
