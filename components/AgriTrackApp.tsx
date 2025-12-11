@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { BottomNav } from './BottomNav';
 import { Dashboard } from '../pages/Dashboard';
 import { TrackingPage } from '../pages/TrackingPage';
@@ -8,9 +8,20 @@ import { SettingsPage } from '../pages/SettingsPage';
 import { ShieldCheck, CloudOff } from 'lucide-react';
 import { isCloudConfigured } from '../services/storage';
 
-export const AgriTrackApp: React.FC = () => {
+interface Props {
+    onFullScreenToggle?: (isFullScreen: boolean) => void;
+}
+
+export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   const [currentView, setCurrentView] = useState('DASHBOARD');
   const [mapFocusFieldId, setMapFocusFieldId] = useState<string | null>(null);
+
+  // Notify parent whenever view changes
+  useEffect(() => {
+      if (onFullScreenToggle) {
+          onFullScreenToggle(currentView === 'TRACKING');
+      }
+  }, [currentView, onFullScreenToggle]);
 
   const navigateToMap = (fieldId?: string) => {
       if (fieldId) setMapFocusFieldId(fieldId);
@@ -20,7 +31,7 @@ export const AgriTrackApp: React.FC = () => {
   const renderView = () => {
     switch(currentView) {
       case 'DASHBOARD': return <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />;
-      case 'TRACKING': return <TrackingPage onMinimize={() => setCurrentView('DASHBOARD')} onNavigate={(view) => setCurrentView(view)} />;
+      case 'TRACKING': return <TrackingPage onMinimize={() => setCurrentView('DASHBOARD')} onNavigate={(view) => setCurrentView(view)} onTrackingStateChange={(isTracking) => onFullScreenToggle && onFullScreenToggle(true)} />;
       case 'MAP': return <MapPage initialEditFieldId={mapFocusFieldId} clearInitialEdit={() => setMapFocusFieldId(null)} />;
       case 'FIELDS': return <FieldsPage onNavigateToMap={navigateToMap} />;
       case 'SETTINGS': return <SettingsPage />;
@@ -47,11 +58,14 @@ export const AgriTrackApp: React.FC = () => {
 
   const isLive = isCloudConfigured();
 
+  // If Tracking, we want NO internal header and NO internal footer
+  const isTracking = currentView === 'TRACKING';
+
   return (
     <div className="w-full h-full bg-slate-50 flex flex-col relative max-w-md mx-auto md:max-w-none shadow-2xl md:shadow-none min-h-full">
       
       {/* HEADER (Visible unless Tracking) */}
-      {currentView !== 'TRACKING' && (
+      {!isTracking && (
           <div className="bg-white/90 backdrop-blur-md p-3 flex justify-between items-center sticky top-0 z-30 border-b border-slate-200 shrink-0">
             <h2 className="font-extrabold text-slate-800 tracking-tight">AgriTrack Austria</h2>
             <div className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center ${isLive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
@@ -75,8 +89,8 @@ export const AgriTrackApp: React.FC = () => {
         {renderView()}
       </div>
 
-      {/* NAVIGATION */}
-      <BottomNav activeTab={activeTabId()} setActiveTab={handleTabChange} />
+      {/* NAVIGATION (Visible unless Tracking) */}
+      {!isTracking && <BottomNav activeTab={activeTabId()} setActiveTab={handleTabChange} />}
     </div>
   );
 };

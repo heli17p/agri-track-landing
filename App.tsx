@@ -70,6 +70,9 @@ const App: React.FC = () => {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
 
+  // UI State for Tracking Mode
+  const [isFullScreen, setIsFullScreen] = useState(false);
+
   useEffect(() => {
       // 1. Check Guest Mode Preference
       const guestPref = localStorage.getItem('agritrack_guest_mode');
@@ -145,8 +148,8 @@ const App: React.FC = () => {
       
       {showLoginModal && <AdminLoginModal onLogin={handleAdminLogin} onClose={() => setShowLoginModal(false)} />}
 
-      {/* Guest Banner */}
-      {isGuest && (
+      {/* Guest Banner - Hide when in full screen tracking */}
+      {isGuest && !isFullScreen && (
           <div className="bg-slate-800 text-slate-300 text-xs py-1 px-4 text-center flex justify-center items-center relative z-[60]">
               <CloudOff size={12} className="mr-2"/>
               <span>Gastmodus: Daten werden nur lokal gespeichert.</span>
@@ -163,139 +166,138 @@ const App: React.FC = () => {
           </div>
       )}
 
-      {/* Navigation */}
-      <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between h-16">
-            <div className="flex items-center cursor-pointer" onClick={() => setActiveTab(Tab.HOME)}>
-              <Sprout className="h-8 w-8 text-agri-600" />
-              <span className="ml-2 text-xl font-bold text-gray-900 tracking-tight">AgriTrack<span className="text-agri-600">.AT</span></span>
-            </div>
-            
-            <div className="flex items-center">
-                <div className="hidden md:flex space-x-8 items-center mr-8">
-                <button
-                    onClick={() => setActiveTab(Tab.HOME)}
-                    className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                    activeTab === Tab.HOME
-                        ? 'border-agri-500 text-gray-900'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                >
-                    <LayoutDashboard className="w-4 h-4 mr-2" />
-                    Übersicht
-                </button>
-                <button
-                    onClick={() => setActiveTab(Tab.APP)}
-                    className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                    activeTab === Tab.APP
-                        ? 'border-agri-500 text-gray-900'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                >
-                    <Smartphone className="w-4 h-4 mr-2" />
-                    Web App
-                </button>
+      {/* Navigation - Hide when in full screen tracking */}
+      {!isFullScreen && (
+        <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div className="flex justify-between h-16">
+                <div className="flex items-center cursor-pointer" onClick={() => setActiveTab(Tab.HOME)}>
+                <Sprout className="h-8 w-8 text-agri-600" />
+                <span className="ml-2 text-xl font-bold text-gray-900 tracking-tight">AgriTrack<span className="text-agri-600">.AT</span></span>
+                </div>
                 
-                {isAdmin && (
+                <div className="flex items-center">
+                    <div className="hidden md:flex space-x-8 items-center mr-8">
                     <button
-                        onClick={() => setActiveTab(Tab.ADMIN)}
+                        onClick={() => setActiveTab(Tab.HOME)}
                         className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        activeTab === Tab.ADMIN
-                            ? 'border-red-500 text-red-700'
-                            : 'border-transparent text-gray-500 hover:text-red-600 hover:border-red-200'
+                        activeTab === Tab.HOME
+                            ? 'border-agri-500 text-gray-900'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                         }`}
                     >
-                        <Lock className="w-4 h-4 mr-2" />
-                        Admin Konsole
+                        <LayoutDashboard className="w-4 h-4 mr-2" />
+                        Übersicht
                     </button>
-                )}
-
-                <button
-                    onClick={() => setActiveTab(Tab.CHANGELOG)}
-                    className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                    activeTab === Tab.CHANGELOG
-                        ? 'border-agri-500 text-gray-900'
-                        : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                    }`}
-                >
-                    <History className="w-4 h-4 mr-2" />
-                    Versionen
-                </button>
-                </div>
-
-                {/* Login/Logout Button Group */}
-                <div className="border-l border-gray-200 pl-4 flex items-center space-x-2">
-                    {isAdmin ? (
-                        <button 
-                            onClick={handleAdminLogout}
-                            className="text-xs font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors"
-                            title="Admin Logout"
+                    <button
+                        onClick={() => setActiveTab(Tab.APP)}
+                        className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                        activeTab === Tab.APP
+                            ? 'border-agri-500 text-gray-900'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        <Smartphone className="w-4 h-4 mr-2" />
+                        Web App
+                    </button>
+                    
+                    {isAdmin && (
+                        <button
+                            onClick={() => setActiveTab(Tab.ADMIN)}
+                            className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                            activeTab === Tab.ADMIN
+                                ? 'border-red-500 text-red-700'
+                                : 'border-transparent text-gray-500 hover:text-red-600 hover:border-red-200'
+                            }`}
                         >
-                            <Lock size={14}/>
-                        </button>
-                    ) : (
-                        <button 
-                            onClick={() => setShowLoginModal(true)}
-                            className="text-gray-300 hover:text-gray-500 p-2 rounded-full hover:bg-gray-100 transition-colors"
-                            title="Admin Login"
-                        >
-                            <Lock size={16} />
+                            <Lock className="w-4 h-4 mr-2" />
+                            Admin Konsole
                         </button>
                     )}
 
-                    {isAuthenticated || isGuest ? (
-                        <div className="relative group">
+                    <button
+                        onClick={() => setActiveTab(Tab.CHANGELOG)}
+                        className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
+                        activeTab === Tab.CHANGELOG
+                            ? 'border-agri-500 text-gray-900'
+                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                        }`}
+                    >
+                        <History className="w-4 h-4 mr-2" />
+                        Versionen
+                    </button>
+                    </div>
+
+                    {/* Login/Logout Button Group */}
+                    <div className="border-l border-gray-200 pl-4 flex items-center space-x-2">
+                        {isAdmin ? (
                             <button 
-                                onClick={handleUserLogout}
-                                className={`flex items-center text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${
-                                    isGuest 
-                                    ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' 
-                                    : 'bg-slate-100 text-slate-600 hover:text-slate-900'
-                                }`}
-                                title={isGuest ? "Jetzt anmelden" : "Abmelden"}
+                                onClick={handleAdminLogout}
+                                className="text-xs font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors"
+                                title="Admin Logout"
                             >
-                                <User size={16} className="mr-2"/>
-                                <span className="max-w-[100px] truncate hidden sm:block">{isAuthenticated ? (currentUserEmail || 'User') : 'Gast'}</span>
-                                {isGuest ? (
-                                    <ArrowRight size={14} className="ml-2"/>
-                                ) : (
-                                    <LogOut size={14} className="ml-2 text-slate-400 group-hover:text-red-500"/>
-                                )}
+                                <Lock size={14}/>
                             </button>
-                        </div>
-                    ) : (
-                        <button 
-                            onClick={() => setActiveTab(Tab.APP)}
-                            className="text-sm font-bold text-agri-600 hover:text-agri-700 px-3 py-1"
-                        >
-                            Anmelden
-                        </button>
-                    )}
+                        ) : (
+                            <button 
+                                onClick={() => setShowLoginModal(true)}
+                                className="text-gray-300 hover:text-gray-500 p-2 rounded-full hover:bg-gray-100 transition-colors"
+                                title="Admin Login"
+                            >
+                                <Lock size={16} />
+                            </button>
+                        )}
+
+                        {isAuthenticated || isGuest ? (
+                            <div className="relative group">
+                                <button 
+                                    onClick={handleUserLogout}
+                                    className={`flex items-center text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${
+                                        isGuest 
+                                        ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' 
+                                        : 'bg-slate-100 text-slate-600 hover:text-slate-900'
+                                    }`}
+                                    title={isGuest ? "Jetzt anmelden" : "Abmelden"}
+                                >
+                                    <User size={16} className="mr-2"/>
+                                    <span className="max-w-[100px] truncate hidden sm:block">{isAuthenticated ? (currentUserEmail || 'User') : 'Gast'}</span>
+                                    {isGuest ? (
+                                        <ArrowRight size={14} className="ml-2"/>
+                                    ) : (
+                                        <LogOut size={14} className="ml-2 text-slate-400 group-hover:text-red-500"/>
+                                    )}
+                                </button>
+                            </div>
+                        ) : (
+                            <button 
+                                onClick={() => setActiveTab(Tab.APP)}
+                                className="text-sm font-bold text-agri-600 hover:text-agri-700 px-3 py-1"
+                            >
+                                Anmelden
+                            </button>
+                        )}
+                    </div>
                 </div>
             </div>
-          </div>
-        </div>
-      </nav>
+            </div>
+        </nav>
+      )}
 
       {/* Main Content */}
-      <main className="flex-grow flex flex-col">
-        {activeTab === Tab.HOME && (
+      {/* IMPORTANT: If isFullScreen, ensure container takes 100% of viewport, ignoring nav */}
+      <main className={`flex-grow flex flex-col ${isFullScreen ? 'h-screen' : ''}`}>
+        {activeTab === Tab.HOME && !isFullScreen && (
           <>
             <Hero onLaunchApp={launchApp} />
             <AppShowcase />
-            
-            {/* ... (Features Section) ... */}
             <div className="bg-white border-b border-gray-200">
               <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-20">
-                {/* ... (Content kept short for brevity, assume full hero features here) ... */}
                 <div className="text-center py-10">
                     <h2 className="text-3xl font-bold text-slate-800">Einfach. Sicher. Kostenlos.</h2>
                     <p className="mt-4 text-gray-500">AgriTrack Austria.</p>
                 </div>
               </div>
             </div>
-
             {!isAdmin && (
                 <div className="bg-slate-900 py-16">
                     <div className="max-w-4xl mx-auto px-4">
@@ -312,10 +314,10 @@ const App: React.FC = () => {
 
         {/* --- PROTECTED APP TAB --- */}
         {activeTab === Tab.APP && (
-          // IMPORTANT: flex-1 and h-full ensures TrackingPage gets full height
-          <div className="bg-gray-100 flex-1 flex flex-col h-[calc(100vh-64px)] overflow-hidden relative">
+          // IMPORTANT: If isFullScreen, use fixed 100vh. Otherwise calculate remaining height.
+          <div className={`bg-gray-100 flex-1 flex flex-col overflow-hidden relative ${isFullScreen ? 'h-screen fixed inset-0 z-[1000]' : 'h-[calc(100vh-64px)]'}`}>
             {isAuthenticated || isGuest ? (
-               <AgriTrackApp />
+               <AgriTrackApp onFullScreenToggle={setIsFullScreen} />
             ) : (
                <div className="h-full flex flex-col items-center justify-center min-h-[60vh]">
                    <AuthPage onLoginSuccess={() => {}} onGuestAccess={handleGuestAccess} />
@@ -324,7 +326,7 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {activeTab === Tab.ADMIN && isAdmin && (
+        {activeTab === Tab.ADMIN && isAdmin && !isFullScreen && (
           <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
             <div className="mb-8 text-center">
               <h2 className="text-3xl font-bold text-gray-900">Admin Konsole</h2>
@@ -333,28 +335,30 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {activeTab === Tab.CHANGELOG && (
+        {activeTab === Tab.CHANGELOG && !isFullScreen && (
           <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
             <VersionHistory />
           </div>
         )}
       </main>
 
-      {/* Footer */}
-      <footer className="bg-white border-t border-gray-200 mt-auto shrink-0">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-          <div className="flex flex-col md:flex-row justify-between items-center">
-            <div className="mb-4 md:mb-0">
-              <p className="text-sm text-gray-500">
-                &copy; {new Date().getFullYear()} AgriTrack Austria. Open Source & Forever Live.
-              </p>
+      {/* Footer - Hide when in full screen tracking */}
+      {!isFullScreen && (
+        <footer className="bg-white border-t border-gray-200 mt-auto shrink-0">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+            <div className="flex flex-col md:flex-row justify-between items-center">
+                <div className="mb-4 md:mb-0">
+                <p className="text-sm text-gray-500">
+                    &copy; {new Date().getFullYear()} AgriTrack Austria. Open Source & Forever Live.
+                </p>
+                </div>
+                <div className="flex space-x-6 text-sm text-gray-500">
+                <a href="#" className="hover:text-agri-600 transition-colors">Impressum</a>
+                </div>
             </div>
-            <div className="flex space-x-6 text-sm text-gray-500">
-              <a href="#" className="hover:text-agri-600 transition-colors">Impressum</a>
             </div>
-          </div>
-        </div>
-      </footer>
+        </footer>
+      )}
     </div>
   );
 };
