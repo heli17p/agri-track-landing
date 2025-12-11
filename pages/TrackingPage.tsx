@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Square, Truck, CheckCircle, AlertTriangle, History, PenTool, Wheat, Hammer, ChevronLeft, Droplets, Layers, Minimize2, ShoppingBag, Trash2, X, Clock, Calendar, LocateFixed } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
-import { AppSettings, DEFAULT_SETTINGS, StorageLocation, FertilizerType, ActivityType, HarvestType, TillageType, FarmProfile, TrackPoint, ActivityRecord } from '../types';
+import { AppSettings, DEFAULT_SETTINGS, StorageLocation, FertilizerType, ActivityType, HarvestType, TillageType, FarmProfile, TrackPoint, ActivityRecord, Field, GeoPoint } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
 import { MapContainer, TileLayer, Polygon, Polyline, Marker, useMap, Circle } from 'react-leaflet';
 import L from 'leaflet';
@@ -85,7 +86,7 @@ const MapController = ({
     const hasCenteredRef = useRef(false);
 
     useEffect(() => {
-        // FIX: Force resize aggressively
+        // Force resize aggressively to prevent gray tiles
         const resize = () => {
              map.invalidateSize();
         };
@@ -99,6 +100,7 @@ const MapController = ({
             if (lastPosition) {
                 map.panTo([lastPosition.lat, lastPosition.lng], { animate: true });
             } else if (profile?.addressGeo) {
+                // If no last position but profile, center there initially
                 map.setView([profile.addressGeo.lat, profile.addressGeo.lng], 18, { animate: true });
             }
             return () => { clearTimeout(t1); clearTimeout(t2); };
@@ -199,8 +201,8 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
   // REF PATTERN FOR PROCESS POSITION
   const processPositionRef = useRef<(pos: GeolocationPosition) => void>(() => {});
   
-  // Fix for ReferenceError: detectedFieldId needs to be a state derived variable in render scope
-  const detectedFieldId = currentField?.id || null; // Derived from state
+  // Derived state to avoid reference error in render
+  const detectedFieldId = currentField?.id || null; 
 
   const loadData = async () => {
     const s = await dbService.getSettings();
@@ -431,6 +433,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
       setMode('selection');
       storageDeductionsRef.current = new Map();
       accumulatedFieldLoadsRef.current = new Map();
+      if(onMinimize) onMinimize();
   };
 
   const finalizeCurrentLoad = () => {
@@ -630,7 +633,10 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
 
   const saveSession = async () => {
     stopGps();
-    if (trackPoints.length === 0) return;
+    if (trackPoints.length === 0) {
+        if(onMinimize) onMinimize();
+        return;
+    }
 
     finalizeCurrentLoad();
 
@@ -740,6 +746,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
              setTrackPoints([]);
              setMode('selection');
              loadData();
+             if(onMinimize) onMinimize();
         }
     });
   };
@@ -809,12 +816,10 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
     return field.type === 'Acker' ? '#92400E' : '#15803D'; // Darker/Standard
   };
 
-  const getTrackWeight = () => {
-      if (!isSpreading) return 4;
-      if (activityType === ActivityType.FERTILIZATION) {
-          if (fertilizerType === FertilizerType.SLURRY) return (settings?.slurrySpreadWidth || 12);
-          if (fertilizerType === FertilizerType.MANURE) return (settings?.manureSpreadWidth || 10);
-      }
+  const getTrackWeight = (isSpreadingSeg: boolean) => {
+      if (!isSpreadingSeg) return 4;
+      if (selectedFertilizer === FertilizerType.SLURRY) return (settings?.slurrySpreadWidth || 12);
+      if (selectedFertilizer === FertilizerType.MANURE) return (settings?.manureSpreadWidth || 10);
       return settings?.spreadWidth || 12;
   };
 
@@ -1062,7 +1067,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
                          if (isSpreading) {
                              return (
                                  <React.Fragment key={`live-seg-${index}`}>
-                                     <Polyline positions={segment.points} pathOptions={{ color: storageColor, weight: getTrackWeight(), opacity: 0.8 }} />
+                                     <Polyline positions={segment.points} pathOptions={{ color: storageColor, weight: getTrackWeight(true), opacity: 0.8 }} />
                                      <Polyline positions={segment.points} pathOptions={{ color: 'white', weight: 2, opacity: 0.9, dashArray: '5, 5' }} />
                                  </React.Fragment>
                              );
@@ -1199,3 +1204,4 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
     </div>
   );
 };
+
