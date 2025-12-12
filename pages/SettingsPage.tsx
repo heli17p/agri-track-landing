@@ -61,6 +61,19 @@ const manureIcon = createCustomIcon('#d97706', iconPaths.layers);
 
 // --- Helper Components ---
 
+// NEW: Component to force recenter map when position changes
+const MapRecenter = ({ position }: { position: GeoPoint | null }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (position) {
+            map.invalidateSize();
+            // Use flyTo for smooth transition, or setView for instant
+            map.flyTo([position.lat, position.lng], 15, { animate: true, duration: 1.0 });
+        }
+    }, [position, map]);
+    return null;
+};
+
 const LocationMarker = ({ position, setPosition, iconType = 'farm' }: { position: GeoPoint | null, setPosition: (p: GeoPoint) => void, iconType?: 'farm' | 'slurry' | 'manure' }) => {
     const map = useMap();
     const markerRef = useRef<L.Marker>(null);
@@ -71,7 +84,6 @@ const LocationMarker = ({ position, setPosition, iconType = 'farm' }: { position
     useMapEvents({
         click(e) {
             setPosition({ lat: e.latlng.lat, lng: e.latlng.lng });
-            map.setView(e.latlng, map.getZoom(), { animate: false });
         },
     });
 
@@ -88,10 +100,6 @@ const LocationMarker = ({ position, setPosition, iconType = 'farm' }: { position
         [setPosition],
     );
 
-    useEffect(() => {
-        setTimeout(() => map.invalidateSize(), 200);
-    }, [map]);
-
     return position ? (
         <Marker 
             draggable={true}
@@ -105,14 +113,18 @@ const LocationMarker = ({ position, setPosition, iconType = 'farm' }: { position
 
 const InlineMap = ({ position, setPosition, iconType = 'farm' }: { position: GeoPoint | null, setPosition: (p: GeoPoint) => void, iconType?: 'farm' | 'slurry' | 'manure' }) => {
     const [style, setStyle] = useState<'standard' | 'satellite'>('standard');
+    // Default center only used for initial render if no position
     const center = position || { lat: 47.5, lng: 14.5 };
     
     return (
         <div className="h-64 w-full rounded-xl overflow-hidden border border-slate-300 relative mt-2 shadow-inner group z-0">
+            {/* Unique key forces re-mount if needed, but MapRecenter handles updates better */}
             <MapContainer center={[center.lat, center.lng]} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                 <TileLayer attribution='&copy; OpenStreetMap' url={style === 'standard' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} />
                 <LocationMarker position={position} setPosition={setPosition} iconType={iconType} />
+                <MapRecenter position={position} />
             </MapContainer>
+            
             <div className="absolute top-2 right-2 flex flex-col gap-2 z-[400]">
                  <button onClick={() => setStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white/90 p-2 rounded shadow text-slate-700 hover:text-green-600 text-xs font-bold backdrop-blur">
                     {style === 'standard' ? 'Satellit' : 'Karte'}
@@ -201,6 +213,7 @@ export const SettingsPage = () => {
   };
 
   const handleStartAddStorage = () => {
+    // If we have a farm location, use it as start for new storage, otherwise Austria center
     const initialGeo = profile.addressGeo || { lat: 47.5, lng: 14.5 };
     setNewStorage({ id: undefined, name: '', type: FertilizerType.SLURRY, capacity: 100, currentLevel: 0, dailyGrowth: 0.5, geo: initialGeo });
     setIsAddingStorage(true);
