@@ -74,7 +74,7 @@ const MapClickHandler = ({ isEditing, splitMode, onMapClick }: { isEditing: bool
     return null;
 };
 
-// FIX: Improved Map Bounds with stronger Resize Trigger
+// FIX: Improved Map Bounds with ResizeObserver
 const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: FarmProfile | null, focusField?: Field | null }) => {
     const map = useMap();
 
@@ -233,12 +233,13 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
-    // FIX: Using full height relative container
-    <div className="h-full w-full relative bg-slate-900">
+    // FIX: Using full height relative container and min-height fallback
+    <div className="h-full w-full relative bg-slate-900 min-h-[600px]">
          
          {/* FIX: Absolute Map Container to force fill */}
          <div className="absolute inset-0 z-0">
-             <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+             {/* KEY forces remount on tab switch if needed */}
+             <MapContainer key="map-page-main" center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                 <TileLayer 
                     attribution='&copy; OpenStreetMap'
                     url={mapStyle === 'standard' 
