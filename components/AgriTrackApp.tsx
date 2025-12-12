@@ -71,11 +71,11 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   const showChrome = !isActiveTracking;
 
   return (
-    <div className="w-full h-full bg-slate-50 flex flex-col relative max-w-md mx-auto md:max-w-none shadow-2xl md:shadow-none min-h-full">
+    <div className="w-full h-full bg-slate-50 flex flex-col relative overflow-hidden">
       
       {/* HEADER */}
       {showChrome && (
-          <div className="bg-white/90 backdrop-blur-md p-3 flex justify-between items-center sticky top-0 z-30 border-b border-slate-200 shrink-0">
+          <div className="bg-white/90 backdrop-blur-md p-3 flex justify-between items-center sticky top-0 z-30 border-b border-slate-200 shrink-0 h-14">
             <h2 className="font-extrabold text-slate-800 tracking-tight">AgriTrack Austria</h2>
             <div className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center ${isLive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
               {isLive ? (
@@ -93,10 +93,12 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
           </div>
       )}
 
-      {/* CONTENT */}
-      {/* FIX: Ensuring full height for map view specifically */}
-      <div className={`flex-1 overflow-hidden relative flex flex-col ${currentView === 'MAP' ? 'h-full min-h-0' : ''}`}>
-        {renderView()}
+      {/* CONTENT - USING ABSOLUTE POSITIONING FOR MAP VIEW */}
+      {/* This ensures the content fills exactly the remaining space */}
+      <div className="flex-1 relative w-full overflow-hidden">
+         <div className="absolute inset-0 overflow-y-auto overflow-x-hidden">
+            {renderView()}
+         </div>
       </div>
 
       {/* NAVIGATION */}

@@ -2,6 +2,15 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Force full height for root chain */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* Prevent body scroll, handle inside app */
+}
+
 .hide-scrollbar::-webkit-scrollbar {
   display: none;
 }
