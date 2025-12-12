@@ -85,7 +85,7 @@ const MapController = ({
     const hasCenteredRef = useRef(false);
 
     useEffect(() => {
-        // FIX: Force resize aggressively
+        // Force resize aggressively to prevent gray tiles
         const resize = () => {
              map.invalidateSize();
         };
@@ -432,7 +432,9 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
       setMode('selection');
       storageDeductionsRef.current = new Map();
       accumulatedFieldLoadsRef.current = new Map();
-      if(onMinimize) onMinimize();
+      
+      // FIX: Stay on selection page, but ensure full-screen mode is off
+      if(onTrackingStateChange) onTrackingStateChange(false);
   };
 
   const finalizeCurrentLoad = () => {
@@ -633,7 +635,9 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
   const saveSession = async () => {
     stopGps();
     if (trackPoints.length === 0) {
-        if(onMinimize) onMinimize();
+        // Reset to selection if no data
+        setMode('selection');
+        if(onTrackingStateChange) onTrackingStateChange(false);
         return;
     }
 
@@ -743,9 +747,11 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
              setIsTracking(false);
              if (onTrackingStateChange) onTrackingStateChange(false);
              setTrackPoints([]);
+             
+             // FIX: Stay on selection screen instead of going to dashboard
              setMode('selection');
+             
              loadData();
-             if(onMinimize) onMinimize();
         }
     });
   };
@@ -1089,7 +1095,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
                     {fields.map(f => (
                         <Polygon 
                             key={f.id} 
-                            positions={f.boundary.map((p:any) => [p.lat, p.lng])}
+                            positions={f.boundary.map((p:any) => [p.lat, p.lng])} 
                             pathOptions={{ 
                                 color: detectedFieldId === f.id ? '#22c55e' : 'white', 
                                 fillOpacity: 0.1, 
