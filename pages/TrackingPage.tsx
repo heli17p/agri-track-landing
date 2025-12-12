@@ -85,7 +85,7 @@ const MapController = ({
     const hasCenteredRef = useRef(false);
 
     useEffect(() => {
-        // Force resize aggressively to prevent gray tiles
+        // FIX: Force resize aggressively to prevent gray tiles
         const resize = () => {
              map.invalidateSize();
         };
@@ -635,9 +635,8 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
   const saveSession = async () => {
     stopGps();
     if (trackPoints.length === 0) {
-        // Reset to selection if no data
+        // Wenn keine Punkte da sind, nur Modus resetten, nicht zum Dashboard springen
         setMode('selection');
-        if(onTrackingStateChange) onTrackingStateChange(false);
         return;
     }
 
@@ -864,7 +863,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
   }
 
   return (
-    <div className="h-full flex flex-col bg-slate-50 relative">
+    <div className="h-full w-full flex flex-col bg-slate-900 relative overflow-hidden">
       
       {/* GPS Warning Overlay */}
       {isTracking && wrongStorageWarning && (
@@ -879,7 +878,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
 
       {/* Mode Selection */}
       {mode === 'selection' && !isTracking && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24">
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24 bg-slate-50">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center">
             <h2 className="text-xl font-bold text-slate-800 mb-4">Neue Tätigkeit</h2>
             <div className="grid grid-cols-2 gap-4">
@@ -1046,7 +1045,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
 
       {/* Active Tracking View */}
       {isTracking && (
-        <div className="h-full w-full relative flex flex-col bg-slate-900 overflow-hidden">
+        <div className="absolute inset-0 z-50 flex flex-col bg-slate-900 overflow-hidden">
             
             {/* 1. MAP LAYER (FULLSCREEN BACKGROUND) */}
             <div className="absolute inset-0 z-0">
