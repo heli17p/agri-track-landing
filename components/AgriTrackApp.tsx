@@ -36,9 +36,16 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       case 'DASHBOARD': return <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />;
       case 'TRACKING': return (
           <TrackingPage 
-            onMinimize={() => setCurrentView('DASHBOARD')} 
+            // FIX: Don't navigate away, just stay here (TrackingPage resets itself to selection mode)
+            // But we must ensure fullscreen is toggled off (handled by onTrackingStateChange -> false)
+            onMinimize={() => {
+                // Optional: If you WANT to go to dashboard, keep this. 
+                // To stay on selection screen: Do nothing or set view to TRACKING (which it already is)
+                // We just let the TrackingPage handle its internal mode reset.
+                setIsActiveTracking(false); // Ensure chrome comes back
+            }} 
             onNavigate={(view) => setCurrentView(view)} 
-            onTrackingStateChange={setIsActiveTracking} // Connect Local State
+            onTrackingStateChange={setIsActiveTracking} 
           />
       );
       case 'MAP': return <MapPage initialEditFieldId={mapFocusFieldId} clearInitialEdit={() => setMapFocusFieldId(null)} />;
@@ -68,7 +75,6 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   const isLive = isCloudConfigured();
 
   // Show Header/Footer ONLY if NOT actively tracking
-  // We keep them visible during "Selection Mode" of Tracking Page
   const showChrome = !isActiveTracking;
 
   return (
