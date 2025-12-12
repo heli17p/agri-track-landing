@@ -1,7 +1,6 @@
 import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, DEFAULT_SETTINGS, FeedbackTicket } from '../types';
 import { saveData, loadLocalData, saveSettings as saveSettingsToStorage, loadSettings as loadSettingsFromStorage, fetchCloudData, fetchCloudSettings, isCloudConfigured } from './storage';
 
-// ... (Restlicher Code für Listener und Helpers bleibt gleich) ...
 type Listener = () => void;
 const listeners: { [key: string]: Listener[] } = {
     sync: [],
@@ -15,7 +14,57 @@ const notify = (type: 'sync' | 'change') => {
 export const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export const dbService = {
-  // ... (Migration Logic bleibt gleich) ...
+  // --- BACKUP & RESTORE ---
+  createFullBackup: async () => {
+      const activities = await dbService.getActivities();
+      const fields = await dbService.getFields();
+      const storages = await dbService.getStorageLocations();
+      const profile = await dbService.getFarmProfile();
+      const settings = await dbService.getSettings();
+
+      return {
+          meta: {
+              version: '1.0',
+              timestamp: new Date().toISOString(),
+              app: 'AgriTrack Austria',
+              generator: 'AgriTrack Web App'
+          },
+          data: {
+              activities,
+              fields,
+              storages,
+              profile,
+              settings
+          }
+      };
+  },
+
+  restoreFullBackup: async (jsonContent: any) => {
+      try {
+          if (!jsonContent || !jsonContent.data) {
+              throw new Error("Ungültiges Backup-Format");
+          }
+          
+          const { activities, fields, storages, profile, settings } = jsonContent.data;
+
+          // Restore to LocalStorage
+          if (activities) localStorage.setItem('agritrack_activities', JSON.stringify(activities));
+          if (fields) localStorage.setItem('agritrack_fields', JSON.stringify(fields));
+          if (storages) localStorage.setItem('agritrack_storage', JSON.stringify(storages));
+          if (profile) localStorage.setItem('agritrack_profile', JSON.stringify(profile));
+          if (settings) {
+              localStorage.setItem('agritrack_settings_full', JSON.stringify(settings));
+          }
+
+          notify('change');
+          return true;
+      } catch (e) {
+          console.error("Restore failed", e);
+          throw e;
+      }
+  },
+
+  // --- MIGRATION (GUEST -> CLOUD) ---
   migrateGuestDataToCloud: async () => {
       if (!isCloudConfigured()) return;
       console.log("[Migration] Starte Upload lokaler Daten...");
@@ -23,14 +72,13 @@ export const dbService = {
       for (const act of localActivities) {
           await saveData('activity', act);
       }
-      // NEW: Sync Settings too
       const localSettings = loadSettingsFromStorage();
       await saveSettingsToStorage(localSettings);
       
       console.log(`[Migration] Abgeschlossen.`);
   },
 
-  // ... (Feedback Logic bleibt gleich) ...
+  // --- Feedback ---
   getFeedback: async (): Promise<FeedbackTicket[]> => {
       const s = localStorage.getItem('agritrack_feedback');
       return s ? JSON.parse(s) : [];
@@ -53,29 +101,25 @@ export const dbService = {
       notify('change');
   },
 
-  // ... (Activity Logic) ...
+  // --- Activities ---
   getActivities: async (): Promise<ActivityRecord[]> => {
     const local = loadLocalData('activity') as ActivityRecord[];
     return local;
   },
   
-  // UPDATED: Sync All (Activities AND Settings)
   syncActivities: async () => {
       if (!isCloudConfigured()) return;
       
       console.log("[Sync] Start...");
 
-      // 1. Sync Settings First (to get Farm ID correct)
       const cloudSettings = await fetchCloudSettings();
       if (cloudSettings) {
           const localSettings = loadSettingsFromStorage();
-          // Merge: Cloud wins for important config, but keep local device specifics if any
           const merged = { ...localSettings, ...cloudSettings };
           saveSettingsToStorage(merged);
           console.log("[Sync] Einstellungen aktualisiert.");
       }
 
-      // 2. Sync Activities
       const cloudData = await fetchCloudData('activity') as ActivityRecord[];
       const localData = loadLocalData('activity') as ActivityRecord[];
       
@@ -133,7 +177,6 @@ export const dbService = {
     
     localStorage.setItem('agritrack_fields', JSON.stringify(newList));
     notify('change');
-    // TODO: Add Cloud Sync for Fields in next iteration
   },
 
   deleteField: async (id: string) => {
@@ -196,7 +239,6 @@ export const dbService = {
     return loadSettingsFromStorage();
   },
 
-  // UPDATED: Async to support cloud wait
   saveSettings: async (settings: AppSettings) => {
     await saveSettingsToStorage(settings);
     notify('change');

@@ -170,6 +170,9 @@ export const SettingsPage = () => {
 
   // Sync State
   const [isTestingConn, setIsTestingConn] = useState(false);
+  
+  // Restore State
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => { loadData(); }, []);
 
@@ -261,9 +264,51 @@ export const SettingsPage = () => {
       }
   };
 
+  // --- BACKUP IMPLEMENTATION ---
+  
   const handleExportBackup = async () => { 
-      // Not implemented in this snippet
-      alert("Backup Funktion noch nicht aktiv.");
+      try {
+          const backup = await dbService.createFullBackup();
+          const jsonStr = JSON.stringify(backup, null, 2);
+          const blob = new Blob([jsonStr], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `agritrack_backup_${new Date().toISOString().slice(0,10)}.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          
+          showNotification('Backup heruntergeladen.');
+      } catch (e) {
+          console.error(e);
+          alert('Fehler beim Backup erstellen.');
+      }
+  };
+  
+  const handleRestoreBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
+      const file = e.target.files?.[0];
+      if (!file) return;
+      
+      if (!confirm("WARNUNG: Alle lokalen Daten werden überschrieben! Fortfahren?")) {
+          e.target.value = '';
+          return;
+      }
+
+      try {
+          const text = await file.text();
+          const json = JSON.parse(text);
+          await dbService.restoreFullBackup(json);
+          await loadData(); // Reload UI
+          showNotification('Backup erfolgreich wiederhergestellt!');
+      } catch (err: any) {
+          console.error(err);
+          alert("Fehler beim Wiederherstellen: " + err.message);
+      } finally {
+          e.target.value = ''; // Reset input
+      }
   };
 
   return (
@@ -575,11 +620,26 @@ export const SettingsPage = () => {
                 {/* BACKUP */}
                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-4">
                     <h2 className="font-bold text-lg text-slate-700 flex items-center">
-                        <Database className="mr-2" size={20}/> Backup
+                        <Database className="mr-2" size={20}/> Backup & Wiederherstellung
                     </h2>
-                    <button onClick={handleExportBackup} className="w-full bg-slate-100 text-slate-700 py-3 rounded-xl font-bold flex items-center justify-center hover:bg-slate-200">
-                        <Download className="mr-2" size={20}/> Daten sichern
-                    </button>
+                    <div className="flex flex-col gap-3">
+                         <button onClick={handleExportBackup} className="w-full bg-slate-100 text-slate-700 py-3 rounded-xl font-bold flex items-center justify-center hover:bg-slate-200">
+                             <Download className="mr-2" size={20}/> Daten sichern (Export)
+                         </button>
+                         
+                         <div className="relative">
+                             <input 
+                                 type="file" 
+                                 accept=".json"
+                                 ref={fileInputRef}
+                                 onChange={handleRestoreBackup}
+                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
+                             />
+                             <button className="w-full bg-slate-100 text-red-600 border border-red-100 py-3 rounded-xl font-bold flex items-center justify-center hover:bg-red-50">
+                                 <Upload className="mr-2" size={20}/> Daten wiederherstellen (Import)
+                             </button>
+                         </div>
+                    </div>
                 </div>
             </div>
         )}
