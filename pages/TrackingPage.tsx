@@ -85,7 +85,7 @@ const MapController = ({
     const hasCenteredRef = useRef(false);
 
     useEffect(() => {
-        // Force resize aggressively to prevent gray tiles
+        // FIX: Force resize aggressively
         const resize = () => {
              map.invalidateSize();
         };
@@ -200,8 +200,8 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
   // REF PATTERN FOR PROCESS POSITION
   const processPositionRef = useRef<(pos: GeolocationPosition) => void>(() => {});
   
-  // Derived state to avoid reference error in render
-  const detectedFieldId = currentField?.id || null; 
+  // Fix for ReferenceError: detectedFieldId needs to be a state derived variable in render scope
+  const detectedFieldId = currentField?.id || null; // Derived from state
 
   const loadData = async () => {
     const s = await dbService.getSettings();
@@ -949,6 +949,10 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
                  </div>
              )}
           </div>
+          
+          <button onClick={onMinimize} className="mt-auto flex items-center justify-center text-gray-500 py-4 hover:text-white">
+               <Minimize2 className="mr-2" size={20}/> Zurück zum Dashboard
+          </button>
         </div>
       )}
 
