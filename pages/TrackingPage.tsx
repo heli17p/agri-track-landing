@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Play, Square, Truck, CheckCircle, AlertTriangle, History, PenTool, Wheat, Hammer, ChevronLeft, Droplets, Layers, Minimize2, ShoppingBag, Trash2, X, Clock, Calendar, LocateFixed } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
@@ -816,10 +815,12 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
     return field.type === 'Acker' ? '#92400E' : '#15803D'; // Darker/Standard
   };
 
-  const getTrackWeight = (isSpreadingSeg: boolean) => {
-      if (!isSpreadingSeg) return 4;
-      if (selectedFertilizer === FertilizerType.SLURRY) return (settings?.slurrySpreadWidth || 12);
-      if (selectedFertilizer === FertilizerType.MANURE) return (settings?.manureSpreadWidth || 10);
+  const getTrackWeight = () => {
+      if (!isSpreading) return 4;
+      if (activityType === ActivityType.FERTILIZATION) {
+          if (fertilizerType === FertilizerType.SLURRY) return (settings?.slurrySpreadWidth || 12);
+          if (fertilizerType === FertilizerType.MANURE) return (settings?.manureSpreadWidth || 10);
+      }
       return settings?.spreadWidth || 12;
   };
 
@@ -858,7 +859,6 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
 
   return (
     <div className="h-full flex flex-col bg-slate-50 relative">
-      {/* NO VIDEO TAG - Using WakeLock API exclusively */}
       
       {/* GPS Warning Overlay */}
       {isTracking && wrongStorageWarning && (
@@ -1067,7 +1067,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
                          if (isSpreading) {
                              return (
                                  <React.Fragment key={`live-seg-${index}`}>
-                                     <Polyline positions={segment.points} pathOptions={{ color: storageColor, weight: getTrackWeight(true), opacity: 0.8 }} />
+                                     <Polyline positions={segment.points} pathOptions={{ color: storageColor, weight: getTrackWeight(), opacity: 0.8 }} />
                                      <Polyline positions={segment.points} pathOptions={{ color: 'white', weight: 2, opacity: 0.9, dashArray: '5, 5' }} />
                                  </React.Fragment>
                              );
@@ -1204,4 +1204,3 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
     </div>
   );
 };
-
