@@ -232,11 +232,12 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
 
   return (
     // FIX: Using relative context for full height
-    <div className="relative w-full h-full bg-slate-900">
+    <div className="h-full w-full relative bg-slate-900">
          
          {/* FIX: Absolute Map Container to force fill */}
          <div className="absolute inset-0 z-0">
-             <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+             {/* KEY forces remount on tab switch if needed */}
+             <MapContainer key="map-page-main" center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                 <TileLayer 
                     attribution='&copy; OpenStreetMap'
                     url={mapStyle === 'standard' 
