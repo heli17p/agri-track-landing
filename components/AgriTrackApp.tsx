@@ -19,12 +19,13 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   // New State: Is GPS actively running?
   const [isActiveTracking, setIsActiveTracking] = useState(false);
 
-  // Update Parent (App.tsx) only when Active Tracking changes
+  // Update Parent (App.tsx) only when Active Tracking changes AND we are looking at it
   useEffect(() => {
       if (onFullScreenToggle) {
-          onFullScreenToggle(isActiveTracking);
+          // Fullscreen only if tracking AND currently viewing tracking page
+          onFullScreenToggle(isActiveTracking && currentView === 'TRACKING');
       }
-  }, [isActiveTracking, onFullScreenToggle]);
+  }, [isActiveTracking, currentView, onFullScreenToggle]);
 
   const navigateToMap = (fieldId?: string) => {
       if (fieldId) setMapFocusFieldId(fieldId);
@@ -32,28 +33,37 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   };
 
   const renderView = () => {
-    switch(currentView) {
-      case 'DASHBOARD': return <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />;
-      case 'TRACKING': return (
-          <TrackingPage 
-            // FIX: Don't navigate away, just stay here (TrackingPage resets itself to selection mode)
-            // But we must ensure fullscreen is toggled off (handled by onTrackingStateChange -> false)
-            onMinimize={() => {
-                // Optional: If you WANT to go to dashboard, keep this. 
-                // To stay on selection screen: Do nothing or set view to TRACKING (which it already is)
-                // We just let the TrackingPage handle its internal mode reset.
-                setIsActiveTracking(false); // Ensure chrome comes back
-            }} 
-            onNavigate={(view) => setCurrentView(view)} 
-            onTrackingStateChange={setIsActiveTracking} 
-          />
-      );
-      case 'MAP': return <MapPage initialEditFieldId={mapFocusFieldId} clearInitialEdit={() => setMapFocusFieldId(null)} />;
-      case 'FIELDS': return <FieldsPage onNavigateToMap={navigateToMap} />;
-      case 'SETTINGS': return <SettingsPage />;
-      default: return <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />;
+    // Wenn Tracking läuft, rendern wir TrackingPage IMMER (evtl. versteckt)
+    // Wenn wir NICHT tracken und NICHT auf TrackingPage sind, rendern wir den normalen View.
+
+    if (currentView === 'TRACKING' || isActiveTracking) {
+        return (
+            <>
+                <div className={currentView === 'TRACKING' ? 'h-full' : 'hidden'}>
+                    <TrackingPage 
+                        onMinimize={() => setCurrentView('DASHBOARD')} 
+                        onNavigate={(view) => setCurrentView(view)} 
+                        onTrackingStateChange={setIsActiveTracking} 
+                    />
+                </div>
+                {/* Wenn Tracking im Hintergrund läuft, zeigen wir hier den anderen View an */}
+                {currentView !== 'TRACKING' && renderStandardViews()}
+            </>
+        );
     }
+
+    return renderStandardViews();
   };
+
+  const renderStandardViews = () => {
+      switch(currentView) {
+          case 'DASHBOARD': return <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />;
+          case 'MAP': return <MapPage initialEditFieldId={mapFocusFieldId} clearInitialEdit={() => setMapFocusFieldId(null)} />;
+          case 'FIELDS': return <FieldsPage onNavigateToMap={navigateToMap} />;
+          case 'SETTINGS': return <SettingsPage />;
+          default: return <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />;
+      }
+  }
 
   const activeTabId = () => {
       if (currentView === 'DASHBOARD') return 'dashboard';
@@ -73,15 +83,13 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   };
 
   const isLive = isCloudConfigured();
-
-  // Show Header/Footer ONLY if NOT actively tracking
-  const showChrome = !isActiveTracking;
+  const isTrackingView = currentView === 'TRACKING';
 
   return (
     <div className="w-full h-full bg-slate-50 flex flex-col relative max-w-md mx-auto md:max-w-none shadow-2xl md:shadow-none min-h-full">
       
-      {/* HEADER */}
-      {showChrome && (
+      {/* HEADER (Visible unless we are LOOKING at the active tracking map) */}
+      {!(isActiveTracking && isTrackingView) && (
           <div className="bg-white/90 backdrop-blur-md p-3 flex justify-between items-center sticky top-0 z-30 border-b border-slate-200 shrink-0">
             <h2 className="font-extrabold text-slate-800 tracking-tight">AgriTrack Austria</h2>
             <div className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center ${isLive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
@@ -97,6 +105,15 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
                   </>
               )}
             </div>
+            {/* Indicator that tracking is running in background */}
+            {isActiveTracking && currentView !== 'TRACKING' && (
+                <button 
+                    onClick={() => setCurrentView('TRACKING')}
+                    className="ml-2 bg-red-600 text-white text-[10px] px-2 py-1 rounded-full animate-pulse font-bold flex items-center"
+                >
+                    REC
+                </button>
+            )}
           </div>
       )}
 
@@ -105,8 +122,8 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
         {renderView()}
       </div>
 
-      {/* NAVIGATION */}
-      {showChrome && <BottomNav activeTab={activeTabId()} setActiveTab={handleTabChange} />}
+      {/* NAVIGATION (Visible unless we are LOOKING at active tracking) */}
+      {!(isActiveTracking && isTrackingView) && <BottomNav activeTab={activeTabId()} setActiveTab={handleTabChange} />}
     </div>
   );
 };
