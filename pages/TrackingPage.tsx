@@ -85,7 +85,7 @@ const MapController = ({
     const hasCenteredRef = useRef(false);
 
     useEffect(() => {
-        // FIX: Aggressive resize trigger
+        // FIX: Force resize aggressively
         const resize = () => {
              map.invalidateSize();
         };
@@ -813,17 +813,12 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
   };
 
   const getFieldColor = (field: Field) => {
-    // 1. Highlight current field (Active Tracking)
     if (currentField?.id === field.id) return '#22c55e'; // Bright Green Highlight
-    
-    // 2. Custom Color (if set)
     if (field.color) return field.color;
-    
-    // 3. Type based color (Consistent with MapPage)
     if (mapStyle === 'satellite') {
-      return field.type === 'Acker' ? '#F59E0B' : '#84CC16'; // Lighter for satellite
+      return field.type === 'Acker' ? '#F59E0B' : '#84CC16'; // Lighter colors for satellite
     }
-    return field.type === 'Acker' ? '#92400E' : '#15803D'; // Darker/Standard for map
+    return field.type === 'Acker' ? '#92400E' : '#15803D'; // Darker/Standard
   };
 
   const getTrackWeight = () => {
@@ -884,7 +879,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
 
       {/* Mode Selection */}
       {mode === 'selection' && !isTracking && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24">
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24 bg-slate-50">
           <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center">
             <h2 className="text-xl font-bold text-slate-800 mb-4">Neue Tätigkeit</h2>
             <div className="grid grid-cols-2 gap-4">
