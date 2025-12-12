@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { dbService } from '../services/db';
 import { FarmProfile, StorageLocation, FertilizerType, GeoPoint, AppSettings, DEFAULT_SETTINGS } from '../types';
 import { Save, Plus, Trash2, Navigation, X, Building2, Droplets, Search, Loader2, Check, Pencil, Settings as SettingsIcon, Database, Download, Upload, Wifi, Palette, Users, Lock, Key, LocateFixed, Layers, Tractor, Activity, MapPin } from 'lucide-react';
@@ -8,10 +8,10 @@ import L from 'leaflet';
 import { syncData } from '../services/sync';
 import { ICON_THEMES, getAppIcon } from '../utils/appIcons';
 
-// --- Custom Icon for Settings Map (Fix missing PNG issue) ---
+// --- Custom Icon for Settings Map ---
 const settingsPinIcon = L.divIcon({
   className: 'custom-pin-icon',
-  html: `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></div>`,
+  html: `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; cursor: move;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></div>`,
   iconSize: [24, 24],
   iconAnchor: [12, 12]
 });
@@ -20,25 +20,48 @@ const settingsPinIcon = L.divIcon({
 
 const LocationMarker = ({ position, setPosition }: { position: GeoPoint | null, setPosition: (p: GeoPoint) => void }) => {
     const map = useMap();
+    const markerRef = useRef<L.Marker>(null);
     
+    // Allow clicking on map to move
     useMapEvents({
         click(e) {
             setPosition({ lat: e.latlng.lat, lng: e.latlng.lng });
-            // Direct set view, no fly animation
             map.setView(e.latlng, map.getZoom(), { animate: false });
         },
     });
 
+    // Allow dragging the marker
+    const eventHandlers = useMemo(
+        () => ({
+            dragend() {
+                const marker = markerRef.current;
+                if (marker != null) {
+                    const { lat, lng } = marker.getLatLng();
+                    setPosition({ lat, lng });
+                }
+            },
+        }),
+        [setPosition],
+    );
+
     useEffect(() => {
-        // Initial positioning without animation
         if (position) {
-            map.setView([position.lat, position.lng], map.getZoom(), { animate: false });
+            // Only fly if distance is significant to avoid jitter during drag
+            // For settings map, direct setView is often better UX
+            // map.setView([position.lat, position.lng], map.getZoom(), { animate: false });
         }
-        // Force resize to fix grey tiles
         setTimeout(() => map.invalidateSize(), 200);
     }, [position, map]);
 
-    return position ? <Marker position={[position.lat, position.lng]} icon={settingsPinIcon} /> : null;
+    return position ? (
+        <Marker 
+            draggable={true}
+            eventHandlers={eventHandlers}
+            position={[position.lat, position.lng]} 
+            icon={settingsPinIcon} 
+            ref={markerRef}
+        />
+    ) : null;
 };
 
 const InlineMap = ({ position, setPosition }: { position: GeoPoint | null, setPosition: (p: GeoPoint) => void }) => {
