@@ -61,13 +61,13 @@ const manureIcon = createCustomIcon('#d97706', iconPaths.layers);
 
 // --- Helper Components ---
 
-// NEW: Component to force recenter map when position changes
+// Component to force recenter map when position changes
 const MapRecenter = ({ position }: { position: GeoPoint | null }) => {
     const map = useMap();
     useEffect(() => {
         if (position) {
             map.invalidateSize();
-            // Use flyTo for smooth transition, or setView for instant
+            // Use flyTo for smooth transition
             map.flyTo([position.lat, position.lng], 15, { animate: true, duration: 1.0 });
         }
     }, [position, map]);
@@ -100,6 +100,10 @@ const LocationMarker = ({ position, setPosition, iconType = 'farm' }: { position
         [setPosition],
     );
 
+    useEffect(() => {
+        setTimeout(() => map.invalidateSize(), 200);
+    }, [map]);
+
     return position ? (
         <Marker 
             draggable={true}
@@ -118,7 +122,6 @@ const InlineMap = ({ position, setPosition, iconType = 'farm' }: { position: Geo
     
     return (
         <div className="h-64 w-full rounded-xl overflow-hidden border border-slate-300 relative mt-2 shadow-inner group z-0">
-            {/* Unique key forces re-mount if needed, but MapRecenter handles updates better */}
             <MapContainer center={[center.lat, center.lng]} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                 <TileLayer attribution='&copy; OpenStreetMap' url={style === 'standard' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} />
                 <LocationMarker position={position} setPosition={setPosition} iconType={iconType} />
@@ -433,7 +436,7 @@ export const SettingsPage = () => {
             </div>
         )}
 
-        {/* --- GENERAL TAB (RESTORED) --- */}
+        {/* --- GENERAL TAB (UPDATED) --- */}
         {activeTab === 'general' && (
             <div className="space-y-6 max-w-lg mx-auto pb-20">
                  
@@ -452,11 +455,13 @@ export const SettingsPage = () => {
                      </div>
                      <div className="grid grid-cols-2 gap-4">
                          <div>
-                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">AB Gülle (m)</label>
+                             {/* RENAMED LABEL */}
+                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Arbeitsbr. Gülle (m)</label>
                              <input type="number" value={appSettings.slurrySpreadWidth || appSettings.spreadWidth} onChange={e => setAppSettings({...appSettings, slurrySpreadWidth: parseFloat(e.target.value)})} className="w-full border p-2 rounded-lg"/>
                          </div>
                          <div>
-                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">AB Mist (m)</label>
+                             {/* RENAMED LABEL */}
+                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Arbeitsbr. Mist (m)</label>
                              <input type="number" value={appSettings.manureSpreadWidth || 10} onChange={e => setAppSettings({...appSettings, manureSpreadWidth: parseFloat(e.target.value)})} className="w-full border p-2 rounded-lg"/>
                          </div>
                      </div>
