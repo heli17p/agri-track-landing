@@ -74,20 +74,22 @@ const MapClickHandler = ({ isEditing, splitMode, onMapClick }: { isEditing: bool
     return null;
 };
 
-// FIX: Improved Map Bounds with stronger Resize Trigger
+// FIX: Improved Map Bounds with ResizeObserver
 const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: FarmProfile | null, focusField?: Field | null }) => {
     const map = useMap();
 
-    // Use LayoutEffect for immediate resize before paint
-    useLayoutEffect(() => {
-        map.invalidateSize();
-    });
-
+    // Use ResizeObserver to detect container changes
     useEffect(() => {
-        // Trigger resize multiple times to catch layout shifts
-        const t1 = setTimeout(() => map.invalidateSize(), 100);
-        const t2 = setTimeout(() => map.invalidateSize(), 500);
-        return () => { clearTimeout(t1); clearTimeout(t2); };
+        const container = map.getContainer();
+        const observer = new ResizeObserver(() => {
+            map.invalidateSize();
+        });
+        observer.observe(container);
+        
+        // Initial force
+        map.invalidateSize();
+
+        return () => observer.disconnect();
     }, [map]);
 
     useEffect(() => {
@@ -231,12 +233,11 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
-    // FIX: Using relative context for full height
-    <div className="h-full w-full relative bg-slate-900">
+    // FIX: Full height relative container
+    <div className="h-full w-full relative bg-slate-900 overflow-hidden">
          
          {/* FIX: Absolute Map Container to force fill */}
          <div className="absolute inset-0 z-0">
-             {/* KEY forces remount on tab switch if needed */}
              <MapContainer key="map-page-main" center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                 <TileLayer 
                     attribution='&copy; OpenStreetMap'
