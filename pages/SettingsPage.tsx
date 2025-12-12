@@ -1,12 +1,13 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { dbService } from '../services/db';
 import { FarmProfile, StorageLocation, FertilizerType, GeoPoint, AppSettings, DEFAULT_SETTINGS } from '../types';
-import { Save, Plus, Trash2, Navigation, X, Building2, Droplets, Search, Loader2, Check, Pencil, Settings as SettingsIcon, Database, Download, Upload, Wifi, Palette, Users, Lock, Key, LocateFixed, Layers, Tractor, Activity, MapPin } from 'lucide-react';
+import { Save, Plus, Trash2, Navigation, X, Building2, Droplets, Search, Loader2, Check, Pencil, Settings as SettingsIcon, Database, Download, Upload, Wifi, Palette, Users, Lock, Key, LocateFixed, Layers, Tractor, Activity, MapPin, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import { geocodeAddress } from '../utils/geo';
 import L from 'leaflet';
 import { syncData } from '../services/sync';
 import { ICON_THEMES, getAppIcon } from '../utils/appIcons';
+import 'leaflet/dist/leaflet.css';
 
 // --- Shared Icon Helper (Consistent with MapPage) ---
 const createCustomIcon = (color: string, svgPath: string) => {
@@ -173,6 +174,9 @@ export const SettingsPage = () => {
   
   // Restore State
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // PIN Visibility
+  const [showPin, setShowPin] = useState(false);
 
   useEffect(() => { loadData(); }, []);
 
@@ -587,17 +591,27 @@ export const SettingsPage = () => {
 
                     <div>
                         <label className="block text-xs font-bold text-blue-800 uppercase mb-1">Hof-Passwort (PIN)</label>
-                        <div className="relative">
+                        <div className="relative flex items-center">
                             <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400" size={18}/>
                             <input 
-                                type="password" 
+                                type={showPin ? "text" : "password"} 
                                 value={appSettings.farmPin || ''}
                                 onChange={e => setAppSettings({...appSettings, farmPin: e.target.value})}
-                                className="w-full pl-10 pr-4 py-3 bg-white border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
+                                className="w-full pl-10 pr-10 py-3 bg-white border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
                                 placeholder="Sicherer Code"
                             />
+                            <button 
+                                type="button"
+                                onClick={() => setShowPin(!showPin)}
+                                className="absolute right-3 text-blue-400 hover:text-blue-600"
+                            >
+                                {showPin ? <EyeOff size={18}/> : <Eye size={18}/>}
+                            </button>
                         </div>
-                        <p className="text-xs text-blue-600 mt-1">Nur wer dieses Passwort kennt, kann deine Daten sehen.</p>
+                        <p className="text-xs text-blue-600 mt-1 font-medium bg-blue-100/50 p-2 rounded">
+                            <AlertTriangle size={12} className="inline mr-1 -mt-0.5"/>
+                            WICHTIG: Wenn du diese PIN vergisst, musst du sie auf allen Geräten neu setzen. Alte Daten sind dann eventuell nicht mehr sichtbar, bis die richtige PIN wieder eingegeben wird.
+                        </p>
                     </div>
 
                     <div className="flex gap-2 mt-4">
