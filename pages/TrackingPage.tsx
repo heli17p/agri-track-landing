@@ -10,7 +10,7 @@ import { StorageDetailView } from '../components/StorageDetailView';
 import { ActivityDetailView } from '../components/ActivityDetailView';
 import { ManualFertilizationForm, HarvestForm, TillageForm } from '../components/ManualActivityForms';
 
-// --- Custom Icons Setup ---
+// ... (Custom Icons Setup remains same) ...
 const createCustomIcon = (color: string, svgPath: string) => {
   return L.divIcon({
     className: 'custom-pin-icon',
@@ -1146,6 +1146,29 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
                         : (trackingState === 'IDLE' ? 'Bereit / Warten' : trackingState === 'LOADING' ? `LADEN (${detectedStorageName})` : trackingState === 'TRANSIT' ? 'Transferfahrt' : 'Ausbringung')
                     }
                 </span>
+            </div>
+            
+            {/* Map Controls (Right Side) */}
+            <div className="absolute top-32 right-4 pointer-events-auto flex flex-col space-y-2 z-[400]">
+                    <div className="flex bg-white rounded-lg shadow-lg overflow-hidden border border-slate-200">
+                        <button 
+                            onClick={() => setShowGhostTracks(!showGhostTracks)} 
+                            className={`p-3 text-xs font-bold transition-colors ${showGhostTracks ? 'bg-blue-100 text-blue-700' : 'bg-white text-slate-500'}`}
+                        >
+                            Spur
+                        </button>
+                        {showGhostTracks && (
+                            <button 
+                                onClick={() => setGhostTrackRange(prev => prev === 'year' ? '12m' : 'year')}
+                                className="p-3 border-l border-slate-200 bg-slate-50 text-xs font-bold text-slate-600 hover:bg-slate-100 w-[50px]"
+                            >
+                                {ghostTrackRange === 'year' ? new Date().getFullYear() : '12M'}
+                            </button>
+                        )}
+                    </div>
+                    <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="p-3 bg-white rounded-lg shadow-lg text-xs font-bold text-slate-700 w-full hover:bg-slate-50 transition-colors flex items-center justify-center">
+                        <Layers size={18} className="mr-1"/> {mapStyle === 'standard' ? 'Sat' : 'Karte'}
+                    </button>
             </div>
 
             {/* 4. BOTTOM CONTROLS (FLOATING OVERLAY) */}
