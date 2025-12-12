@@ -226,10 +226,10 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
-    // FIX: Using relative positioning context for the full page container
-    <div className="h-full w-full relative bg-slate-900 overflow-hidden">
+    // FIX: Using ABSOLUTE INSET-0 to force full coverage of the parent relative container
+    <div className="absolute inset-0 bg-slate-900 overflow-hidden">
          
-         {/* FIX: Absolute Map Container Wrapper - Forces map to fill everything */}
+         {/* Map Container */}
          <div className="absolute inset-0 z-0">
              <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                 <TileLayer 
