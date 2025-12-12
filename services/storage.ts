@@ -1,6 +1,6 @@
 import { Activity, AppSettings, Trip, DEFAULT_SETTINGS } from '../types';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, Timestamp, where } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, Timestamp, where, doc, setDoc, getDoc } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 /* 
@@ -55,8 +55,49 @@ export const loadSettings = (): AppSettings => {
   return DEFAULT_SETTINGS;
 };
 
-export const saveSettings = (settings: AppSettings) => {
+// Modified saveSettings to sync to Cloud
+export const saveSettings = async (settings: AppSettings) => {
+  // 1. Local Save
   localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+
+  // 2. Cloud Save (if logged in)
+  if (isCloudConfigured()) {
+      try {
+          // Use userId as document ID for settings to avoid duplicates
+          const userId = auth.currentUser.uid;
+          await setDoc(doc(db, "settings", userId), {
+              ...settings,
+              updatedAt: Timestamp.now(),
+              userId: userId
+          });
+          console.log("[AgriCloud] Settings synced.");
+      } catch (e) {
+          console.error("[AgriCloud] Failed to sync settings:", e);
+      }
+  }
+};
+
+// NEW: Fetch Settings from Cloud
+export const fetchCloudSettings = async (): Promise<AppSettings | null> => {
+    if (!isCloudConfigured()) return null;
+    try {
+        const userId = auth.currentUser.uid;
+        const docRef = doc(db, "settings", userId);
+        const docSnap = await getDoc(docRef);
+
+        if (docSnap.exists()) {
+            const cloudData = docSnap.data();
+            // Merge with defaults to ensure type safety
+            const mergedSettings = { ...DEFAULT_SETTINGS, ...cloudData } as AppSettings;
+            // Remove meta fields
+            delete (mergedSettings as any).updatedAt;
+            delete (mergedSettings as any).userId;
+            return mergedSettings;
+        }
+    } catch (e) {
+        console.error("[AgriCloud] Failed to fetch settings:", e);
+    }
+    return null;
 };
 
 // --- DATA HANDLING (HYBRID) ---
@@ -90,10 +131,8 @@ export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip)
           payload.farmId = farmId;               
           payload.farmPin = farmPin;             
           
-          // Note: In a real app we would use setDoc with merge to update existing IDs
-          // For simplicity here, we assume addDoc (which creates dupes if not careful, handled by ID check on read)
-          // Ideally: await setDoc(doc(db, colName, data.id), payload);
-          await addDoc(collection(db, colName), payload);
+          // Use ID as doc ID to allow updates
+          await setDoc(doc(db, colName, data.id), payload);
           
           console.log(`[AgriCloud] Synced ${type} to farm ${farmId}.`);
       } catch (e) {
