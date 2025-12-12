@@ -8,10 +8,9 @@ import { StorageDetailView } from '../components/StorageDetailView';
 import { calculateArea, splitPolygon } from '../utils/geo';
 import L from 'leaflet';
 
-// Explicitly import CSS in component if global fails
 import 'leaflet/dist/leaflet.css';
 
-// ... (Custom Icons Code) ...
+// ... (Custom Icons Code - Same as before) ...
 const createCustomIcon = (color: string, svgPath: string) => {
   return L.divIcon({
     className: 'custom-pin-icon',
@@ -227,93 +226,91 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
-    // FIX: Using flex-col and h-full instead of absolute positioning for better layout compatibility
-    <div className="flex flex-col h-full w-full relative bg-slate-900 overflow-hidden">
+    // FIX: Using relative positioning context for the full page container
+    <div className="h-full w-full relative bg-slate-900 overflow-hidden">
          
-         {/* FIX: Map Container takes remaining space - Using ABSOLUTE positioning inside RELATIVE container to force height */}
-         <div className="flex-1 relative w-full h-full min-h-[400px]">
-             <div className="absolute inset-0 z-0">
-                 <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-                    <TileLayer 
-                        attribution='&copy; OpenStreetMap'
-                        url={mapStyle === 'standard' 
-                            ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                            : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                        }
-                    />
-                    
-                    <MapBounds fields={fields} profile={profile} focusField={editingField} />
-                    <MapClickHandler isEditing={isEditing} splitMode={isSplitting} onMapClick={handleMapClickAddPoint} />
+         {/* FIX: Absolute Map Container Wrapper - Forces map to fill everything */}
+         <div className="absolute inset-0 z-0">
+             <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                <TileLayer 
+                    attribution='&copy; OpenStreetMap'
+                    url={mapStyle === 'standard' 
+                        ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                    }
+                />
+                
+                <MapBounds fields={fields} profile={profile} focusField={editingField} />
+                <MapClickHandler isEditing={isEditing} splitMode={isSplitting} onMapClick={handleMapClickAddPoint} />
 
-                    {profile?.addressGeo && !isEditing && (
-                        <Marker position={[profile.addressGeo.lat, profile.addressGeo.lng]} icon={farmIcon}>
-                            <Popup>
-                                <div className="flex items-center space-x-2">
-                                    <Building2 size={16} className="text-blue-600"/>
-                                    <div><strong>Hof / Betrieb</strong><br/>{profile.operatorName}</div>
-                                </div>
-                            </Popup>
-                        </Marker>
-                    )}
+                {profile?.addressGeo && !isEditing && (
+                    <Marker position={[profile.addressGeo.lat, profile.addressGeo.lng]} icon={farmIcon}>
+                        <Popup>
+                            <div className="flex items-center space-x-2">
+                                <Building2 size={16} className="text-blue-600"/>
+                                <div><strong>Hof / Betrieb</strong><br/>{profile.operatorName}</div>
+                            </div>
+                        </Popup>
+                    </Marker>
+                )}
 
-                    {fields.map(f => {
-                        if (isEditing && editingField?.id === f.id) return null; 
-                        return (
-                            <Polygon 
-                                key={`${f.id}-${f.color || 'default'}-${mapStyle}`} 
-                                positions={f.boundary.map(p => [p.lat, p.lng])} 
-                                color={getFieldColor(f)}
-                                weight={2}
-                                fillOpacity={0.5}
-                                eventHandlers={{
-                                    click: (e) => {
-                                        if (isEditing) return;
-                                        L.DomEvent.stopPropagation(e);
-                                        setSelectedField(f);
-                                    }
-                                }}
-                            >
-                              <Popup>
-                                <div className="font-bold">{f.name}</div>
-                                <div className="text-xs">{f.areaHa.toFixed(2)} ha | {f.type}</div>
-                              </Popup>
-                            </Polygon>
-                        );
-                    })}
-
-                    {isEditing && editingField && (
-                        <>
-                            <Polygon 
-                                positions={editingField.boundary.map(p => [p.lat, p.lng])}
-                                pathOptions={{ color: '#2563eb', dashArray: '5, 10', weight: 3, fillOpacity: 0.2 }}
-                            />
-                            {!isSplitting && editingField.boundary.map((p, i) => (
-                                <VertexMarker 
-                                    key={`vertex-${i}`} 
-                                    index={i} 
-                                    position={p} 
-                                    onDragEnd={handleVertexDragEnd}
-                                    onDelete={handleVertexDelete}
-                                />
-                            ))}
-                        </>
-                    )}
-
-                    {!isEditing && storages.map(s => (
-                        <Marker 
-                            key={s.id} 
-                            position={[s.geo.lat, s.geo.lng]}
-                            icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
+                {fields.map(f => {
+                    if (isEditing && editingField?.id === f.id) return null; 
+                    return (
+                        <Polygon 
+                            key={`${f.id}-${f.color || 'default'}-${mapStyle}`} 
+                            positions={f.boundary.map(p => [p.lat, p.lng])} 
+                            color={getFieldColor(f)}
+                            weight={2}
+                            fillOpacity={0.5}
                             eventHandlers={{
                                 click: (e) => {
+                                    if (isEditing) return;
                                     L.DomEvent.stopPropagation(e);
-                                    setSelectedStorage(s);
+                                    setSelectedField(f);
                                 }
                             }}
+                        >
+                          <Popup>
+                            <div className="font-bold">{f.name}</div>
+                            <div className="text-xs">{f.areaHa.toFixed(2)} ha | {f.type}</div>
+                          </Popup>
+                        </Polygon>
+                    );
+                })}
+
+                {isEditing && editingField && (
+                    <>
+                        <Polygon 
+                            positions={editingField.boundary.map(p => [p.lat, p.lng])}
+                            pathOptions={{ color: '#2563eb', dashArray: '5, 10', weight: 3, fillOpacity: 0.2 }}
                         />
-                    ))}
-                 </MapContainer>
-             </div>
+                        {!isSplitting && editingField.boundary.map((p, i) => (
+                            <VertexMarker 
+                                key={`vertex-${i}`} 
+                                index={i} 
+                                position={p} 
+                                onDragEnd={handleVertexDragEnd}
+                                onDelete={handleVertexDelete}
+                            />
+                        ))}
+                    </>
+                )}
+
+                {!isEditing && storages.map(s => (
+                    <Marker 
+                        key={s.id} 
+                        position={[s.geo.lat, s.geo.lng]}
+                        icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
+                        eventHandlers={{
+                            click: (e) => {
+                                L.DomEvent.stopPropagation(e);
+                                setSelectedStorage(s);
+                            }
+                        }}
+                    />
+                ))}
+             </MapContainer>
          </div>
 
          {/* Map Controls */}
