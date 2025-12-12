@@ -8,21 +8,66 @@ import L from 'leaflet';
 import { syncData } from '../services/sync';
 import { ICON_THEMES, getAppIcon } from '../utils/appIcons';
 
-// --- Custom Icon for Settings Map ---
-const settingsPinIcon = L.divIcon({
-  className: 'custom-pin-icon',
-  html: `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white; cursor: move;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></div>`,
-  iconSize: [24, 24],
-  iconAnchor: [12, 12]
-});
+// --- Shared Icon Helper (Consistent with MapPage) ---
+const createCustomIcon = (color: string, svgPath: string) => {
+  return L.divIcon({
+    className: 'custom-pin-icon',
+    html: `
+      <div style="
+        background-color: ${color};
+        width: 32px;
+        height: 32px;
+        border-radius: 50%;
+        border: 2px solid white;
+        box-shadow: 0 3px 8px rgba(0,0,0,0.4);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        position: relative;
+      ">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          ${svgPath}
+        </svg>
+        <div style="
+          width: 0; 
+          height: 0; 
+          border-left: 6px solid transparent; 
+          border-right: 6px solid transparent; 
+          border-top: 8px solid ${color}; 
+          position: absolute; 
+          bottom: -7px; 
+          left: 50%; 
+          transform: translateX(-50%);
+        "></div>
+      </div>
+    `,
+    iconSize: [32, 40],
+    iconAnchor: [16, 40], // Point of the pin
+    popupAnchor: [0, -42]
+  });
+};
+
+const iconPaths = {
+  house: '<path d="M3 21h18M5 21V7l8-5 8 5v14"/>',
+  droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>',
+  layers: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>'
+};
+
+// Define Icons using the same style as MapPage
+const farmIcon = createCustomIcon('#2563eb', iconPaths.house); 
+const slurryIcon = createCustomIcon('#78350f', iconPaths.droplet); 
+const manureIcon = createCustomIcon('#d97706', iconPaths.layers); 
 
 // --- Helper Components ---
 
-const LocationMarker = ({ position, setPosition }: { position: GeoPoint | null, setPosition: (p: GeoPoint) => void }) => {
+const LocationMarker = ({ position, setPosition, iconType = 'farm' }: { position: GeoPoint | null, setPosition: (p: GeoPoint) => void, iconType?: 'farm' | 'slurry' | 'manure' }) => {
     const map = useMap();
     const markerRef = useRef<L.Marker>(null);
     
-    // Allow clicking on map to move
+    // Select Icon based on Type
+    const icon = iconType === 'slurry' ? slurryIcon : iconType === 'manure' ? manureIcon : farmIcon;
+
     useMapEvents({
         click(e) {
             setPosition({ lat: e.latlng.lat, lng: e.latlng.lng });
@@ -30,7 +75,6 @@ const LocationMarker = ({ position, setPosition }: { position: GeoPoint | null, 
         },
     });
 
-    // Allow dragging the marker
     const eventHandlers = useMemo(
         () => ({
             dragend() {
@@ -45,26 +89,21 @@ const LocationMarker = ({ position, setPosition }: { position: GeoPoint | null, 
     );
 
     useEffect(() => {
-        if (position) {
-            // Only fly if distance is significant to avoid jitter during drag
-            // For settings map, direct setView is often better UX
-            // map.setView([position.lat, position.lng], map.getZoom(), { animate: false });
-        }
         setTimeout(() => map.invalidateSize(), 200);
-    }, [position, map]);
+    }, [map]);
 
     return position ? (
         <Marker 
             draggable={true}
             eventHandlers={eventHandlers}
             position={[position.lat, position.lng]} 
-            icon={settingsPinIcon} 
+            icon={icon} 
             ref={markerRef}
         />
     ) : null;
 };
 
-const InlineMap = ({ position, setPosition }: { position: GeoPoint | null, setPosition: (p: GeoPoint) => void }) => {
+const InlineMap = ({ position, setPosition, iconType = 'farm' }: { position: GeoPoint | null, setPosition: (p: GeoPoint) => void, iconType?: 'farm' | 'slurry' | 'manure' }) => {
     const [style, setStyle] = useState<'standard' | 'satellite'>('standard');
     const center = position || { lat: 47.5, lng: 14.5 };
     
@@ -72,7 +111,7 @@ const InlineMap = ({ position, setPosition }: { position: GeoPoint | null, setPo
         <div className="h-64 w-full rounded-xl overflow-hidden border border-slate-300 relative mt-2 shadow-inner group z-0">
             <MapContainer center={[center.lat, center.lng]} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                 <TileLayer attribution='&copy; OpenStreetMap' url={style === 'standard' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} />
-                <LocationMarker position={position} setPosition={setPosition} />
+                <LocationMarker position={position} setPosition={setPosition} iconType={iconType} />
             </MapContainer>
             <div className="absolute top-2 right-2 flex flex-col gap-2 z-[400]">
                  <button onClick={() => setStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white/90 p-2 rounded shadow text-slate-700 hover:text-green-600 text-xs font-bold backdrop-blur">
@@ -284,6 +323,7 @@ export const SettingsPage = () => {
                         <InlineMap 
                             position={profile.addressGeo || null} 
                             setPosition={(p) => setProfile({...profile, addressGeo: p})} 
+                            iconType='farm'
                         />
                     </div>
 
@@ -367,6 +407,7 @@ export const SettingsPage = () => {
                             <InlineMap 
                                 position={newStorage.geo || null}
                                 setPosition={(p) => setNewStorage({...newStorage, geo: p})}
+                                iconType={newStorage.type === FertilizerType.SLURRY ? 'slurry' : 'manure'}
                             />
                         </div>
 
