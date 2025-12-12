@@ -1,27 +1,44 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { dbService } from '../services/db';
 import { FarmProfile, StorageLocation, FertilizerType, GeoPoint, AppSettings, DEFAULT_SETTINGS } from '../types';
-import { Save, Plus, Trash2, Navigation, X, Building2, Droplets, Search, Loader2, Check, Pencil, Settings as SettingsIcon, Database, Download, Upload, Wifi, Palette, Users, Lock, Key, LocateFixed, Layers, Tractor, Activity } from 'lucide-react';
+import { Save, Plus, Trash2, Navigation, X, Building2, Droplets, Search, Loader2, Check, Pencil, Settings as SettingsIcon, Database, Download, Upload, Wifi, Palette, Users, Lock, Key, LocateFixed, Layers, Tractor, Activity, MapPin } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import { geocodeAddress } from '../utils/geo';
 import L from 'leaflet';
 import { syncData } from '../services/sync';
 import { ICON_THEMES, getAppIcon } from '../utils/appIcons';
 
+// --- Custom Icon for Settings Map (Fix missing PNG issue) ---
+const settingsPinIcon = L.divIcon({
+  className: 'custom-pin-icon',
+  html: `<div style="background-color: #2563eb; width: 24px; height: 24px; border-radius: 50%; border: 2px solid white; box-shadow: 0 2px 5px rgba(0,0,0,0.3); display: flex; align-items: center; justify-content: center; color: white;"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg></div>`,
+  iconSize: [24, 24],
+  iconAnchor: [12, 12]
+});
+
 // --- Helper Components ---
 
 const LocationMarker = ({ position, setPosition }: { position: GeoPoint | null, setPosition: (p: GeoPoint) => void }) => {
+    const map = useMap();
+    
     useMapEvents({
         click(e) {
             setPosition({ lat: e.latlng.lat, lng: e.latlng.lng });
+            // Direct set view, no fly animation
+            map.setView(e.latlng, map.getZoom(), { animate: false });
         },
     });
-    const map = useMap();
+
     useEffect(() => {
-        if (position) map.flyTo([position.lat, position.lng], map.getZoom());
+        // Initial positioning without animation
+        if (position) {
+            map.setView([position.lat, position.lng], map.getZoom(), { animate: false });
+        }
+        // Force resize to fix grey tiles
+        setTimeout(() => map.invalidateSize(), 200);
     }, [position, map]);
 
-    return position ? <Marker position={[position.lat, position.lng]} /> : null;
+    return position ? <Marker position={[position.lat, position.lng]} icon={settingsPinIcon} /> : null;
 };
 
 const InlineMap = ({ position, setPosition }: { position: GeoPoint | null, setPosition: (p: GeoPoint) => void }) => {
@@ -29,23 +46,26 @@ const InlineMap = ({ position, setPosition }: { position: GeoPoint | null, setPo
     const center = position || { lat: 47.5, lng: 14.5 };
     
     return (
-        <div className="h-64 w-full rounded-xl overflow-hidden border border-slate-300 relative mt-2 shadow-inner group">
-            <MapContainer center={[center.lat, center.lng]} zoom={15} style={{ height: '100%', width: '100%' }}>
+        <div className="h-64 w-full rounded-xl overflow-hidden border border-slate-300 relative mt-2 shadow-inner group z-0">
+            <MapContainer center={[center.lat, center.lng]} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                 <TileLayer attribution='&copy; OpenStreetMap' url={style === 'standard' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} />
                 <LocationMarker position={position} setPosition={setPosition} />
             </MapContainer>
-            <div className="absolute top-2 right-2 flex flex-col gap-2">
+            <div className="absolute top-2 right-2 flex flex-col gap-2 z-[400]">
                  <button onClick={() => setStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white/90 p-2 rounded shadow text-slate-700 hover:text-green-600 text-xs font-bold backdrop-blur">
                     {style === 'standard' ? 'Satellit' : 'Karte'}
                  </button>
                  <button onClick={() => {
-                     navigator.geolocation.getCurrentPosition(pos => setPosition({lat: pos.coords.latitude, lng: pos.coords.longitude}));
+                     navigator.geolocation.getCurrentPosition(pos => {
+                         const p = {lat: pos.coords.latitude, lng: pos.coords.longitude};
+                         setPosition(p);
+                     });
                  }} className="bg-white/90 p-2 rounded shadow text-slate-700 hover:text-blue-600 backdrop-blur" title="Mein Standort">
                     <LocateFixed size={16}/>
                  </button>
             </div>
             {!position && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none">
+                <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none z-[400]">
                     <span className="bg-white/80 px-3 py-1 rounded text-sm text-slate-600 font-medium backdrop-blur">Auf Karte tippen zum Setzen</span>
                 </div>
             )}
@@ -177,7 +197,7 @@ export const SettingsPage = () => {
       )}
 
       {/* Header */}
-      <div className="bg-white p-4 shadow-sm border-b border-slate-200">
+      <div className="bg-white p-4 shadow-sm border-b border-slate-200 shrink-0">
         <h1 className="text-2xl font-bold text-slate-800">Optionen</h1>
         <div className="flex space-x-4 mt-4 text-sm font-medium text-slate-500 overflow-x-auto">
             <button onClick={() => setActiveTab('profile')} className={`pb-2 border-b-2 whitespace-nowrap ${activeTab === 'profile' ? 'border-green-600 text-green-600' : 'border-transparent'}`}>Betrieb</button>
@@ -187,7 +207,7 @@ export const SettingsPage = () => {
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
         
         {/* --- PROFILE TAB --- */}
         {activeTab === 'profile' && (
