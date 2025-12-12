@@ -8,7 +8,6 @@ import { StorageDetailView } from '../components/StorageDetailView';
 import { calculateArea, splitPolygon } from '../utils/geo';
 import L from 'leaflet';
 
-// Explicitly import CSS in component if global fails
 import 'leaflet/dist/leaflet.css';
 
 // ... (Custom Icons Code - Same as before) ...
@@ -228,12 +227,13 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
-    // FIX: Using flex-col and flex-1 explicitly to force height
+    // FIX: Using flex-col and h-full instead of absolute positioning for better layout compatibility
     <div className="flex flex-col h-full w-full relative bg-slate-900 overflow-hidden">
          
-         {/* FIX: Absolute Map Container Wrapper - Forces map to fill everything */}
-         <div className="absolute inset-0 z-0">
-             <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }}>
+         {/* FIX: Map Container takes remaining space */}
+         <div className="flex-1 relative w-full min-h-[400px]">
+             {/* MapContainer must have specific height style */}
+             <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%', position: 'absolute', top: 0, left: 0 }}>
                 <TileLayer 
                     attribution='&copy; OpenStreetMap'
                     url={mapStyle === 'standard' 
