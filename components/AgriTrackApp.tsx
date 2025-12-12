@@ -20,7 +20,6 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
 
   useEffect(() => {
       if (onFullScreenToggle) {
-          // Fullscreen only if tracking AND explicitly viewing the tracking page
           onFullScreenToggle(isActiveTracking && currentView === 'TRACKING');
       }
   }, [isActiveTracking, currentView, onFullScreenToggle]);
@@ -29,52 +28,6 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       if (fieldId) setMapFocusFieldId(fieldId);
       setCurrentView('MAP');
   };
-
-  const renderView = () => {
-    // If tracking is active, ALWAYS render TrackingPage to keep GPS alive.
-    // But hide it if we are on another view.
-    if (isActiveTracking) {
-        return (
-            <>
-                <div className={currentView === 'TRACKING' ? 'w-full h-full' : 'hidden'}>
-                     <TrackingPage 
-                        onMinimize={() => {
-                            // FIX: Switch view to dashboard so tracking page hides
-                            setCurrentView('DASHBOARD');
-                            // Note: We do NOT set isActiveTracking(false) here, because we want GPS to continue!
-                            // The useEffect above will handle showing chrome because currentView != TRACKING
-                        }} 
-                        onNavigate={(view) => setCurrentView(view)} 
-                        onTrackingStateChange={setIsActiveTracking} 
-                      />
-                </div>
-                {/* Render other views if not on tracking page */}
-                {currentView !== 'TRACKING' && renderStandardViews()}
-            </>
-        );
-    }
-
-    // Normal behavior without background tracking
-    if (currentView === 'TRACKING') {
-         return <TrackingPage 
-            onMinimize={() => setCurrentView('DASHBOARD')}
-            onNavigate={(view) => setCurrentView(view)} 
-            onTrackingStateChange={setIsActiveTracking} 
-          />;
-    }
-
-    return renderStandardViews();
-  };
-
-  const renderStandardViews = () => {
-      switch(currentView) {
-          case 'DASHBOARD': return <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />;
-          case 'MAP': return <MapPage initialEditFieldId={mapFocusFieldId} clearInitialEdit={() => setMapFocusFieldId(null)} />;
-          case 'FIELDS': return <FieldsPage onNavigateToMap={navigateToMap} />;
-          case 'SETTINGS': return <SettingsPage />;
-          default: return <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />;
-      }
-  }
 
   const activeTabId = () => {
       if (currentView === 'DASHBOARD') return 'dashboard';
@@ -97,9 +50,7 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   
   // Show Chrome if NOT tracking OR if tracking but looking at another tab
   const showChrome = !isActiveTracking || (isActiveTracking && currentView !== 'TRACKING');
-  
-  // Is this a fullscreen view? (Map or Tracking)
-  const isFullscreenView = currentView === 'MAP' || currentView === 'TRACKING';
+  const isFullscreenView = currentView === 'MAP' || (currentView === 'TRACKING' && isActiveTracking);
 
   return (
     <div className="w-full h-full bg-slate-50 flex flex-col relative overflow-hidden">
@@ -122,7 +73,6 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
                     </>
                 )}
                 </div>
-                {/* REC Indicator - Click to return to tracking */}
                 {isActiveTracking && currentView !== 'TRACKING' && (
                     <button 
                         onClick={() => setCurrentView('TRACKING')}
@@ -138,7 +88,25 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       {/* CONTENT AREA */}
       <div className="flex-1 relative w-full overflow-hidden">
          <div className={`absolute inset-0 ${isFullscreenView ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
-            {renderView()}
+            
+            {/* Standard Views - Conditionally Rendered */}
+            {currentView === 'DASHBOARD' && <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />}
+            {currentView === 'MAP' && <MapPage initialEditFieldId={mapFocusFieldId} clearInitialEdit={() => setMapFocusFieldId(null)} />}
+            {currentView === 'FIELDS' && <FieldsPage onNavigateToMap={navigateToMap} />}
+            {currentView === 'SETTINGS' && <SettingsPage />}
+
+            {/* Tracking Page - ALWAYS Rendered but hidden if not needed (to keep GPS alive) */}
+            <div className={currentView === 'TRACKING' ? 'w-full h-full' : 'hidden'}>
+                <TrackingPage 
+                    onMinimize={() => {
+                        // Switch view but keep tracking active
+                        setCurrentView('DASHBOARD');
+                    }} 
+                    onNavigate={(view) => setCurrentView(view)} 
+                    onTrackingStateChange={setIsActiveTracking} 
+                />
+            </div>
+
          </div>
       </div>
 
