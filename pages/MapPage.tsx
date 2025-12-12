@@ -168,6 +168,7 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     return field.type === 'Acker' ? '#92400E' : '#15803D'; 
   };
 
+  // ... (Editing Handlers remain same) ...
   const handleStartEditGeometry = (field: Field) => {
       setSelectedField(null);
       setEditingField({ ...field });
@@ -227,10 +228,10 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
-    // FIX: Full height and relative positioning context
-    <div className="h-full w-full relative bg-slate-200 flex flex-col min-h-[600px]">
+    // FIX: Using flex-col and flex-1 explicitly to force height
+    <div className="flex flex-col h-full w-full relative bg-slate-900 overflow-hidden">
          
-         {/* FIX: Absolute Map Container to force fill */}
+         {/* FIX: Absolute Map Container Wrapper - Forces map to fill everything */}
          <div className="absolute inset-0 z-0">
              <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }}>
                 <TileLayer 
