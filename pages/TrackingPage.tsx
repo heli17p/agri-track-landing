@@ -85,7 +85,7 @@ const MapController = ({
     const hasCenteredRef = useRef(false);
 
     useEffect(() => {
-        // FIX: Force resize aggressively to prevent gray tiles
+        // FIX: Force resize aggressively
         const resize = () => {
              map.invalidateSize();
         };
@@ -637,6 +637,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
     if (trackPoints.length === 0) {
         // Wenn keine Punkte da sind, nur Modus resetten, nicht zum Dashboard springen
         setMode('selection');
+        if(onTrackingStateChange) onTrackingStateChange(false);
         return;
     }
 
@@ -863,7 +864,7 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
   }
 
   return (
-    <div className="h-full w-full flex flex-col bg-slate-900 relative overflow-hidden">
+    <div className="h-full flex flex-col bg-slate-50 relative">
       
       {/* GPS Warning Overlay */}
       {isTracking && wrongStorageWarning && (
