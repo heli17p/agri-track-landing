@@ -233,12 +233,12 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
-    // FIX: Full height relative container
-    <div className="h-full w-full relative bg-slate-900 overflow-hidden">
+    // FIX: Using full height relative container and min-height fallback
+    <div className="h-full w-full relative bg-slate-900 min-h-[600px]">
          
          {/* FIX: Absolute Map Container to force fill */}
          <div className="absolute inset-0 z-0">
-             <MapContainer key="map-page-main" center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+             <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                 <TileLayer 
                     attribution='&copy; OpenStreetMap'
                     url={mapStyle === 'standard' 
