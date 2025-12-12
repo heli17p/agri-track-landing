@@ -233,8 +233,8 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
-    // FIX: Full height relative container
-    <div className="h-full w-full relative bg-slate-900 overflow-hidden">
+    // FIX: Using full height relative container and min-height fallback
+    <div className="h-full w-full relative bg-slate-900 min-h-[600px]">
          
          {/* FIX: Absolute Map Container to force fill */}
          <div className="absolute inset-0 z-0">
