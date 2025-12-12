@@ -229,8 +229,8 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     // FIX: Using flex-col and h-full instead of absolute positioning for better layout compatibility
     <div className="flex flex-col h-full w-full relative bg-slate-900 overflow-hidden">
          
-         {/* FIX: Map Container takes remaining space - Using ABSOLUTE positioning inside RELATIVE container to force height */}
-         <div className="flex-1 relative w-full h-full min-h-[400px]">
+         {/* FIX: Map Container Wrapper takes remaining space - Using ABSOLUTE positioning inside RELATIVE container to force height */}
+         <div className="flex-1 relative w-full h-full min-h-0">
              <div className="absolute inset-0 z-0">
                  <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                     <TileLayer 
