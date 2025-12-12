@@ -74,19 +74,26 @@ const MapClickHandler = ({ isEditing, splitMode, onMapClick }: { isEditing: bool
     return null;
 };
 
-// FIX: Improved Map Bounds with ResizeObserver
+// FIX: Improved Map Bounds with stronger Resize Trigger
 const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: FarmProfile | null, focusField?: Field | null }) => {
     const map = useMap();
 
-    useEffect(() => {
-        const container = map.getContainer();
-        const observer = new ResizeObserver(() => {
-            map.invalidateSize();
-        });
-        observer.observe(container);
-        
-        map.invalidateSize(); // Immediate force
+    // Aggressive Resize Fix (Same as TrackingPage)
+    useLayoutEffect(() => {
+        map.invalidateSize();
+    });
 
+    useEffect(() => {
+        const resize = () => map.invalidateSize();
+        // Trigger resize multiple times to catch layout shifts
+        resize();
+        setTimeout(resize, 100);
+        setTimeout(resize, 500);
+        
+        // Also observe container
+        const container = map.getContainer();
+        const observer = new ResizeObserver(resize);
+        observer.observe(container);
         return () => observer.disconnect();
     }, [map]);
 
@@ -231,89 +238,93 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
-    // FIX: Using ABSOLUTE positioning directly on the root of MapPage to force it to fill the parent relative container
-    <div className="absolute inset-0 bg-slate-900 overflow-hidden z-0">
+    // FIX: Using full height relative container and min-height fallback
+    <div className="h-full w-full relative bg-slate-900 min-h-[600px]">
          
-         <MapContainer key="map-page-main" center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-            <TileLayer 
-                attribution='&copy; OpenStreetMap'
-                url={mapStyle === 'standard' 
-                    ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                    : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                }
-            />
-            
-            <MapBounds fields={fields} profile={profile} focusField={editingField} />
-            <MapClickHandler isEditing={isEditing} splitMode={isSplitting} onMapClick={handleMapClickAddPoint} />
+         {/* FIX: Absolute Map Container to force fill */}
+         <div className="absolute inset-0 z-0">
+             {/* KEY forces remount on tab switch if needed */}
+             <MapContainer key="map-page-main" center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                <TileLayer 
+                    attribution='&copy; OpenStreetMap'
+                    url={mapStyle === 'standard' 
+                        ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                    }
+                />
+                
+                <MapBounds fields={fields} profile={profile} focusField={editingField} />
+                <MapClickHandler isEditing={isEditing} splitMode={isSplitting} onMapClick={handleMapClickAddPoint} />
 
-            {profile?.addressGeo && !isEditing && (
-                <Marker position={[profile.addressGeo.lat, profile.addressGeo.lng]} icon={farmIcon}>
-                    <Popup>
-                        <div className="flex items-center space-x-2">
-                            <Building2 size={16} className="text-blue-600"/>
-                            <div><strong>Hof / Betrieb</strong><br/>{profile.operatorName}</div>
-                        </div>
-                    </Popup>
-                </Marker>
-            )}
+                {profile?.addressGeo && !isEditing && (
+                    <Marker position={[profile.addressGeo.lat, profile.addressGeo.lng]} icon={farmIcon}>
+                        <Popup>
+                            <div className="flex items-center space-x-2">
+                                <Building2 size={16} className="text-blue-600"/>
+                                <div><strong>Hof / Betrieb</strong><br/>{profile.operatorName}</div>
+                            </div>
+                        </Popup>
+                    </Marker>
+                )}
 
-            {fields.map(f => {
-                if (isEditing && editingField?.id === f.id) return null; 
-                return (
-                    <Polygon 
-                        key={`${f.id}-${f.color || 'default'}-${mapStyle}`} 
-                        positions={f.boundary.map(p => [p.lat, p.lng])} 
-                        color={getFieldColor(f)}
-                        weight={2}
-                        fillOpacity={0.5}
+                {fields.map(f => {
+                    if (isEditing && editingField?.id === f.id) return null; 
+                    return (
+                        <Polygon 
+                            key={`${f.id}-${f.color || 'default'}-${mapStyle}`} 
+                            positions={f.boundary.map(p => [p.lat, p.lng])} 
+                            color={getFieldColor(f)}
+                            weight={2}
+                            fillOpacity={0.5}
+                            eventHandlers={{
+                                click: (e) => {
+                                    if (isEditing) return;
+                                    L.DomEvent.stopPropagation(e);
+                                    setSelectedField(f);
+                                }
+                            }}
+                        >
+                          <Popup>
+                            <div className="font-bold">{f.name}</div>
+                            <div className="text-xs">{f.areaHa.toFixed(2)} ha | {f.type}</div>
+                          </Popup>
+                        </Polygon>
+                    );
+                })}
+
+                {isEditing && editingField && (
+                    <>
+                        <Polygon 
+                            positions={editingField.boundary.map(p => [p.lat, p.lng])}
+                            pathOptions={{ color: '#2563eb', dashArray: '5, 10', weight: 3, fillOpacity: 0.2 }}
+                        />
+                        {!isSplitting && editingField.boundary.map((p, i) => (
+                            <VertexMarker 
+                                key={`vertex-${i}`} 
+                                index={i} 
+                                position={p} 
+                                onDragEnd={handleVertexDragEnd}
+                                onDelete={handleVertexDelete}
+                            />
+                        ))}
+                    </>
+                )}
+
+                {!isEditing && storages.map(s => (
+                    <Marker 
+                        key={s.id} 
+                        position={[s.geo.lat, s.geo.lng]}
+                        icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
                         eventHandlers={{
                             click: (e) => {
-                                if (isEditing) return;
                                 L.DomEvent.stopPropagation(e);
-                                setSelectedField(f);
+                                setSelectedStorage(s);
                             }
                         }}
-                    >
-                      <Popup>
-                        <div className="font-bold">{f.name}</div>
-                        <div className="text-xs">{f.areaHa.toFixed(2)} ha | {f.type}</div>
-                      </Popup>
-                    </Polygon>
-                );
-            })}
-
-            {isEditing && editingField && (
-                <>
-                    <Polygon 
-                        positions={editingField.boundary.map(p => [p.lat, p.lng])}
-                        pathOptions={{ color: '#2563eb', dashArray: '5, 10', weight: 3, fillOpacity: 0.2 }}
                     />
-                    {!isSplitting && editingField.boundary.map((p, i) => (
-                        <VertexMarker 
-                            key={`vertex-${i}`} 
-                            index={i} 
-                            position={p} 
-                            onDragEnd={handleVertexDragEnd}
-                            onDelete={handleVertexDelete}
-                        />
-                    ))}
-                </>
-            )}
-
-            {!isEditing && storages.map(s => (
-                <Marker 
-                    key={s.id} 
-                    position={[s.geo.lat, s.geo.lng]}
-                    icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
-                    eventHandlers={{
-                        click: (e) => {
-                            L.DomEvent.stopPropagation(e);
-                            setSelectedStorage(s);
-                        }
-                    }}
-                />
-            ))}
-         </MapContainer>
+                ))}
+             </MapContainer>
+         </div>
 
          {/* Map Controls */}
          <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400] pointer-events-auto">
