@@ -34,7 +34,13 @@ export const AuthPage: React.FC<Props> = ({ onLoginSuccess, onGuestAccess }) => 
                 setMode('LOGIN');
             }
         } catch (err: any) {
-            setError(err.message || "Ein Fehler ist aufgetreten.");
+            // Smart Error Handling
+            if (mode === 'REGISTER' && err.message.includes('bereits verwendet')) {
+                 setMode('LOGIN');
+                 setMessage("Konto existiert bereits. Bitte einloggen.");
+            } else {
+                 setError(err.message || "Ein Fehler ist aufgetreten.");
+            }
         } finally {
             setLoading(false);
         }
@@ -80,7 +86,7 @@ export const AuthPage: React.FC<Props> = ({ onLoginSuccess, onGuestAccess }) => 
                                 </div>
                             )}
                             {message && (
-                                <div className="bg-green-50 text-green-600 p-3 rounded-lg text-sm flex items-start">
+                                <div className="bg-blue-50 text-blue-600 p-3 rounded-lg text-sm flex items-start">
                                     <CheckCircle2 size={16} className="mr-2 mt-0.5 shrink-0"/>
                                     {message}
                                 </div>
