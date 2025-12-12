@@ -29,6 +29,25 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       setCurrentView('MAP');
   };
 
+  const renderView = () => {
+    switch(currentView) {
+      case 'DASHBOARD': return <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />;
+      case 'TRACKING': return (
+          <TrackingPage 
+            onMinimize={() => {
+                setIsActiveTracking(false);
+            }} 
+            onNavigate={(view) => setCurrentView(view)} 
+            onTrackingStateChange={setIsActiveTracking} 
+          />
+      );
+      case 'MAP': return <MapPage initialEditFieldId={mapFocusFieldId} clearInitialEdit={() => setMapFocusFieldId(null)} />;
+      case 'FIELDS': return <FieldsPage onNavigateToMap={navigateToMap} />;
+      case 'SETTINGS': return <SettingsPage />;
+      default: return <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />;
+    }
+  };
+
   const activeTabId = () => {
       if (currentView === 'DASHBOARD') return 'dashboard';
       if (currentView === 'TRACKING') return 'track';
@@ -48,12 +67,10 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
 
   const isLive = isCloudConfigured();
   const showChrome = !isActiveTracking;
-  
-  // Decide if the view needs a scroll container or full height lock
   const isFullscreenView = currentView === 'MAP' || currentView === 'TRACKING';
 
   return (
-    <div className="w-full h-full bg-slate-50 flex flex-col relative overflow-hidden">
+    <div className="w-full h-full flex flex-col relative bg-slate-50 overflow-hidden">
       
       {/* HEADER */}
       {showChrome && (
@@ -72,7 +89,6 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
                   </>
               )}
             </div>
-            {/* REC Indicator if tracking in background */}
             {isActiveTracking && currentView !== 'TRACKING' && (
                 <button 
                     onClick={() => setCurrentView('TRACKING')}
@@ -85,24 +101,17 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       )}
 
       {/* CONTENT AREA */}
-      <div className="flex-1 relative w-full overflow-hidden">
-         {/* 
-            Wenn Fullscreen (Map/Tracking): Absolute inset-0 und kein Scroll
-            Sonst: Absolute inset-0 mit Auto-Scroll 
-         */}
-         <div className={`absolute inset-0 ${isFullscreenView ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
+      {/* FIX: Use absolute inset-0 to force fill parent container in App.tsx */}
+      <div className="flex-1 relative w-full h-full overflow-hidden">
+         {/* If Map/Tracking, no scroll. Else auto scroll. */}
+         <div className={`absolute inset-0 w-full h-full ${isFullscreenView ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
             {currentView === 'DASHBOARD' && <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />}
             
-            {/* TrackingPage rendern wir bedingt oder immer, je nach Logik. 
-                Hier rendern wir sie immer wenn view=TRACKING oder active=true, 
-                aber wir steuern die Sichtbarkeit. */}
+            {/* Conditional Rendering for Tracking to keep GPS alive if needed */}
             {(currentView === 'TRACKING' || isActiveTracking) && (
-                <div className={currentView === 'TRACKING' ? 'h-full w-full' : 'hidden'}>
+                <div className={currentView === 'TRACKING' ? 'w-full h-full' : 'hidden'}>
                      <TrackingPage 
-                        onMinimize={() => {
-                            setIsActiveTracking(false);
-                            // Stay on selection screen implicitly
-                        }} 
+                        onMinimize={() => { setIsActiveTracking(false); }} 
                         onNavigate={(view) => setCurrentView(view)} 
                         onTrackingStateChange={setIsActiveTracking} 
                       />

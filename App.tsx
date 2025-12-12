@@ -144,13 +144,13 @@ const App: React.FC = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gray-50 flex flex-col font-sans">
+    <div className="w-full h-full flex flex-col bg-gray-50 font-sans overflow-hidden">
       
       {showLoginModal && <AdminLoginModal onLogin={handleAdminLogin} onClose={() => setShowLoginModal(false)} />}
 
       {/* Guest Banner - Hide when in full screen tracking */}
       {isGuest && !isFullScreen && (
-          <div className="bg-slate-800 text-slate-300 text-xs py-1 px-4 text-center flex justify-center items-center relative z-[60]">
+          <div className="bg-slate-800 text-slate-300 text-xs py-1 px-4 text-center flex justify-center items-center relative z-[60] shrink-0">
               <CloudOff size={12} className="mr-2"/>
               <span>Gastmodus: Daten werden nur lokal gespeichert.</span>
               <button 
@@ -168,7 +168,7 @@ const App: React.FC = () => {
 
       {/* Navigation - Hide when in full screen tracking */}
       {!isFullScreen && (
-        <nav className="bg-white border-b border-gray-200 sticky top-0 z-50">
+        <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shrink-0">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
             <div className="flex justify-between h-16">
                 <div className="flex items-center cursor-pointer" onClick={() => setActiveTab(Tab.HOME)}>
@@ -284,10 +284,10 @@ const App: React.FC = () => {
       )}
 
       {/* Main Content */}
-      {/* IMPORTANT: If isFullScreen, ensure container takes 100% of viewport, ignoring nav */}
-      <main className={`flex-grow flex flex-col ${isFullScreen ? 'h-screen' : ''}`}>
+      {/* FIX: Simplified structure. Flex-1 ensures it takes all remaining space. */}
+      <main className={`flex-1 relative overflow-hidden flex flex-col w-full h-full`}>
         {activeTab === Tab.HOME && !isFullScreen && (
-          <>
+          <div className="h-full overflow-y-auto">
             <Hero onLaunchApp={launchApp} />
             <AppShowcase />
             <div className="bg-white border-b border-gray-200">
@@ -309,17 +309,33 @@ const App: React.FC = () => {
                     </div>
                 </div>
             )}
-          </>
+            
+            {/* Footer inside scrollable area for Home */}
+            <footer className="bg-white border-t border-gray-200 mt-auto shrink-0">
+                <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
+                <div className="flex flex-col md:flex-row justify-between items-center">
+                    <div className="mb-4 md:mb-0">
+                    <p className="text-sm text-gray-500">
+                        &copy; {new Date().getFullYear()} AgriTrack Austria. Open Source & Forever Live.
+                    </p>
+                    </div>
+                    <div className="flex space-x-6 text-sm text-gray-500">
+                    <a href="#" className="hover:text-agri-600 transition-colors">Impressum</a>
+                    </div>
+                </div>
+                </div>
+            </footer>
+          </div>
         )}
 
         {/* --- PROTECTED APP TAB --- */}
         {activeTab === Tab.APP && (
-          // IMPORTANT: If isFullScreen, use fixed 100vh. Otherwise calculate remaining height.
-          <div className={`bg-gray-100 flex-1 flex flex-col overflow-hidden relative ${isFullScreen ? 'h-screen fixed inset-0 z-[1000]' : 'h-[calc(100vh-64px)]'}`}>
+          // FIX: Absolute positioning to ensure full coverage of parent flex item
+          <div className="absolute inset-0 bg-gray-100 flex flex-col">
             {isAuthenticated || isGuest ? (
                <AgriTrackApp onFullScreenToggle={setIsFullScreen} />
             ) : (
-               <div className="h-full flex flex-col items-center justify-center min-h-[60vh]">
+               <div className="h-full w-full flex items-center justify-center">
                    <AuthPage onLoginSuccess={() => {}} onGuestAccess={handleGuestAccess} />
                </div>
             )}
@@ -327,38 +343,25 @@ const App: React.FC = () => {
         )}
 
         {activeTab === Tab.ADMIN && isAdmin && !isFullScreen && (
-          <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-            <div className="mb-8 text-center">
-              <h2 className="text-3xl font-bold text-gray-900">Admin Konsole</h2>
+          <div className="h-full overflow-y-auto">
+            <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+                <div className="mb-8 text-center">
+                <h2 className="text-3xl font-bold text-gray-900">Admin Konsole</h2>
+                </div>
+                <FeedbackBoard isAdmin={true} />
             </div>
-            <FeedbackBoard isAdmin={true} />
           </div>
         )}
 
         {activeTab === Tab.CHANGELOG && !isFullScreen && (
-          <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-            <VersionHistory />
+          <div className="h-full overflow-y-auto">
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+                <VersionHistory />
+            </div>
           </div>
         )}
       </main>
 
-      {/* Footer - Hide when in full screen tracking */}
-      {!isFullScreen && (
-        <footer className="bg-white border-t border-gray-200 mt-auto shrink-0">
-            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-            <div className="flex flex-col md:flex-row justify-between items-center">
-                <div className="mb-4 md:mb-0">
-                <p className="text-sm text-gray-500">
-                    &copy; {new Date().getFullYear()} AgriTrack Austria. Open Source & Forever Live.
-                </p>
-                </div>
-                <div className="flex space-x-6 text-sm text-gray-500">
-                <a href="#" className="hover:text-agri-600 transition-colors">Impressum</a>
-                </div>
-            </div>
-            </div>
-        </footer>
-      )}
     </div>
   );
 };
