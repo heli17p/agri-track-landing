@@ -74,26 +74,21 @@ const MapClickHandler = ({ isEditing, splitMode, onMapClick }: { isEditing: bool
     return null;
 };
 
-// FIX: Improved Map Bounds with stronger Resize Trigger
+// FIX: Improved Map Bounds with ResizeObserver
 const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: FarmProfile | null, focusField?: Field | null }) => {
     const map = useMap();
 
-    // Aggressive Resize Fix (Same as TrackingPage)
-    useLayoutEffect(() => {
-        map.invalidateSize();
-    });
-
+    // Use ResizeObserver to detect container changes
     useEffect(() => {
-        const resize = () => map.invalidateSize();
-        // Trigger resize multiple times to catch layout shifts
-        resize();
-        setTimeout(resize, 100);
-        setTimeout(resize, 500);
-        
-        // Also observe container
         const container = map.getContainer();
-        const observer = new ResizeObserver(resize);
+        const observer = new ResizeObserver(() => {
+            map.invalidateSize();
+        });
         observer.observe(container);
+        
+        // Initial force
+        map.invalidateSize();
+
         return () => observer.disconnect();
     }, [map]);
 
@@ -238,8 +233,8 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
-    // FIX: Using full height relative container and min-height fallback
-    <div className="h-full w-full relative bg-slate-900 min-h-[600px]">
+    // FIX: Full height relative container
+    <div className="h-full w-full relative bg-slate-900 overflow-hidden">
          
          {/* FIX: Absolute Map Container to force fill */}
          <div className="absolute inset-0 z-0">
