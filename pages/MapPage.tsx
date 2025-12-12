@@ -8,40 +8,11 @@ import { StorageDetailView } from '../components/StorageDetailView';
 import { calculateArea, splitPolygon } from '../utils/geo';
 import L from 'leaflet';
 
-// ... (Custom Icons Code - Same as before) ...
+// ... (Custom Icons Code - Same as before, kept concise) ...
 const createCustomIcon = (color: string, svgPath: string) => {
   return L.divIcon({
     className: 'custom-pin-icon',
-    html: `
-      <div style="
-        background-color: ${color};
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        border: 2px solid white;
-        box-shadow: 0 3px 8px rgba(0,0,0,0.4);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        position: relative;
-      ">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          ${svgPath}
-        </svg>
-        <div style="
-          width: 0; 
-          height: 0; 
-          border-left: 6px solid transparent; 
-          border-right: 6px solid transparent; 
-          border-top: 8px solid ${color}; 
-          position: absolute; 
-          bottom: -7px; 
-          left: 50%; 
-          transform: translateX(-50%);
-        "></div>
-      </div>
-    `,
+    html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; box-shadow: 0 3px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: white; position: relative;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${svgPath}</svg><div style="width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid ${color}; position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%);"></div></div>`,
     iconSize: [32, 40],
     iconAnchor: [16, 40], 
     popupAnchor: [0, -42]
@@ -58,7 +29,6 @@ const farmIcon = createCustomIcon('#2563eb', iconPaths.house);
 const slurryIcon = createCustomIcon('#78350f', iconPaths.droplet); 
 const manureIcon = createCustomIcon('#d97706', iconPaths.layers); 
 
-// ... (VertexMarker und MapClickHandler bleiben gleich) ...
 const VertexMarker = ({ position, index, onDragEnd, onDelete }: { position: GeoPoint, index: number, onDragEnd: (i: number, lat: number, lng: number) => void, onDelete: (i: number) => void }) => {
     const markerRef = useRef<L.Marker>(null);
     const eventHandlers = useMemo(() => ({
@@ -102,11 +72,9 @@ const MapClickHandler = ({ isEditing, splitMode, onMapClick }: { isEditing: bool
     return null;
 };
 
-// FIX: Map Bounds Controller with Resize Trigger
 const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: FarmProfile | null, focusField?: Field | null }) => {
     const map = useMap();
 
-    // Aggressive Resize Fix
     useEffect(() => {
         const resize = () => map.invalidateSize();
         resize();
@@ -115,7 +83,6 @@ const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: 
     }, [map]);
 
     useEffect(() => {
-        // If we have a focus field (Edit mode), zoom to it
         if (focusField && focusField.boundary.length > 0) {
              const polygon = L.polygon(focusField.boundary.map(p => [p.lat, p.lng]));
              try {
@@ -124,7 +91,6 @@ const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: 
              return;
         }
 
-        // Otherwise zoom to all content
         const layers = [];
         if (fields.length > 0) {
             fields.forEach(f => {
@@ -144,7 +110,6 @@ const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: 
                 map.fitBounds(group.getBounds(), { padding: [50, 50] });
             } catch(e) {}
         } else {
-            // Default View Austria
             map.setView([47.5, 14.5], 7);
         }
     }, [fields, map, profile, focusField]);
@@ -199,7 +164,6 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     return field.type === 'Acker' ? '#92400E' : '#15803D'; 
   };
 
-  // ... (Editing Handlers remain same) ...
   const handleStartEditGeometry = (field: Field) => {
       setSelectedField(null);
       setEditingField({ ...field });
@@ -259,10 +223,11 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
 
   return (
-    <div className="h-full w-full relative bg-slate-900"> {/* Set BG to dark to see if container exists */}
-         {/* ABSOLUTE MAP CONTAINER TO FORCE FULL HEIGHT */}
+    <div className="h-full w-full relative bg-slate-900"> {/* Dark BG for visibility check */}
+         
+         {/* FIX: Absolute Map Container */}
          <div className="absolute inset-0 z-0">
-             <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%', minHeight: '100%' }}>
+             <MapContainer center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }}>
                 <TileLayer 
                     attribution='&copy; OpenStreetMap'
                     url={mapStyle === 'standard' 
@@ -274,7 +239,6 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                 <MapBounds fields={fields} profile={profile} focusField={editingField} />
                 <MapClickHandler isEditing={isEditing} splitMode={isSplitting} onMapClick={handleMapClickAddPoint} />
 
-                {/* Farm Location */}
                 {profile?.addressGeo && !isEditing && (
                     <Marker position={[profile.addressGeo.lat, profile.addressGeo.lng]} icon={farmIcon}>
                         <Popup>
@@ -286,7 +250,6 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                     </Marker>
                 )}
 
-                {/* Standard Fields */}
                 {fields.map(f => {
                     if (isEditing && editingField?.id === f.id) return null; 
                     return (
@@ -312,7 +275,6 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                     );
                 })}
 
-                {/* EDIT MODE */}
                 {isEditing && editingField && (
                     <>
                         <Polygon 
@@ -331,7 +293,6 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                     </>
                 )}
 
-                {/* Storages */}
                 {!isEditing && storages.map(s => (
                     <Marker 
                         key={s.id} 
@@ -370,7 +331,7 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
             </button>
          </div>
 
-         {/* EDIT UI */}
+         {/* EDIT UI OVERLAY */}
          {isEditing && editingField && (
              <div className="absolute top-4 left-4 right-16 z-[500] bg-white/95 backdrop-blur p-4 rounded-xl shadow-xl border-2 border-blue-500">
                  <div className="flex justify-between items-center mb-2">
@@ -397,9 +358,9 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
              </div>
          )}
 
-         {/* LEGEND (Only visible when not editing) */}
+         {/* LEGEND */}
          {!isEditing && (
-             <div className="absolute bottom-20 left-4 bg-white/90 p-3 rounded-lg shadow-lg z-[400] text-xs backdrop-blur-sm border border-slate-200 pointer-events-none">
+             <div className="absolute bottom-4 left-4 bg-white/90 p-3 rounded-lg shadow-lg z-[400] text-xs backdrop-blur-sm border border-slate-200 pointer-events-none">
                  <div className="font-bold mb-2 text-slate-700">Legende</div>
                  {hasGrunland && <div className="flex items-center mb-1"><span className="w-3 h-3 rounded-sm mr-2" style={{background: mapStyle === 'satellite' ? '#84CC16' : '#15803D'}}></span><span>Grünland</span></div>}
                  {hasAcker && <div className="flex items-center mb-1"><span className="w-3 h-3 rounded-sm mr-2" style={{background: mapStyle === 'satellite' ? '#F59E0B' : '#92400E'}}></span><span>Acker</span></div>}
