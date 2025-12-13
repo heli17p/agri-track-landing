@@ -169,7 +169,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
     <div className="h-full bg-slate-50 flex flex-col relative overflow-hidden">
       {renderTabs()}
 
-      <div className="flex-1 overflow-y-auto pb-24">
+      <div className="flex-1 overflow-y-auto pb-32">
           
           {/* --- PROFILE TAB --- */}
           {activeTab === 'profile' && (
@@ -621,7 +621,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       </div>
 
       {/* Floating Save Button */}
-      <div className="absolute bottom-6 right-6">
+      <div className="absolute bottom-24 right-6 z-30">
           <button 
               onClick={handleSaveAll}
               disabled={saving}
