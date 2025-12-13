@@ -89,7 +89,12 @@ export const dbService = {
           if (snap.exists()) {
               return snap.data().members || [];
           }
-      } catch (e) { console.error(e); }
+      } catch (e: any) { 
+          // Suppress offline errors
+          if (e.code !== 'unavailable' && !e.message?.includes('offline')) {
+             console.error("Fetch members error:", e); 
+          }
+      }
       return [];
   },
 
@@ -103,9 +108,11 @@ export const dbService = {
           const q = query(collection(db, 'activities'), where("farmId", "==", farmId));
           const snap = await getDocs(q);
           return { activities: snap.size };
-      } catch (e) { 
-          console.error("Cloud Stats Error:", e);
+      } catch (e: any) { 
           // Return special value to indicate error/offline
+          if (e.code !== 'unavailable' && !e.message?.includes('offline')) {
+             console.error("Cloud Stats Error:", e);
+          }
           return { activities: -1 }; 
       }
   },

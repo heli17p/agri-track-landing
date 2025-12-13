@@ -86,27 +86,31 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
       const st = await dbService.getStorageLocations();
       setStorages(st);
+      
+      // CRITICAL FIX: UI is ready for interaction with local data immediately
+      setLoading(false); 
 
-      // Cloud Data attempt
+      // Load Cloud Data in background if configured
       if (isCloudConfigured() && s.farmId) {
           loadCloudData(s.farmId);
-      } else {
-        setLoading(false);
       }
   };
 
   const loadCloudData = async (farmId: string) => {
       setIsLoadingCloud(true);
       try {
-        const members = await dbService.getFarmMembers(farmId);
+        // Use Promise.allSettled or just sequential try/catch to ensure one failure doesn't block the other
+        const membersPromise = dbService.getFarmMembers(farmId);
+        const statsPromise = dbService.getCloudStats(farmId);
+        
+        const [members, stats] = await Promise.all([membersPromise, statsPromise]);
+        
         setCloudMembers(members);
-        const stats = await dbService.getCloudStats(farmId);
         setCloudStats(stats);
       } catch (e) {
-        console.error("Cloud load error", e);
+        console.warn("Cloud load warning (offline?):", e);
       } finally {
         setIsLoadingCloud(false);
-        setLoading(false);
       }
   };
 
@@ -513,7 +517,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                   </div>
                                   <div className="font-mono text-sm flex items-center">
                                     {cloudStats.activities === -1 ? (
-                                        <span className="flex items-center text-white/50 text-[10px]" title="Keine Verbindung"><WifiOff size={10} className="mr-1"/> Offline</span>
+                                        <span className="flex items-center text-white/50 text-[10px]" title="Keine Verbindung oder Offline"><WifiOff size={10} className="mr-1"/> ?</span>
                                     ) : (
                                         cloudStats.activities
                                     )}
