@@ -223,12 +223,14 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           }
           
           setShowSaveSuccess(true);
+          // Wait briefly then hide checkmark
+          await new Promise(resolve => setTimeout(resolve, 2000));
+          setShowSaveSuccess(false);
       } catch (e: any) {
           alert("Fehler beim Speichern: " + e.message);
       } finally {
-          // Critical: Always stop the spinner
+          // Critical: Always stop the spinner, even on error
           setSaving(false);
-          setTimeout(() => setShowSaveSuccess(false), 2000);
       }
   };
 
@@ -260,16 +262,16 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   };
 
   const handleForceUpload = async () => {
-      if (!window.confirm("Alle lokalen Daten (inkl. Felder, Lager, Profil) werden erneut an die Cloud gesendet. Fortfahren?")) return;
+      if (!window.confirm("Alle lokalen Daten (inkl. Felder, Lager, Profil) werden an die Cloud gesendet. Fortfahren?")) return;
       
-      // Ensure settings (specifically Farm ID) are saved first so upload knows where to go
-      await dbService.saveSettings(settings);
-
       setIsUploading(true);
       setUploadProgress(0);
       setUploadStatusText('Vorbereitung...');
       
       try {
+          // Ensure settings (specifically Farm ID) are saved first so upload knows where to go
+          await dbService.saveSettings(settings);
+
           await dbService.forceUploadToFarm((msg, percent) => {
               setUploadStatusText(msg);
               setUploadProgress(percent);
@@ -752,7 +754,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
               <span>{showSaveSuccess ? 'Gespeichert!' : 'Einstellungen Speichern'}</span>
           </button>
           <div className="mt-1 text-[10px] text-slate-400 font-medium bg-white/80 px-2 py-0.5 rounded shadow-sm backdrop-blur">
-              Sichert Profil, Allgemein & Cloud
+              Sichert Betrieb, Allgemein & Cloud
           </div>
       </div>
 

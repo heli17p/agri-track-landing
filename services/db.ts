@@ -247,8 +247,8 @@ export const dbService = {
 
       // Helper to process items robustly (don't fail batch on one error)
       const processItems = async (type: string, items: any[]) => {
-          // Process sequentially or in small parallel batches to avoid flooding
-          // Using Promise.allSettled to ensure all are attempted
+          // Process items using Promise.allSettled so one failure doesn't stop the rest
+          // This is critical for guest data migration where some IDs might be old
           const promises = items.map(item => saveData(type as any, item));
           const results = await Promise.allSettled(promises);
           
