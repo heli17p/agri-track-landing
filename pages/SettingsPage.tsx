@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { dbService } from '../services/db';
 import { FarmProfile, StorageLocation, FertilizerType, GeoPoint, AppSettings, DEFAULT_SETTINGS } from '../types';
-import { Save, Plus, Trash2, Navigation, X, Building2, Droplets, Search, Loader2, Check, Pencil, Settings as SettingsIcon, Database, Download, Upload, Wifi, Palette, Users, Lock, Key, LocateFixed, Layers, Tractor, Activity, MapPin, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { Save, Plus, Trash2, Navigation, X, Building2, Droplets, Search, Loader2, Check, Pencil, Settings as SettingsIcon, Database, Download, Upload, Wifi, Palette, Users, Lock, Key, LocateFixed, Layers, Tractor, Activity, MapPin, Eye, EyeOff, AlertTriangle, CloudUpload } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import { geocodeAddress } from '../utils/geo';
 import L from 'leaflet';
@@ -171,6 +171,7 @@ export const SettingsPage = () => {
 
   // Sync State
   const [isTestingConn, setIsTestingConn] = useState(false);
+  const [isUploading, setIsUploading] = useState(false);
   
   // Restore State
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -265,6 +266,27 @@ export const SettingsPage = () => {
           alert(`Fehler: ${e.message}`);
       } finally {
           setIsTestingConn(false);
+      }
+  };
+  
+  // NEW: Force Upload Handler
+  const handleForceUpload = async () => {
+      if (!appSettings.farmId) {
+          alert("Bitte zuerst eine Betriebsnummer eingeben.");
+          return;
+      }
+      if (!confirm(`WARNUNG: Dies lädt ALLE lokalen Daten in den Betrieb "${appSettings.farmId}" hoch.\n\nNur machen, wenn die Cloud leer ist oder Daten fehlen!`)) {
+          return;
+      }
+
+      setIsUploading(true);
+      try {
+          await dbService.forceUploadToFarm(); 
+          showNotification(`Daten an Betrieb ${appSettings.farmId} gesendet.`);
+      } catch (e: any) {
+          alert("Fehler beim Hochladen: " + e.message);
+      } finally {
+          setIsUploading(false);
       }
   };
 
@@ -628,6 +650,21 @@ export const SettingsPage = () => {
                         >
                             {isTestingConn ? <Loader2 className="animate-spin"/> : <Wifi size={20}/>}
                         </button>
+                    </div>
+
+                    {/* NEW: Force Upload Button */}
+                    <div className="pt-4 border-t border-blue-200">
+                        <button 
+                            onClick={handleForceUpload}
+                            disabled={isUploading}
+                            className="w-full text-xs font-bold text-blue-800 flex items-center justify-center hover:underline disabled:opacity-50"
+                        >
+                            {isUploading ? <Loader2 className="animate-spin mr-2" size={14}/> : <CloudUpload className="mr-2" size={14}/>}
+                            Lokale Daten in diesen Betrieb hochladen
+                        </button>
+                        <p className="text-[10px] text-blue-600/70 text-center mt-1">
+                            Nutzen, wenn Daten auf anderen Geräten fehlen.
+                        </p>
                     </div>
                 </div>
 

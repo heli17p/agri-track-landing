@@ -63,6 +63,23 @@ export const dbService = {
           throw e;
       }
   },
+  
+  // NEW: Force Upload current local data to configured farm
+  forceUploadToFarm: async () => {
+      if (!isCloudConfigured()) throw new Error("Nicht eingeloggt.");
+      
+      const activities = loadLocalData('activity') as ActivityRecord[];
+      console.log(`[Force Upload] Starte Upload von ${activities.length} Aktivitäten...`);
+      
+      let count = 0;
+      for (const act of activities) {
+          // SaveData handles the farmId logic internally based on current settings
+          await saveData('activity', act);
+          count++;
+          if (count % 10 === 0) console.log(`[Force Upload] ${count} gesendet...`);
+      }
+      console.log("[Force Upload] Fertig.");
+  },
 
   // --- MIGRATION (GUEST -> CLOUD) ---
   migrateGuestDataToCloud: async () => {
