@@ -1,4 +1,4 @@
-import { Activity, AppSettings, Trip, DEFAULT_SETTINGS, Field } from '../types';
+import { Activity, AppSettings, Trip, DEFAULT_SETTINGS, Field, StorageLocation, FarmProfile } from '../types';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, Timestamp, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
@@ -54,6 +54,8 @@ const STORAGE_KEY_SETTINGS = 'agritrack_settings_full'; // Unified key
 const STORAGE_KEY_ACTIVITIES = 'agritrack_activities';
 const STORAGE_KEY_TRIPS = 'agritrack_trips';
 const STORAGE_KEY_FIELDS = 'agritrack_fields';
+const STORAGE_KEY_STORAGE = 'agritrack_storage';
+const STORAGE_KEY_PROFILE = 'agritrack_profile';
 
 // --- SETTINGS ---
 export const loadSettings = (): AppSettings => {
@@ -120,20 +122,28 @@ export const fetchCloudSettings = async (): Promise<AppSettings | null> => {
 
 // --- DATA HANDLING (HYBRID) ---
 
-export const saveData = async (type: 'activity' | 'trip' | 'field', data: Activity | Trip | Field) => {
+export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile', data: any) => {
   // 1. ALWAYS Save Locally (Offline First / Guest Mode)
   let key = STORAGE_KEY_ACTIVITIES;
   if (type === 'trip') key = STORAGE_KEY_TRIPS;
   if (type === 'field') key = STORAGE_KEY_FIELDS;
+  if (type === 'storage') key = STORAGE_KEY_STORAGE;
+  if (type === 'profile') key = STORAGE_KEY_PROFILE;
 
-  const existingStr = localStorage.getItem(key);
-  let existing = existingStr ? JSON.parse(existingStr) : [];
-  
-  const index = existing.findIndex((e: any) => e.id === data.id);
-  if (index >= 0) existing[index] = data;
-  else existing.unshift(data);
-  
-  localStorage.setItem(key, JSON.stringify(existing));
+  // Special handling for Profile (Single Object, not Array)
+  if (type === 'profile') {
+      localStorage.setItem(key, JSON.stringify(data));
+  } else {
+      // Array-based types
+      const existingStr = localStorage.getItem(key);
+      let existing = existingStr ? JSON.parse(existingStr) : [];
+      
+      const index = existing.findIndex((e: any) => e.id === data.id);
+      if (index >= 0) existing[index] = data;
+      else existing.unshift(data);
+      
+      localStorage.setItem(key, JSON.stringify(existing));
+  }
 
   // 2. Sync to Cloud (Only if Logged In)
   if (isCloudConfigured()) {
@@ -146,6 +156,8 @@ export const saveData = async (type: 'activity' | 'trip' | 'field', data: Activi
           let colName = 'activities';
           if (type === 'trip') colName = 'trips';
           if (type === 'field') colName = 'fields';
+          if (type === 'storage') colName = 'storages';
+          if (type === 'profile') colName = 'profiles';
 
           // Deep clone to safely remove undefined values before Firestore
           const payload = JSON.parse(JSON.stringify(data)); 
@@ -156,11 +168,21 @@ export const saveData = async (type: 'activity' | 'trip' | 'field', data: Activi
           payload.farmPin = farmPin;             
           
           // Use ID as doc ID to allow updates (prevent duplicates)
-          await setDoc(doc(db, colName, data.id), payload);
-          
-          // Only log sometimes to avoid spam, or log critical ones
-          if (Math.random() > 0.8 || type === 'field') dbService.logEvent(`[Cloud] ${type} gesendet an Farm ${farmId}`);
-          console.log(`[AgriCloud] Synced ${type} to farm ${farmId}.`);
+          // For profile, use farmId as key to ensure one profile per farm
+          let docId = data.id;
+          if (type === 'profile') docId = farmId;
+
+          if (docId) {
+              await setDoc(doc(db, colName, docId), payload);
+              
+              // Only log sometimes to avoid spam, or log critical ones
+              if (Math.random() > 0.8 || type === 'field' || type === 'storage' || type === 'profile') {
+                  dbService.logEvent(`[Cloud] ${type} gesendet an Farm ${farmId}`);
+              }
+              console.log(`[AgriCloud] Synced ${type} to farm ${farmId}.`);
+          } else {
+              console.error(`[AgriCloud] Missing ID for ${type}, cannot sync.`);
+          }
       } catch (e: any) {
           dbService.logEvent(`[Cloud] Upload Fehler: ${e.message}`);
           console.error("[AgriCloud] Upload failed (User might be offline):", e);
@@ -168,16 +190,18 @@ export const saveData = async (type: 'activity' | 'trip' | 'field', data: Activi
   }
 };
 
-export const loadLocalData = (type: 'activity' | 'trip' | 'field') => {
+export const loadLocalData = (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile') => {
     let key = STORAGE_KEY_ACTIVITIES;
     if (type === 'trip') key = STORAGE_KEY_TRIPS;
     if (type === 'field') key = STORAGE_KEY_FIELDS;
+    if (type === 'storage') key = STORAGE_KEY_STORAGE;
+    if (type === 'profile') key = STORAGE_KEY_PROFILE;
 
     const s = localStorage.getItem(key);
-    return s ? JSON.parse(s) : [];
+    return s ? JSON.parse(s) : (type === 'profile' ? null : []);
 }
 
-export const fetchCloudData = async (type: 'activity' | 'trip' | 'field') => {
+export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile') => {
     if (!isCloudConfigured()) return [];
     
     const settings = loadSettings();
@@ -189,6 +213,8 @@ export const fetchCloudData = async (type: 'activity' | 'trip' | 'field') => {
         let colName = 'activities';
         if (type === 'trip') colName = 'trips';
         if (type === 'field') colName = 'fields';
+        if (type === 'storage') colName = 'storages';
+        if (type === 'profile') colName = 'profiles';
         
         const q = query(
             collection(db, colName), 

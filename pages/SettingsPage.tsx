@@ -165,7 +165,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   };
 
   const handleForceUpload = async () => {
-      if (!window.confirm("Alle lokalen Daten (inkl. Felder) werden erneut an die Cloud gesendet. Fortfahren?")) return;
+      if (!window.confirm("Alle lokalen Daten (inkl. Felder, Lager, Profil) werden erneut an die Cloud gesendet. Fortfahren?")) return;
       
       await dbService.saveSettings(settings);
 
@@ -627,6 +627,29 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                                               Name: {f.name} <br/>
                                                               Fläche: {f.area} ha <br/>
                                                               Typ: {f.type}
+                                                          </div>
+                                                      ))
+                                                  )}
+                                              </div>
+                                              <div>
+                                                  <h4 className="font-bold text-slate-800 mb-1 flex items-center"><Database className="w-3 h-3 mr-1"/> Lager ({inspectorData.storages?.length})</h4>
+                                                  {inspectorData.storages?.length === 0 ? <div className="text-slate-400 italic">Keine gefunden.</div> : (
+                                                      inspectorData.storages.map((s: any, i: number) => (
+                                                          <div key={i} className="bg-white p-2 rounded border mb-1">
+                                                              Name: {s.name} <br/>
+                                                              Typ: {s.type} <br/>
+                                                              Kapazität: {s.capacity}
+                                                          </div>
+                                                      ))
+                                                  )}
+                                              </div>
+                                              <div>
+                                                  <h4 className="font-bold text-slate-800 mb-1 flex items-center"><User className="w-3 h-3 mr-1"/> Profil ({inspectorData.profiles?.length})</h4>
+                                                  {inspectorData.profiles?.length === 0 ? <div className="text-slate-400 italic">Keine gefunden.</div> : (
+                                                      inspectorData.profiles.map((p: any, i: number) => (
+                                                          <div key={i} className="bg-white p-2 rounded border mb-1">
+                                                              Name: {p.name} <br/>
+                                                              Adresse: {p.address}
                                                           </div>
                                                       ))
                                                   )}

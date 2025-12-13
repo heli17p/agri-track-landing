@@ -50,7 +50,7 @@ export const dbService = {
       if (!db) return { error: "DB Init Fehler" };
 
       try {
-          // 1. Check Settings/Profile Doc
+          // 1. Check Settings
           const settingsRef = collection(db, 'settings');
           const qSettings = query(settingsRef, where("farmId", "==", farmId));
           const settingsSnap = await getDocs(qSettings);
@@ -70,7 +70,7 @@ export const dbService = {
           }));
           addLog(`Inspektor: ${actsFound.length} Aktivitäten gefunden.`);
 
-          // 3. Check Fields (NEW)
+          // 3. Check Fields
           const fieldsRef = collection(db, 'fields');
           const qFields = query(fieldsRef, where("farmId", "==", farmId));
           const fieldsSnap = await getDocs(qFields);
@@ -82,10 +82,35 @@ export const dbService = {
           }));
           addLog(`Inspektor: ${fieldsFound.length} Felder gefunden.`);
 
+          // 4. Check Storages
+          const storageRef = collection(db, 'storages');
+          const qStorage = query(storageRef, where("farmId", "==", farmId));
+          const storageSnap = await getDocs(qStorage);
+          const storageFound = storageSnap.docs.map(d => ({
+              id: d.id,
+              name: d.data().name,
+              type: d.data().type,
+              capacity: d.data().capacity
+          }));
+          addLog(`Inspektor: ${storageFound.length} Lager gefunden.`);
+
+          // 5. Check Profiles
+          const profileRef = collection(db, 'profiles');
+          const qProfile = query(profileRef, where("farmId", "==", farmId));
+          const profileSnap = await getDocs(qProfile);
+          const profileFound = profileSnap.docs.map(d => ({
+              id: d.id,
+              name: d.data().operatorName,
+              address: d.data().address
+          }));
+          addLog(`Inspektor: ${profileFound.length} Profile gefunden.`);
+
           return {
               settings: settingsFound,
               activities: actsFound,
               fields: fieldsFound,
+              storages: storageFound,
+              profiles: profileFound,
               meta: {
                   checkedFarmId: farmId,
                   timestamp: new Date().toISOString()
@@ -200,12 +225,12 @@ export const dbService = {
   forceUploadToFarm: async () => {
       if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
       
+      const chunk = 5; 
+
       // 1. Upload Activities
       const activities = loadLocalData('activity') as ActivityRecord[];
       addLog(`[Upload] Starte Upload von ${activities.length} lokalen Aktivitäten...`);
-      
       let count = 0;
-      const chunk = 5; 
       for (let i = 0; i < activities.length; i += chunk) {
           const batch = activities.slice(i, i + chunk);
           await Promise.all(batch.map(act => saveData('activity', act)));
@@ -224,7 +249,21 @@ export const dbService = {
           addLog(`[Upload] Felder ${count}/${fields.length}...`);
       }
 
-      addLog("[Upload] Upload vollständig.");
+      // 3. Upload Storages
+      const storages = loadLocalData('storage') as StorageLocation[];
+      addLog(`[Upload] Starte Upload von ${storages.length} Lagern...`);
+      for (const s of storages) {
+          await saveData('storage', s);
+      }
+
+      // 4. Upload Profile
+      const profiles = await dbService.getFarmProfile(); // Helper that returns array
+      if (profiles.length > 0) {
+          addLog(`[Upload] Sende Betriebsprofil...`);
+          await saveData('profile', profiles[0]);
+      }
+
+      addLog("[Upload] Vollständiger Upload beendet.");
   },
 
   // --- MIGRATION (GUEST -> CLOUD) ---
@@ -328,7 +367,38 @@ export const dbService = {
           addLog(`[Sync] ${newFields} neue Felder gespeichert.`);
       }
 
-      if (newActs > 0 || newFields > 0) {
+      // 4. Sync Storages
+      addLog("[Sync] Lade Lagerorte herunter...");
+      const cloudStorages = await fetchCloudData('storage') as StorageLocation[];
+      const localStorages = loadLocalData('storage') as StorageLocation[];
+      // Simple merge: Cloud wins if ID matches, else add
+      const localStorageIds = new Set(localStorages.map(s => s.id));
+      let newStorages = 0;
+      
+      cloudStorages.forEach(cloudItem => {
+          if (!localStorageIds.has(cloudItem.id)) {
+              localStorages.push(cloudItem);
+              newStorages++;
+          } else {
+              // Update existing? For now, we prefer cloud data if we assume it's master
+              const idx = localStorages.findIndex(s => s.id === cloudItem.id);
+              if (idx >= 0) localStorages[idx] = cloudItem;
+          }
+      });
+      if (newStorages > 0 || cloudStorages.length > 0) {
+          localStorage.setItem('agritrack_storage', JSON.stringify(localStorages));
+          addLog(`[Sync] Lagerorte aktualisiert.`);
+      }
+
+      // 5. Sync Profile
+      addLog("[Sync] Lade Profil...");
+      const cloudProfiles = await fetchCloudData('profile') as FarmProfile[];
+      if (cloudProfiles.length > 0) {
+          localStorage.setItem('agritrack_profile', JSON.stringify(cloudProfiles[0]));
+          addLog(`[Sync] Betriebsprofil aktualisiert.`);
+      }
+
+      if (newActs > 0 || newFields > 0 || newStorages > 0) {
           notify('change');
       } else {
           addLog("[Sync] Lokale Daten sind aktuell.");
@@ -359,8 +429,6 @@ export const dbService = {
   },
   saveField: async (field: Field) => {
     if (!field.id) field.id = generateId();
-    // 1. Save Local
-    // We do this via saveData in storage.ts to simplify code (it does local + cloud)
     await saveData('field', field); 
     notify('change');
   },
@@ -378,11 +446,9 @@ export const dbService = {
     return JSON.parse(s);
   },
   saveStorageLocation: async (storage: StorageLocation) => {
-    const all = await dbService.getStorageLocations();
-    const index = all.findIndex(s => s.id === storage.id);
-    let newList = index >= 0 ? [...all] : [...all, storage];
-    if (index >= 0) newList[index] = storage;
-    localStorage.setItem('agritrack_storage', JSON.stringify(newList));
+    // 1. Save Local (Via saveData helper which does local+cloud)
+    if (!storage.id) storage.id = generateId();
+    await saveData('storage', storage);
     notify('change');
   },
   deleteStorage: async (id: string) => {
@@ -396,7 +462,10 @@ export const dbService = {
       const updated = storages.map(s => {
           return { ...s, currentLevel: Math.min(s.capacity, s.currentLevel + (s.dailyGrowth / 10)) };
       });
+      // Bulk update locally
       localStorage.setItem('agritrack_storage', JSON.stringify(updated));
+      // Cloud update? This runs often (tracking loop). 
+      // Maybe only sync at end of session? For now, we keep it local until a manual save or sync happens.
       notify('change');
   },
 
@@ -406,7 +475,7 @@ export const dbService = {
     return s ? [JSON.parse(s)] : [];
   },
   saveFarmProfile: async (profile: FarmProfile) => {
-    localStorage.setItem('agritrack_profile', JSON.stringify(profile));
+    await saveData('profile', profile);
     notify('change');
   },
   getSettings: async (): Promise<AppSettings> => {
