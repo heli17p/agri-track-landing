@@ -184,10 +184,10 @@ export const dbService = {
   },
 
   getLocalStats: async () => {
-      const activities = loadLocalData('activity') as any[];
-      const fields = loadLocalData('field') as any[];
-      const storages = loadLocalData('storage') as any[];
-      const profiles = await dbService.getFarmProfile();
+      const activities = loadLocalData('activity') as any[] || [];
+      const fields = loadLocalData('field') as any[] || [];
+      const storages = loadLocalData('storage') as any[] || [];
+      const profiles = await dbService.getFarmProfile() || [];
       
       return { 
           total: activities.length + fields.length + storages.length + profiles.length 
@@ -218,7 +218,7 @@ export const dbService = {
       }
   },
 
-  // --- FORCE UPLOAD (ROBUST BATCH VERSION) ---
+  // --- FORCE UPLOAD (FIXED ASYNC VERSION) ---
   forceUploadToFarm: async (onProgress?: (status: string, percent: number) => void) => {
       if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
       
@@ -227,47 +227,69 @@ export const dbService = {
           if (onProgress) onProgress(msg, pct);
       };
 
-      report("Lese lokale Daten...", 0);
+      // 1. Give UI time to render loading state
+      await new Promise(resolve => setTimeout(resolve, 100));
+      report("Initialisiere...", 1);
 
-      // 1. Gather all local items into a single queue
-      const activities = loadLocalData('activity') as any[];
-      const fields = loadLocalData('field') as any[];
-      const storages = loadLocalData('storage') as any[];
-      const profiles = await dbService.getFarmProfile();
-
+      // 2. Load data carefully with delays to prevent UI blocking
       const queue: { type: string, data: any }[] = [];
       
-      activities.forEach(a => queue.push({ type: 'activity', data: a }));
-      fields.forEach(f => queue.push({ type: 'field', data: f }));
-      storages.forEach(s => queue.push({ type: 'storage', data: s }));
-      profiles.forEach(p => queue.push({ type: 'profile', data: p }));
+      try {
+          // Load Profile
+          const profiles = await dbService.getFarmProfile() || [];
+          profiles.forEach(p => queue.push({ type: 'profile', data: p }));
+          await new Promise(r => setTimeout(r, 50)); // Breath
+
+          // Load Settings (Important for Farm ID)
+          const settings = await loadSettingsFromStorage();
+          // We don't push settings to queue usually as they are saved separately, 
+          // but ensure we are targeting the right farm
+          if (!settings.farmId) throw new Error("Keine Farm-ID in den Einstellungen gefunden.");
+
+          // Load Storages
+          const storages = loadLocalData('storage') as any[] || [];
+          storages.forEach(s => queue.push({ type: 'storage', data: s }));
+          await new Promise(r => setTimeout(r, 50));
+
+          // Load Fields
+          const fields = loadLocalData('field') as any[] || [];
+          fields.forEach(f => queue.push({ type: 'field', data: f }));
+          await new Promise(r => setTimeout(r, 50));
+
+          // Load Activities
+          const activities = loadLocalData('activity') as any[] || [];
+          activities.forEach(a => queue.push({ type: 'activity', data: a }));
+      } catch (e: any) {
+          report("Fehler beim Lesen der Daten: " + e.message, 0);
+          throw e;
+      }
 
       if (queue.length === 0) {
           report("Keine lokalen Daten gefunden.", 100);
           return;
       }
 
-      report(`${queue.length} Objekte vorbereitet. Starte Batch-Upload...`, 5);
+      report(`${queue.length} Objekte bereit. Starte Upload...`, 5);
+      await new Promise(r => setTimeout(r, 500)); // Visual pause
 
-      // 2. Process in Batches of 5 to avoid congestion
-      const BATCH_SIZE = 5;
+      // 3. Process in small batches with strict timeout
+      const BATCH_SIZE = 3; // Even smaller batch size
       let processed = 0;
       let errors = 0;
 
       for (let i = 0; i < queue.length; i += BATCH_SIZE) {
           const chunk = queue.slice(i, i + BATCH_SIZE);
           
-          // Create promises for this chunk with a TIMEOUT wrapper
+          // Execute batch
           const promises = chunk.map(item => {
-              // Wrap saveData in a race with a timeout
+              // Timeout wrapper for individual item
               const uploadPromise = saveData(item.type as any, item.data);
               const timeoutPromise = new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error("Timeout (5s)")), 5000)
+                  setTimeout(() => reject(new Error("Timeout (10s)")), 10000)
               );
               return Promise.race([uploadPromise, timeoutPromise]);
           });
 
-          // Wait for this batch to finish (settled means succeeded or failed)
           const results = await Promise.allSettled(promises);
           
           results.forEach(res => {
@@ -275,12 +297,15 @@ export const dbService = {
                   processed++;
               } else {
                   errors++;
-                  addLog(`[Upload] Fehler im Batch: ${res.reason}`);
+                  addLog(`[Upload] Fehler bei Item: ${res.reason}`);
               }
           });
 
           const percent = Math.round(((i + chunk.length) / queue.length) * 100);
-          report(`Sende Paket ${Math.floor(i/BATCH_SIZE) + 1}... (${percent}%)`, percent);
+          report(`Sende ${processed}/${queue.length}... (${percent}%)`, percent);
+          
+          // Force a small pause between batches to keep UI responsive
+          await new Promise(r => setTimeout(r, 100));
       }
 
       if (errors > 0) {
@@ -332,7 +357,7 @@ export const dbService = {
   // --- Activities (Existing) ---
   getActivities: async (): Promise<ActivityRecord[]> => {
     const local = loadLocalData('activity') as ActivityRecord[];
-    return local;
+    return local || [];
   },
   
   syncActivities: async () => {
