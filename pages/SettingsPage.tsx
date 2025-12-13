@@ -3,7 +3,8 @@ import {
   User, Database, Settings, Cloud, Save, Plus, Trash2, 
   MapPin, Truck, AlertTriangle, Info, Share2, UploadCloud, 
   Smartphone, CheckCircle2, X, Shield, Lock, Users, LogOut,
-  ChevronRight, RefreshCw, Copy, WifiOff, FileText, Search, Map
+  ChevronRight, RefreshCw, Copy, WifiOff, FileText, Search, Map,
+  Signal, Activity
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
@@ -258,13 +259,14 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
               setUploadStatusText(msg);
               setUploadProgress(percent);
           });
-          alert("Upload erfolgreich!");
-          setUploadStatusText('');
-          if(settings.farmId) loadCloudData(settings.farmId);
+          setUploadStatusText('Upload erfolgreich!');
+          setTimeout(() => {
+              if(settings.farmId) loadCloudData(settings.farmId);
+              setIsUploading(false);
+          }, 1500);
       } catch (e: any) {
           alert("Fehler: " + e.message);
           setUploadStatusText('Fehler!');
-      } finally {
           setIsUploading(false);
       }
   };
@@ -318,7 +320,8 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       {renderTabs()}
 
       <div className="flex-1 overflow-y-auto pb-32">
-          {/* ... [Profile, Storage, General Tabs omitted for brevity, they are unchanged] ... */}
+          
+          {/* PROFILE TAB */}
           {activeTab === 'profile' && (
               <div className="p-4 space-y-6 max-w-2xl mx-auto">
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 text-center">
@@ -395,6 +398,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
               </div>
           )}
           
+          {/* STORAGE TAB */}
           {activeTab === 'storage' && (
               <div className="p-4 space-y-4 max-w-2xl mx-auto">
                    <div className="flex justify-between items-center mb-2">
@@ -405,7 +409,12 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                       <div key={storage.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
                           <div className="flex items-center space-x-4">
                               <div className={`p-3 rounded-full ${storage.type === FertilizerType.SLURRY ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-800'}`}><Database size={24}/></div>
-                              <div><h4 className="font-bold text-slate-800">{storage.name}</h4><p className="text-xs text-slate-500">{storage.capacity} m³ • {storage.type}</p></div>
+                              <div>
+                                  <h4 className="font-bold text-slate-800">{storage.name}</h4>
+                                  <p className="text-xs text-slate-500">
+                                      {storage.currentLevel?.toFixed(0)}/{storage.capacity} m³ • {storage.type}
+                                  </p>
+                              </div>
                           </div>
                           <div className="flex space-x-2">
                               <button onClick={() => setEditingStorage(storage)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg"><Settings size={20}/></button>
@@ -416,15 +425,45 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
               </div>
           )}
 
+          {/* GENERAL TAB (UPDATED) */}
           {activeTab === 'general' && (
               <div className="p-4 space-y-6 max-w-2xl mx-auto">
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
                       <h3 className="font-bold text-lg text-slate-700 flex items-center"><Truck className="mr-2" size={20}/> Maschinen</h3>
-                      <div className="grid grid-cols-2 gap-4">
-                          <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Güllefass (m³)</label><input type="number" value={settings.slurryLoadSize} onChange={(e) => setSettings({...settings, slurryLoadSize: parseFloat(e.target.value)})} className="w-full p-2 border border-slate-300 rounded-lg font-bold"/></div>
-                          <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Breite (m)</label><input type="number" value={settings.slurrySpreadWidth || 12} onChange={(e) => setSettings({...settings, slurrySpreadWidth: parseFloat(e.target.value)})} className="w-full p-2 border border-slate-300 rounded-lg"/></div>
+                      
+                      <div className="space-y-4">
+                          <div className="grid grid-cols-2 gap-4">
+                              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Güllefass (m³)</label><input type="number" value={settings.slurryLoadSize} onChange={(e) => setSettings({...settings, slurryLoadSize: parseFloat(e.target.value)})} className="w-full p-2 border border-slate-300 rounded-lg font-bold"/></div>
+                              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Breite Gülle (m)</label><input type="number" value={settings.slurrySpreadWidth || 12} onChange={(e) => setSettings({...settings, slurrySpreadWidth: parseFloat(e.target.value)})} className="w-full p-2 border border-slate-300 rounded-lg"/></div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Miststreuer (m³)</label><input type="number" value={settings.manureLoadSize || 8} onChange={(e) => setSettings({...settings, manureLoadSize: parseFloat(e.target.value)})} className="w-full p-2 border border-slate-300 rounded-lg font-bold"/></div>
+                              <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Breite Mist (m)</label><input type="number" value={settings.manureSpreadWidth || 10} onChange={(e) => setSettings({...settings, manureSpreadWidth: parseFloat(e.target.value)})} className="w-full p-2 border border-slate-300 rounded-lg"/></div>
+                          </div>
                       </div>
                   </div>
+
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
+                      <h3 className="font-bold text-lg text-slate-700 flex items-center"><Signal className="mr-2" size={20}/> GPS & Automatik</h3>
+                      <div className="grid grid-cols-3 gap-3">
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Lager Radius (m)</label>
+                              <input type="number" value={settings.storageRadius || 15} onChange={(e) => setSettings({...settings, storageRadius: parseFloat(e.target.value)})} className="w-full p-2 border border-slate-300 rounded-lg text-center font-bold"/>
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Min. Speed (km/h)</label>
+                              <input type="number" value={settings.minSpeed || 2.0} step="0.5" onChange={(e) => setSettings({...settings, minSpeed: parseFloat(e.target.value)})} className="w-full p-2 border border-slate-300 rounded-lg text-center"/>
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Max. Speed (km/h)</label>
+                              <input type="number" value={settings.maxSpeed || 8.0} step="0.5" onChange={(e) => setSettings({...settings, maxSpeed: parseFloat(e.target.value)})} className="w-full p-2 border border-slate-300 rounded-lg text-center"/>
+                          </div>
+                      </div>
+                      <p className="text-[10px] text-slate-400">
+                          Radius: Abstand zum Lager für Erkennung. Min/Max Speed: Nur in diesem Bereich wird eine Ausbringung aufgezeichnet.
+                      </p>
+                  </div>
+
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                       <h3 className="font-bold text-lg text-slate-700">App Design</h3>
                       <div className="grid grid-cols-4 gap-4">
@@ -832,6 +871,28 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                   value={editingStorage.capacity}
                                   onChange={(e) => setEditingStorage({...editingStorage, capacity: parseFloat(e.target.value)})}
                                   className="w-full p-2 border border-slate-300 rounded-lg"
+                              />
+                          </div>
+                      </div>
+                      
+                      {/* Added Missing Storage Fields: Current Level & Growth */}
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Aktuell (m³)</label>
+                              <input 
+                                  type="number" 
+                                  value={editingStorage.currentLevel}
+                                  onChange={(e) => setEditingStorage({...editingStorage, currentLevel: parseFloat(e.target.value)})}
+                                  className="w-full p-2 border border-slate-300 rounded-lg bg-slate-50"
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Zuwachs / Tag (m³)</label>
+                              <input 
+                                  type="number" 
+                                  value={editingStorage.dailyGrowth}
+                                  onChange={(e) => setEditingStorage({...editingStorage, dailyGrowth: parseFloat(e.target.value)})}
+                                  className="w-full p-2 border border-slate-300 rounded-lg bg-slate-50"
                               />
                           </div>
                       </div>

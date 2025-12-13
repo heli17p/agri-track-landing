@@ -228,10 +228,11 @@ export const dbService = {
           if (onProgress) onProgress(msg, pct);
       };
 
-      report("Initialisiere Upload...");
+      report(`Suche Daten... (${totalItems} Objekte gefunden)`);
 
       if (totalItems === 0) {
-          report("Keine lokalen Daten zum Hochladen gefunden.");
+          report("Keine lokalen Daten zum Hochladen.");
+          if (onProgress) onProgress("0 lokale Daten gefunden.", 100);
           return;
       }
 
