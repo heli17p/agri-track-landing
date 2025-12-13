@@ -84,6 +84,7 @@ export const dbService = {
 
       try {
           const docRef = doc(db, 'farms', farmId);
+          // With persistence, this works better offline
           const snap = await getDoc(docRef);
           if (snap.exists()) {
               return snap.data().members || [];
@@ -102,7 +103,11 @@ export const dbService = {
           const q = query(collection(db, 'activities'), where("farmId", "==", farmId));
           const snap = await getDocs(q);
           return { activities: snap.size };
-      } catch (e) { return { activities: 0 }; }
+      } catch (e) { 
+          console.error("Cloud Stats Error:", e);
+          // Return special value to indicate error/offline
+          return { activities: -1 }; 
+      }
   },
 
   // --- FORCE UPLOAD (IMPROVED) ---
@@ -119,6 +124,7 @@ export const dbService = {
       const chunk = 5; 
       for (let i = 0; i < activities.length; i += chunk) {
           const batch = activities.slice(i, i + chunk);
+          // With persistence, 'saveData' resolves quickly (optimistic), so this loop won't hang
           await Promise.all(batch.map(act => saveData('activity', act)));
           count += batch.length;
           console.log(`[Force Upload] ${count}/${activities.length} gesendet...`);

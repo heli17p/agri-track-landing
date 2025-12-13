@@ -1,6 +1,6 @@
 import { Activity, AppSettings, Trip, DEFAULT_SETTINGS } from '../types';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, Timestamp, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 /* 
@@ -26,6 +26,17 @@ try {
     const app = initializeApp(FIREBASE_CONFIG);
     db = getFirestore(app);
     auth = getAuth(app);
+    
+    // ENABLE OFFLINE PERSISTENCE
+    // Critical for unstable connections and "hanging" uploads
+    enableIndexedDbPersistence(db).catch((err) => {
+        if (err.code == 'failed-precondition') {
+            console.warn('[AgriCloud] Persistence failed: Multiple tabs open.');
+        } else if (err.code == 'unimplemented') {
+            console.warn('[AgriCloud] Persistence not supported by browser.');
+        }
+    });
+
     console.log("[AgriCloud] Firebase & Auth initialized successfully.");
 } catch (e) {
     console.error("[AgriCloud] Initialization failed (check console for details):", e);
@@ -132,6 +143,7 @@ export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip)
           payload.farmPin = farmPin;             
           
           // Use ID as doc ID to allow updates (prevent duplicates)
+          // With persistence enabled, this promise resolves immediately (optimistic write)
           await setDoc(doc(db, colName, data.id), payload);
           
           console.log(`[AgriCloud] Synced ${type} to farm ${farmId}.`);
@@ -167,6 +179,7 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
             where("farmId", "==", targetFarmId)
         );
         
+        // With persistence, this might return cached data if offline
         const snapshot = await getDocs(q);
         
         // Client-side Filter & Sort

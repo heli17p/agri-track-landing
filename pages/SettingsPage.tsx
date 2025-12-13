@@ -3,7 +3,7 @@ import {
   User, Database, Settings, Cloud, Save, Plus, Trash2, 
   MapPin, Truck, AlertTriangle, Info, Share2, UploadCloud, 
   Smartphone, CheckCircle2, X, Shield, Lock, Users, LogOut,
-  ChevronRight, RefreshCw, Copy
+  ChevronRight, RefreshCw, Copy, WifiOff
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
@@ -511,7 +511,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                          {isLoadingCloud ? <RefreshCw className="animate-spin w-3 h-3"/> : <RefreshCw className="w-3 h-3"/>}
                                       </button>
                                   </div>
-                                  <div className="font-mono text-sm">{cloudStats.activities}</div>
+                                  <div className="font-mono text-sm flex items-center">
+                                    {cloudStats.activities === -1 ? (
+                                        <span className="flex items-center text-white/50 text-[10px]" title="Keine Verbindung"><WifiOff size={10} className="mr-1"/> Offline</span>
+                                    ) : (
+                                        cloudStats.activities
+                                    )}
+                                  </div>
                               </div>
                           </div>
                       ) : (
