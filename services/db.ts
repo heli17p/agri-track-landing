@@ -41,7 +41,7 @@ export const dbService = {
 
   // --- DEBUG / INSPECTOR ---
   inspectCloudData: async (farmId: string) => {
-      addLog(`Inspektor: Starte Analyse für FarmID '${farmId}'...`);
+      addLog(`Inspektor: Starte parallele Analyse für FarmID '${farmId}'...`);
       if (!isCloudConfigured()) {
           addLog("Inspektor: Fehler - Nicht verbunden oder Offline.");
           return { error: "Keine Verbindung" };
@@ -50,17 +50,17 @@ export const dbService = {
       if (!db) return { error: "DB Init Fehler" };
 
       try {
-          // 1. Check Settings
-          const settingsRef = collection(db, 'settings');
-          const qSettings = query(settingsRef, where("farmId", "==", farmId));
-          const settingsSnap = await getDocs(qSettings);
-          const settingsFound = settingsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-          addLog(`Inspektor: ${settingsFound.length} Einstellungs-Dokumente gefunden.`);
+          // Parallel Execution for Speed
+          const [settingsSnap, actsSnap, fieldsSnap, storageSnap, profileSnap] = await Promise.all([
+              getDocs(query(collection(db, 'settings'), where("farmId", "==", farmId))),
+              getDocs(query(collection(db, 'activities'), where("farmId", "==", farmId))),
+              getDocs(query(collection(db, 'fields'), where("farmId", "==", farmId))),
+              getDocs(query(collection(db, 'storages'), where("farmId", "==", farmId))),
+              getDocs(query(collection(db, 'profiles'), where("farmId", "==", farmId)))
+          ]);
 
-          // 2. Check Activities
-          const actsRef = collection(db, 'activities');
-          const qActs = query(actsRef, where("farmId", "==", farmId));
-          const actsSnap = await getDocs(qActs);
+          const settingsFound = settingsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          
           const actsFound = actsSnap.docs.map(d => ({ 
               id: d.id, 
               type: d.data().type, 
@@ -68,42 +68,28 @@ export const dbService = {
               user: d.data().userId ? 'User ID vorhanden' : 'Kein User',
               device: d.data().syncedAt ? 'Via Sync' : 'Manuell'
           }));
-          addLog(`Inspektor: ${actsFound.length} Aktivitäten gefunden.`);
 
-          // 3. Check Fields
-          const fieldsRef = collection(db, 'fields');
-          const qFields = query(fieldsRef, where("farmId", "==", farmId));
-          const fieldsSnap = await getDocs(qFields);
           const fieldsFound = fieldsSnap.docs.map(d => ({
               id: d.id,
               name: d.data().name,
               area: d.data().areaHa,
               type: d.data().type
           }));
-          addLog(`Inspektor: ${fieldsFound.length} Felder gefunden.`);
 
-          // 4. Check Storages
-          const storageRef = collection(db, 'storages');
-          const qStorage = query(storageRef, where("farmId", "==", farmId));
-          const storageSnap = await getDocs(qStorage);
           const storageFound = storageSnap.docs.map(d => ({
               id: d.id,
               name: d.data().name,
               type: d.data().type,
               capacity: d.data().capacity
           }));
-          addLog(`Inspektor: ${storageFound.length} Lager gefunden.`);
 
-          // 5. Check Profiles
-          const profileRef = collection(db, 'profiles');
-          const qProfile = query(profileRef, where("farmId", "==", farmId));
-          const profileSnap = await getDocs(qProfile);
           const profileFound = profileSnap.docs.map(d => ({
               id: d.id,
               name: d.data().operatorName,
               address: d.data().address
           }));
-          addLog(`Inspektor: ${profileFound.length} Profile gefunden.`);
+
+          addLog(`Inspektor: Analyse abgeschlossen. ${actsFound.length} Aktivitäten, ${fieldsFound.length} Felder.`);
 
           return {
               settings: settingsFound,
@@ -222,51 +208,60 @@ export const dbService = {
   },
 
   // --- FORCE UPLOAD (IMPROVED) ---
-  forceUploadToFarm: async (onProgress?: (status: string) => void) => {
+  forceUploadToFarm: async (onProgress?: (status: string, percent: number) => void) => {
       if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
       
       const chunk = 5; 
+      
+      // Load all data first
+      const activities = loadLocalData('activity') as ActivityRecord[];
+      const fields = loadLocalData('field') as Field[];
+      const storages = loadLocalData('storage') as StorageLocation[];
+      const profiles = await dbService.getFarmProfile();
+
+      const totalItems = activities.length + fields.length + storages.length + (profiles.length > 0 ? 1 : 0);
+      let processed = 0;
+
       const report = (msg: string) => {
-          addLog(`[Upload] ${msg}`);
-          if (onProgress) onProgress(msg);
+          const pct = totalItems > 0 ? Math.round((processed / totalItems) * 100) : 0;
+          addLog(`[Upload] ${msg} (${pct}%)`);
+          if (onProgress) onProgress(msg, pct);
       };
 
-      report("Starte Upload...");
+      report("Initialisiere Upload...");
+
+      if (totalItems === 0) {
+          report("Keine lokalen Daten zum Hochladen gefunden.");
+          return;
+      }
 
       // 1. Upload Activities
-      const activities = loadLocalData('activity') as ActivityRecord[];
-      report(`${activities.length} Aktivitäten gefunden.`);
-      let count = 0;
       for (let i = 0; i < activities.length; i += chunk) {
           const batch = activities.slice(i, i + chunk);
           await Promise.all(batch.map(act => saveData('activity', act)));
-          count += batch.length;
-          report(`Aktivitäten: ${count} / ${activities.length} gesendet`);
+          processed += batch.length;
+          report(`Aktivitäten gesendet...`);
       }
 
       // 2. Upload Fields
-      const fields = loadLocalData('field') as Field[];
-      report(`${fields.length} Felder gefunden.`);
-      count = 0;
       for (let i = 0; i < fields.length; i += chunk) {
           const batch = fields.slice(i, i + chunk);
           await Promise.all(batch.map(f => saveData('field', f)));
-          count += batch.length;
-          report(`Felder: ${count} / ${fields.length} gesendet`);
+          processed += batch.length;
+          report(`Felder gesendet...`);
       }
 
       // 3. Upload Storages
-      const storages = loadLocalData('storage') as StorageLocation[];
-      report(`${storages.length} Lager gefunden.`);
       for (const s of storages) {
           await saveData('storage', s);
+          processed++;
+          report(`Lager '${s.name}' gesendet...`);
       }
-      report("Lager gesendet.");
 
       // 4. Upload Profile
-      const profiles = await dbService.getFarmProfile(); 
       if (profiles.length > 0) {
           await saveData('profile', profiles[0]);
+          processed++;
           report("Profil gesendet.");
       }
 

@@ -15,8 +15,29 @@ import { isCloudConfigured } from '../services/storage';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
+// --- SHARED ICONS (Duplicates from Tracking/Map for isolation) ---
+const createCustomIcon = (color: string, svgPath: string) => {
+  return L.divIcon({
+    className: 'custom-pin-icon',
+    html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; box-shadow: 0 3px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: white; position: relative;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${svgPath}</svg><div style="width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid ${color}; position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%);"></div></div>`,
+    iconSize: [32, 40],
+    iconAnchor: [16, 40], 
+    popupAnchor: [0, -42]
+  });
+};
+
+const iconPaths = {
+  house: '<path d="M3 21h18M5 21V7l8-5 8 5v14"/>',
+  droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>',
+  layers: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>'
+};
+
+const farmIcon = createCustomIcon('#2563eb', iconPaths.house); // Blue
+const slurryIcon = createCustomIcon('#78350f', iconPaths.droplet); // Dark Brown
+const manureIcon = createCustomIcon('#d97706', iconPaths.layers); // Orange
+
 // --- HELPER COMPONENT: Location Picker Map ---
-const LocationPickerMap = ({ position, onPositionChange }: { position: GeoPoint, onPositionChange: (lat: number, lng: number) => void }) => {
+const LocationPickerMap = ({ position, onPositionChange, icon }: { position: GeoPoint, onPositionChange: (lat: number, lng: number) => void, icon?: L.DivIcon }) => {
     const map = useMap();
     
     // Ensure map renders correctly in modal
@@ -61,6 +82,7 @@ const LocationPickerMap = ({ position, onPositionChange }: { position: GeoPoint,
                 eventHandlers={eventHandlers}
                 position={[position.lat, position.lng]}
                 ref={markerRef}
+                icon={icon}
             />
             <MapEvents />
         </>
@@ -95,6 +117,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [cloudStats, setCloudStats] = useState({ activities: 0 });
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatusText, setUploadStatusText] = useState<string>('');
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
   const [showPin, setShowPin] = useState(false);
   
@@ -228,9 +251,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       await dbService.saveSettings(settings);
 
       setIsUploading(true);
+      setUploadProgress(0);
       setUploadStatusText('Vorbereitung...');
       try {
-          await dbService.forceUploadToFarm((msg) => setUploadStatusText(msg));
+          await dbService.forceUploadToFarm((msg, percent) => {
+              setUploadStatusText(msg);
+              setUploadProgress(percent);
+          });
           alert("Upload erfolgreich!");
           setUploadStatusText('');
           if(settings.farmId) loadCloudData(settings.farmId);
@@ -355,6 +382,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                       <LocationPickerMap 
                                         position={profile.addressGeo || {lat: 47.5, lng: 14.5}} 
                                         onPositionChange={(lat, lng) => setProfile(prev => ({...prev, addressGeo: {lat, lng}}))}
+                                        icon={farmIcon}
                                       />
                                   </MapContainer>
                                   <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-[10px] font-bold shadow-sm z-[1000] pointer-events-none">
@@ -534,25 +562,32 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                               </div>
 
                               {/* Force Upload */}
-                              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                  <div className="flex items-center">
-                                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg mr-3">
-                                          <UploadCloud size={20} />
-                                      </div>
-                                      <div>
-                                          <div className="font-bold text-slate-700">Notfall-Upload</div>
-                                          <div className="text-xs text-slate-500">
-                                              {isUploading && uploadStatusText ? <span className="text-orange-600 font-bold">{uploadStatusText}</span> : "Erzwinge Sync aller lokalen Daten"}
+                              <div className="flex flex-col p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                  <div className="flex items-center justify-between mb-2">
+                                      <div className="flex items-center">
+                                          <div className="p-2 bg-orange-100 text-orange-600 rounded-lg mr-3">
+                                              <UploadCloud size={20} />
+                                          </div>
+                                          <div>
+                                              <div className="font-bold text-slate-700">Notfall-Upload</div>
+                                              <div className="text-xs text-slate-500">
+                                                  {isUploading ? <span className="text-orange-600 font-bold">{uploadStatusText}</span> : "Erzwinge Sync aller lokalen Daten"}
+                                              </div>
                                           </div>
                                       </div>
+                                      <button 
+                                          onClick={handleForceUpload}
+                                          disabled={isUploading}
+                                          className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-all text-slate-500"
+                                      >
+                                          {isUploading ? <RefreshCw className="animate-spin" size={18}/> : <ChevronRight size={18} />}
+                                      </button>
                                   </div>
-                                  <button 
-                                      onClick={handleForceUpload}
-                                      disabled={isUploading}
-                                      className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-all text-slate-500"
-                                  >
-                                      {isUploading ? <RefreshCw className="animate-spin" size={18}/> : <ChevronRight size={18} />}
-                                  </button>
+                                  {isUploading && (
+                                      <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
+                                          <div className="bg-orange-500 h-full transition-all duration-300 ease-out" style={{width: `${uploadProgress}%`}}></div>
+                                      </div>
+                                  )}
                               </div>
 
                               {/* Debug & Log Inspector */}
@@ -809,6 +844,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                   <LocationPickerMap 
                                     position={editingStorage.geo} 
                                     onPositionChange={(lat, lng) => setEditingStorage(prev => prev ? ({...prev, geo: {lat, lng}}) : null)}
+                                    icon={editingStorage.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
                                   />
                               </MapContainer>
                               <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-2 py-1 rounded text-[10px] font-bold z-[1000] pointer-events-none">
