@@ -9,6 +9,7 @@ import { Tab } from './types';
 import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight, LogOut, CloudOff } from 'lucide-react';
 import { authService } from './services/auth';
 import { dbService } from './services/db';
+import { syncData } from './services/sync';
 
 const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: () => void }) => {
     const [pass, setPass] = useState('');
@@ -87,6 +88,9 @@ const App: React.FC = () => {
               setIsGuest(false); // Logged in overrides guest
               localStorage.removeItem('agritrack_guest_mode'); // Clear guest flag
               setCurrentUserEmail(user.email);
+              
+              // NEW: Trigger sync on startup if logged in (Critical for mobile)
+              syncData().catch(err => console.error("Auto-sync failed on app start:", err));
           } else {
               setIsAuthenticated(false);
           }

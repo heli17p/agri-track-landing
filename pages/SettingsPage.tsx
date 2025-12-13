@@ -7,6 +7,7 @@ import {
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
+import { syncData } from '../services/sync';
 import { AppSettings, FarmProfile, StorageLocation, FertilizerType, DEFAULT_SETTINGS } from '../types';
 import { getAppIcon, ICON_THEMES } from '../utils/appIcons';
 import { geocodeAddress } from '../utils/geo';
@@ -83,6 +84,15 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       await dbService.saveSettings(settings);
       await dbService.saveFarmProfile(profile);
       // Storages are saved individually
+      
+      // Force Sync to download data for new Farm ID immediately
+      if (isCloudConfigured()) {
+          try {
+              await syncData();
+          } catch(e) {
+              console.error("Auto-sync after save failed:", e);
+          }
+      }
       
       setSaving(false);
       setShowSaveSuccess(true);
