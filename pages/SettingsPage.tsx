@@ -160,6 +160,11 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
   const handleForceUpload = async () => {
       if (!window.confirm("Alle lokalen Daten werden erneut an die Cloud gesendet. Fortfahren?")) return;
+      
+      // CRITICAL FIX: Ensure settings (Farm ID) are saved to storage BEFORE starting upload
+      // Otherwise the upload service might read old/empty settings from storage.
+      await dbService.saveSettings(settings);
+
       setIsUploading(true);
       try {
           await dbService.forceUploadToFarm();
