@@ -40,6 +40,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [cloudMembers, setCloudMembers] = useState<any[]>([]);
   const [cloudStats, setCloudStats] = useState({ activities: 0 });
   const [isUploading, setIsUploading] = useState(false);
+  const [isLoadingCloud, setIsLoadingCloud] = useState(false);
   const [showPin, setShowPin] = useState(false);
 
   // Storage Edit State
@@ -47,14 +48,36 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
   useEffect(() => {
     loadAll();
+
+    // 1. Listen for DB Changes (e.g. Sync finished downloading settings)
+    const unsubDb = dbService.onDatabaseChange(() => {
+        loadAll();
+    });
+
+    // 2. Listen for Auth Ready (e.g. Page Reload on PC, wait for Firebase)
+    const unsubAuth = authService.onAuthStateChanged((user) => {
+        if (user) loadAll();
+    });
+
+    return () => {
+        unsubDb();
+        unsubAuth();
+    };
   }, []);
 
   useEffect(() => {
       if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
 
+  // Specific effect to reload cloud stats when farmId changes or becomes available
+  useEffect(() => {
+      if (isCloudConfigured() && settings.farmId) {
+          loadCloudData(settings.farmId);
+      }
+  }, [settings.farmId]);
+
   const loadAll = async () => {
-      setLoading(true);
+      // Don't set global loading=true to prevent full page flicker
       const s = await dbService.getSettings();
       setSettings(s);
       
@@ -64,19 +87,27 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       const st = await dbService.getStorageLocations();
       setStorages(st);
 
-      // Cloud Data
+      // Cloud Data attempt
       if (isCloudConfigured() && s.farmId) {
           loadCloudData(s.farmId);
+      } else {
+        setLoading(false);
       }
-
-      setLoading(false);
   };
 
   const loadCloudData = async (farmId: string) => {
-      const members = await dbService.getFarmMembers(farmId);
-      setCloudMembers(members);
-      const stats = await dbService.getCloudStats(farmId);
-      setCloudStats(stats);
+      setIsLoadingCloud(true);
+      try {
+        const members = await dbService.getFarmMembers(farmId);
+        setCloudMembers(members);
+        const stats = await dbService.getCloudStats(farmId);
+        setCloudStats(stats);
+      } catch (e) {
+        console.error("Cloud load error", e);
+      } finally {
+        setIsLoadingCloud(false);
+        setLoading(false);
+      }
   };
 
   const handleSaveAll = async () => {
@@ -89,6 +120,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       if (isCloudConfigured()) {
           try {
               await syncData();
+              // Cloud stats will reload via useEffect on settings.farmId or db change
           } catch(e) {
               console.error("Auto-sync after save failed:", e);
           }
@@ -97,11 +129,6 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       setSaving(false);
       setShowSaveSuccess(true);
       setTimeout(() => setShowSaveSuccess(false), 2000);
-
-      // Refresh Cloud Data if farmId changed
-      if (isCloudConfigured() && settings.farmId) {
-          loadCloudData(settings.farmId);
-      }
   };
 
   const handleGeocode = async () => {
@@ -137,6 +164,8 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       try {
           await dbService.forceUploadToFarm();
           alert("Upload erfolgreich!");
+          // Reload stats
+          if(settings.farmId) loadCloudData(settings.farmId);
       } catch (e: any) {
           alert("Fehler: " + e.message);
       } finally {
@@ -173,7 +202,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       </div>
   );
 
-  if (loading) return <div className="p-8 text-center text-slate-500">Lade Einstellungen...</div>;
+  if (loading) return <div className="p-8 text-center text-slate-500 flex items-center justify-center h-full"><RefreshCw className="animate-spin mr-2"/> Lade Einstellungen...</div>;
 
   return (
     <div className="h-full bg-slate-50 flex flex-col relative overflow-hidden">
@@ -471,7 +500,12 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                   <div className="font-mono text-sm truncate">{authService.login ? 'Angemeldet' : 'Gast'}</div>
                               </div>
                               <div>
-                                  <div className="text-xs uppercase font-bold text-white/50">Cloud Einträge</div>
+                                  <div className="text-xs uppercase font-bold text-white/50 flex items-center justify-between">
+                                      <span>Cloud Einträge</span>
+                                      <button onClick={() => settings.farmId && loadCloudData(settings.farmId)} className="text-white/80 hover:text-white">
+                                         {isLoadingCloud ? <RefreshCw className="animate-spin w-3 h-3"/> : <RefreshCw className="w-3 h-3"/>}
+                                      </button>
+                                  </div>
                                   <div className="font-mono text-sm">{cloudStats.activities}</div>
                               </div>
                           </div>
