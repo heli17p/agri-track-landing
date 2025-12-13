@@ -183,27 +183,38 @@ export const dbService = {
       return [];
   },
 
+  getLocalStats: async () => {
+      const activities = loadLocalData('activity') as any[];
+      const fields = loadLocalData('field') as any[];
+      const storages = loadLocalData('storage') as any[];
+      const profiles = await dbService.getFarmProfile();
+      
+      return { 
+          total: activities.length + fields.length + storages.length + profiles.length 
+      };
+  },
+
   getCloudStats: async (farmId: string) => {
-      if (!isCloudConfigured() || !farmId) return { activities: 0 };
+      if (!isCloudConfigured() || !farmId) return { total: 0 };
       const db = getDb();
-      if (!db) return { activities: 0 };
+      if (!db) return { total: 0 };
 
       try {
-          // Count activities
-          const qAct = query(collection(db, 'activities'), where("farmId", "==", farmId));
-          const snapAct = await getDocs(qAct);
-          
-          // Count fields
-          const qField = query(collection(db, 'fields'), where("farmId", "==", farmId));
-          const snapField = await getDocs(qField);
+          // Parallel count of ALL collections
+          const [actSnap, fieldSnap, storeSnap, profSnap] = await Promise.all([
+              getDocs(query(collection(db, 'activities'), where("farmId", "==", farmId))),
+              getDocs(query(collection(db, 'fields'), where("farmId", "==", farmId))),
+              getDocs(query(collection(db, 'storages'), where("farmId", "==", farmId))),
+              getDocs(query(collection(db, 'profiles'), where("farmId", "==", farmId)))
+          ]);
 
-          return { activities: snapAct.size + snapField.size };
+          return { total: actSnap.size + fieldSnap.size + storeSnap.size + profSnap.size };
       } catch (e: any) { 
           // Return special value to indicate error/offline
           if (e.code !== 'unavailable' && !e.message?.includes('offline')) {
              console.error("Cloud Stats Error:", e);
           }
-          return { activities: -1 }; 
+          return { total: -1 }; 
       }
   },
 

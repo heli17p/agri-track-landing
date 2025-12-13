@@ -4,7 +4,7 @@ import {
   MapPin, Truck, AlertTriangle, Info, Share2, UploadCloud, 
   Smartphone, CheckCircle2, X, Shield, Lock, Users, LogOut,
   ChevronRight, RefreshCw, Copy, WifiOff, FileText, Search, Map,
-  Signal, Activity
+  Signal, Activity, ArrowRightLeft, Upload
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
@@ -115,7 +115,8 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   
   // Cloud State
   const [cloudMembers, setCloudMembers] = useState<any[]>([]);
-  const [cloudStats, setCloudStats] = useState({ activities: 0 });
+  const [cloudStats, setCloudStats] = useState({ total: 0 });
+  const [localStats, setLocalStats] = useState({ total: 0 });
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatusText, setUploadStatusText] = useState<string>('');
   const [uploadProgress, setUploadProgress] = useState(0);
@@ -186,6 +187,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const loadCloudData = async (farmId: string) => {
       setIsLoadingCloud(true);
       try {
+        const local = await dbService.getLocalStats();
         const membersPromise = dbService.getFarmMembers(farmId);
         const statsPromise = dbService.getCloudStats(farmId);
         
@@ -193,6 +195,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
         
         setCloudMembers(members);
         setCloudStats(stats);
+        setLocalStats(local);
       } catch (e) {
         console.warn("Cloud load warning (offline?):", e);
       } finally {
@@ -512,10 +515,10 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                       </button>
                                   </div>
                                   <div className="font-mono text-sm flex items-center">
-                                    {cloudStats.activities === -1 ? (
-                                        <span className="flex items-center text-white/50 text-[10px]" title="Keine Verbindung oder Offline"><WifiOff size={10} className="mr-1"/> ?</span>
+                                    {cloudStats.total === -1 ? (
+                                        <span className="flex items-center text-white/50 text-[10px]" title="Keine Verbindung oder Offline"><WifiOff size={10} className="mr-1"/> -</span>
                                     ) : (
-                                        cloudStats.activities
+                                        cloudStats.total
                                     )}
                                   </div>
                               </div>
@@ -581,6 +584,57 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                           
                           <div className="grid grid-cols-1 gap-3">
                               
+                              {/* --- DATA SYNC & COMPARISON (NEW) --- */}
+                              <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden">
+                                  <div className="p-3 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
+                                      <span className="text-xs font-bold text-slate-500 uppercase flex items-center">
+                                          <ArrowRightLeft className="w-3 h-3 mr-1"/> Datenstatus
+                                      </span>
+                                      <div className="flex space-x-4 text-xs font-mono">
+                                          <span className="text-slate-600">Lokal: <strong>{localStats.total}</strong></span>
+                                          <span className="text-slate-600">Cloud: <strong>{cloudStats.total === -1 ? '-' : cloudStats.total}</strong></span>
+                                      </div>
+                                  </div>
+                                  
+                                  {/* Warning Banner if Local > Cloud */}
+                                  {localStats.total > (cloudStats.total === -1 ? 0 : cloudStats.total) && (
+                                      <div className="bg-amber-50 p-3 text-xs text-amber-800 border-b border-amber-100 flex items-start">
+                                          <AlertTriangle size={14} className="mr-2 mt-0.5 shrink-0"/>
+                                          <span>Achtung: Es befinden sich Daten auf diesem Gerät, die noch nicht in der Cloud sind. Bitte unten hochladen.</span>
+                                      </div>
+                                  )}
+
+                                  <div className="p-3">
+                                      <div className="flex flex-col">
+                                          <div className="flex items-center justify-between mb-2">
+                                              <div className="flex items-center">
+                                                  <div className="p-2 bg-orange-100 text-orange-600 rounded-lg mr-3">
+                                                      <UploadCloud size={20} />
+                                                  </div>
+                                                  <div>
+                                                      <div className="font-bold text-slate-700">Alle Daten hochladen</div>
+                                                      <div className="text-xs text-slate-500">
+                                                          {isUploading ? <span className="text-orange-600 font-bold">{uploadStatusText}</span> : "Gast-Daten sichern / Manueller Upload"}
+                                                      </div>
+                                                  </div>
+                                              </div>
+                                              <button 
+                                                  onClick={handleForceUpload}
+                                                  disabled={isUploading}
+                                                  className="p-2 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition-all text-slate-600 shadow-sm"
+                                              >
+                                                  {isUploading ? <RefreshCw className="animate-spin" size={18}/> : <Upload size={18} />}
+                                              </button>
+                                          </div>
+                                          {isUploading && (
+                                              <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden mt-2">
+                                                  <div className="bg-orange-500 h-full transition-all duration-300 ease-out" style={{width: `${uploadProgress}%`}}></div>
+                                              </div>
+                                          )}
+                                      </div>
+                                  </div>
+                              </div>
+
                               {/* Share Credentials */}
                               <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
                                   <div className="flex items-center">
@@ -598,35 +652,6 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                   >
                                       <Copy size={18} />
                                   </button>
-                              </div>
-
-                              {/* Force Upload */}
-                              <div className="flex flex-col p-3 bg-slate-50 rounded-xl border border-slate-100">
-                                  <div className="flex items-center justify-between mb-2">
-                                      <div className="flex items-center">
-                                          <div className="p-2 bg-orange-100 text-orange-600 rounded-lg mr-3">
-                                              <UploadCloud size={20} />
-                                          </div>
-                                          <div>
-                                              <div className="font-bold text-slate-700">Notfall-Upload</div>
-                                              <div className="text-xs text-slate-500">
-                                                  {isUploading ? <span className="text-orange-600 font-bold">{uploadStatusText}</span> : "Erzwinge Sync aller lokalen Daten"}
-                                              </div>
-                                          </div>
-                                      </div>
-                                      <button 
-                                          onClick={handleForceUpload}
-                                          disabled={isUploading}
-                                          className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-all text-slate-500"
-                                      >
-                                          {isUploading ? <RefreshCw className="animate-spin" size={18}/> : <ChevronRight size={18} />}
-                                      </button>
-                                  </div>
-                                  {isUploading && (
-                                      <div className="w-full bg-slate-200 rounded-full h-1.5 overflow-hidden">
-                                          <div className="bg-orange-500 h-full transition-all duration-300 ease-out" style={{width: `${uploadProgress}%`}}></div>
-                                      </div>
-                                  )}
                               </div>
 
                               {/* Debug & Log Inspector */}
