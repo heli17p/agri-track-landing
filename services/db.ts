@@ -273,7 +273,7 @@ export const dbService = {
       await new Promise(r => setTimeout(r, 500)); // Visual pause
 
       // 3. Process in small batches with strict timeout
-      const BATCH_SIZE = 3; // Even smaller batch size
+      const BATCH_SIZE = 3; // Even smaller batch size for robustness
       let processed = 0;
       let errors = 0;
 

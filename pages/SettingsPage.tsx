@@ -269,8 +269,9 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       setUploadStatusText('Vorbereitung...');
       
       try {
-          // Ensure settings (specifically Farm ID) are saved first so upload knows where to go
-          await dbService.saveSettings(settings);
+          // CRITICAL FIX: Do NOT await cloud save here. It blocks if offline/slow.
+          // Just ensure local storage has the ID so upload knows where to send.
+          localStorage.setItem('agritrack_settings_full', JSON.stringify(settings));
 
           await dbService.forceUploadToFarm((msg, percent) => {
               setUploadStatusText(msg);
