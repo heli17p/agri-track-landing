@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   User, Database, Settings, Cloud, Save, Plus, Trash2, 
   MapPin, Truck, AlertTriangle, Info, Share2, UploadCloud, 
@@ -8,10 +8,64 @@ import {
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
 import { syncData } from '../services/sync';
-import { AppSettings, FarmProfile, StorageLocation, FertilizerType, DEFAULT_SETTINGS } from '../types';
+import { AppSettings, FarmProfile, StorageLocation, FertilizerType, DEFAULT_SETTINGS, GeoPoint } from '../types';
 import { getAppIcon, ICON_THEMES } from '../utils/appIcons';
 import { geocodeAddress } from '../utils/geo';
 import { isCloudConfigured } from '../services/storage';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import L from 'leaflet';
+
+// --- HELPER COMPONENT: Location Picker Map ---
+const LocationPickerMap = ({ position, onPositionChange }: { position: GeoPoint, onPositionChange: (lat: number, lng: number) => void }) => {
+    const map = useMap();
+    
+    // Ensure map renders correctly in modal
+    useEffect(() => {
+        const t = setTimeout(() => map.invalidateSize(), 250);
+        return () => clearTimeout(t);
+    }, [map]);
+
+    // Fly to position if it changes externally (e.g. geocoding)
+    useEffect(() => {
+        map.setView([position.lat, position.lng], map.getZoom());
+    }, [position.lat, position.lng, map]);
+
+    const MapEvents = () => {
+        useMapEvents({
+            click(e) {
+                onPositionChange(e.latlng.lat, e.latlng.lng);
+            },
+        });
+        return null;
+    };
+
+    const markerRef = useRef<L.Marker>(null);
+    const eventHandlers = useMemo(() => ({
+        dragend() {
+            const marker = markerRef.current;
+            if (marker != null) {
+                const { lat, lng } = marker.getLatLng();
+                onPositionChange(lat, lng);
+            }
+        },
+    }), [onPositionChange]);
+
+    return (
+        <>
+            <TileLayer
+                attribution='&copy; OpenStreetMap'
+                url="https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            />
+            <Marker
+                draggable={true}
+                eventHandlers={eventHandlers}
+                position={[position.lat, position.lng]}
+                ref={markerRef}
+            />
+            <MapEvents />
+        </>
+    );
+};
 
 interface Props {
     initialTab?: 'profile' | 'storage' | 'general' | 'sync';
@@ -40,6 +94,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [cloudMembers, setCloudMembers] = useState<any[]>([]);
   const [cloudStats, setCloudStats] = useState({ activities: 0 });
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadStatusText, setUploadStatusText] = useState<string>('');
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
   const [showPin, setShowPin] = useState(false);
   
@@ -52,6 +107,9 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
   // Storage Edit State
   const [editingStorage, setEditingStorage] = useState<StorageLocation | null>(null);
+  
+  // Profile Map Toggle
+  const [showProfileMap, setShowProfileMap] = useState(false);
 
   useEffect(() => {
     loadAll();
@@ -170,12 +228,15 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       await dbService.saveSettings(settings);
 
       setIsUploading(true);
+      setUploadStatusText('Vorbereitung...');
       try {
-          await dbService.forceUploadToFarm();
+          await dbService.forceUploadToFarm((msg) => setUploadStatusText(msg));
           alert("Upload erfolgreich!");
+          setUploadStatusText('');
           if(settings.farmId) loadCloudData(settings.farmId);
       } catch (e: any) {
           alert("Fehler: " + e.message);
+          setUploadStatusText('Fehler!');
       } finally {
           setIsUploading(false);
       }
@@ -275,8 +336,32 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                   className="flex-1 p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-green-500"
                                   placeholder="Dorfstraße 1, 1234 Ort"
                               />
-                              <button onClick={handleGeocode} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"><MapPin size={24} /></button>
+                              <button onClick={handleGeocode} className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors" title="Adresse suchen"><Search size={20} /></button>
                           </div>
+                      </div>
+                      
+                      {/* Interactive Map Picker */}
+                      <div>
+                          <button 
+                            onClick={() => setShowProfileMap(!showProfileMap)}
+                            className="w-full py-2 bg-slate-100 text-slate-700 rounded-lg font-bold text-xs flex items-center justify-center hover:bg-slate-200 border border-slate-200"
+                          >
+                              <MapPin size={14} className="mr-1"/> {showProfileMap ? 'Karte ausblenden' : 'Standort auf Karte wählen'}
+                          </button>
+                          
+                          {showProfileMap && (
+                              <div className="mt-2 h-64 w-full rounded-xl overflow-hidden border-2 border-slate-300 relative">
+                                  <MapContainer center={[profile.addressGeo?.lat || 47.5, profile.addressGeo?.lng || 14.5]} zoom={13} style={{ height: '100%', width: '100%' }}>
+                                      <LocationPickerMap 
+                                        position={profile.addressGeo || {lat: 47.5, lng: 14.5}} 
+                                        onPositionChange={(lat, lng) => setProfile(prev => ({...prev, addressGeo: {lat, lng}}))}
+                                      />
+                                  </MapContainer>
+                                  <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-3 py-1 rounded-full text-[10px] font-bold shadow-sm z-[1000] pointer-events-none">
+                                      Pin verschieben um Position zu setzen
+                                  </div>
+                              </div>
+                          )}
                       </div>
                   </div>
               </div>
@@ -456,7 +541,9 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                       </div>
                                       <div>
                                           <div className="font-bold text-slate-700">Notfall-Upload</div>
-                                          <div className="text-xs text-slate-500">Erzwinge Sync aller lokalen Daten</div>
+                                          <div className="text-xs text-slate-500">
+                                              {isUploading && uploadStatusText ? <span className="text-orange-600 font-bold">{uploadStatusText}</span> : "Erzwinge Sync aller lokalen Daten"}
+                                          </div>
                                       </div>
                                   </div>
                                   <button 
@@ -676,12 +763,12 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       {/* Storage Edit Modal */}
       {editingStorage && (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-              <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-fade-scale">
-                  <div className="p-4 bg-slate-800 text-white flex justify-between items-center">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm h-[80vh] flex flex-col overflow-hidden animate-fade-scale">
+                  <div className="p-4 bg-slate-800 text-white flex justify-between items-center shrink-0">
                       <h3 className="font-bold">Lager bearbeiten</h3>
                       <button onClick={() => setEditingStorage(null)}><X size={20}/></button>
                   </div>
-                  <div className="p-4 space-y-4">
+                  <div className="p-4 space-y-4 overflow-y-auto flex-1">
                       <div>
                           <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Bezeichnung</label>
                           <input 
@@ -713,9 +800,30 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                               />
                           </div>
                       </div>
+                      
+                      {/* Storage Map Picker */}
+                      <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Position</label>
+                          <div className="h-48 w-full rounded-xl overflow-hidden border border-slate-300 relative">
+                              <MapContainer center={[editingStorage.geo.lat, editingStorage.geo.lng]} zoom={15} style={{ height: '100%', width: '100%' }}>
+                                  <LocationPickerMap 
+                                    position={editingStorage.geo} 
+                                    onPositionChange={(lat, lng) => setEditingStorage(prev => prev ? ({...prev, geo: {lat, lng}}) : null)}
+                                  />
+                              </MapContainer>
+                              <div className="absolute top-2 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-2 py-1 rounded text-[10px] font-bold z-[1000] pointer-events-none">
+                                  Pin ziehen oder klicken
+                              </div>
+                          </div>
+                          <div className="flex justify-between text-[10px] text-slate-400 mt-1">
+                              <span>Lat: {editingStorage.geo.lat.toFixed(6)}</span>
+                              <span>Lng: {editingStorage.geo.lng.toFixed(6)}</span>
+                          </div>
+                      </div>
+
                       <button 
                           onClick={() => handleStorageSave(editingStorage)}
-                          className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700"
+                          className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700 shadow-lg mt-4"
                       >
                           Speichern
                       </button>

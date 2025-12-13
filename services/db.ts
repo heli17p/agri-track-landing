@@ -222,48 +222,55 @@ export const dbService = {
   },
 
   // --- FORCE UPLOAD (IMPROVED) ---
-  forceUploadToFarm: async () => {
+  forceUploadToFarm: async (onProgress?: (status: string) => void) => {
       if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
       
       const chunk = 5; 
+      const report = (msg: string) => {
+          addLog(`[Upload] ${msg}`);
+          if (onProgress) onProgress(msg);
+      };
+
+      report("Starte Upload...");
 
       // 1. Upload Activities
       const activities = loadLocalData('activity') as ActivityRecord[];
-      addLog(`[Upload] Starte Upload von ${activities.length} lokalen Aktivitäten...`);
+      report(`${activities.length} Aktivitäten gefunden.`);
       let count = 0;
       for (let i = 0; i < activities.length; i += chunk) {
           const batch = activities.slice(i, i + chunk);
           await Promise.all(batch.map(act => saveData('activity', act)));
           count += batch.length;
-          addLog(`[Upload] Aktivitäten ${count}/${activities.length}...`);
+          report(`Aktivitäten: ${count} / ${activities.length} gesendet`);
       }
 
       // 2. Upload Fields
       const fields = loadLocalData('field') as Field[];
-      addLog(`[Upload] Starte Upload von ${fields.length} lokalen Feldern...`);
+      report(`${fields.length} Felder gefunden.`);
       count = 0;
       for (let i = 0; i < fields.length; i += chunk) {
           const batch = fields.slice(i, i + chunk);
           await Promise.all(batch.map(f => saveData('field', f)));
           count += batch.length;
-          addLog(`[Upload] Felder ${count}/${fields.length}...`);
+          report(`Felder: ${count} / ${fields.length} gesendet`);
       }
 
       // 3. Upload Storages
       const storages = loadLocalData('storage') as StorageLocation[];
-      addLog(`[Upload] Starte Upload von ${storages.length} Lagern...`);
+      report(`${storages.length} Lager gefunden.`);
       for (const s of storages) {
           await saveData('storage', s);
       }
+      report("Lager gesendet.");
 
       // 4. Upload Profile
-      const profiles = await dbService.getFarmProfile(); // Helper that returns array
+      const profiles = await dbService.getFarmProfile(); 
       if (profiles.length > 0) {
-          addLog(`[Upload] Sende Betriebsprofil...`);
           await saveData('profile', profiles[0]);
+          report("Profil gesendet.");
       }
 
-      addLog("[Upload] Vollständiger Upload beendet.");
+      report("Vollständiger Upload beendet.");
   },
 
   // --- MIGRATION (GUEST -> CLOUD) ---
