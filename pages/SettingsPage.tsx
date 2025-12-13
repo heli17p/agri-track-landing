@@ -1,13 +1,14 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { dbService } from '../services/db';
 import { FarmProfile, StorageLocation, FertilizerType, GeoPoint, AppSettings, DEFAULT_SETTINGS } from '../types';
-import { Save, Plus, Trash2, Navigation, X, Building2, Droplets, Search, Loader2, Check, Pencil, Settings as SettingsIcon, Database, Download, Upload, Wifi, Palette, Users, Lock, Key, LocateFixed, Layers, Tractor, Activity, MapPin, Eye, EyeOff, AlertTriangle } from 'lucide-react';
+import { Save, Plus, Trash2, Navigation, X, Building2, Droplets, Search, Loader2, Check, Pencil, Settings as SettingsIcon, Database, Download, Upload, Wifi, Palette, Users, Lock, Key, LocateFixed, Layers, Tractor, Activity, MapPin, Eye, EyeOff, AlertTriangle, CloudUpload, UserCheck } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import { geocodeAddress } from '../utils/geo';
 import L from 'leaflet';
 import { syncData } from '../services/sync';
 import { ICON_THEMES, getAppIcon } from '../utils/appIcons';
 import 'leaflet/dist/leaflet.css';
+import { auth } from '../services/storage';
 
 // --- Shared Icon Helper (Consistent with MapPage) ---
 const createCustomIcon = (color: string, svgPath: string) => {
@@ -178,8 +179,21 @@ export const SettingsPage = () => {
   
   // PIN Visibility
   const [showPin, setShowPin] = useState(false);
+  
+  // NEW STATE: Members & Stats
+  const [farmMembers, setFarmMembers] = useState<any[]>([]);
+  const [cloudStats, setCloudStats] = useState<{activities: number} | null>(null);
 
-  useEffect(() => { loadData(); }, []);
+  useEffect(() => { 
+      loadData(); 
+  }, []);
+  
+  // Load Members when Sync Tab opens
+  useEffect(() => {
+      if (activeTab === 'sync' && appSettings.farmId) {
+          loadFarmDetails();
+      }
+  }, [activeTab, appSettings.farmId]);
 
   const showNotification = (msg: string) => {
       setNotification(msg);
@@ -199,6 +213,14 @@ export const SettingsPage = () => {
 
     const as = await dbService.getSettings();
     setAppSettings(as);
+  };
+  
+  const loadFarmDetails = async () => {
+      if (!appSettings.farmId) return;
+      const members = await dbService.getFarmMembers(appSettings.farmId);
+      setFarmMembers(members);
+      const stats = await dbService.getCloudStats(appSettings.farmId);
+      setCloudStats(stats);
   };
 
   const handleSaveProfile = async () => {
@@ -261,6 +283,7 @@ export const SettingsPage = () => {
       setIsTestingConn(true);
       try {
           await syncData(); 
+          await loadFarmDetails(); // Refresh stats
           alert(`Sync erfolgreich!\nDaten für Betrieb "${appSettings.farmId || 'Privat'}" geladen.`);
       } catch (e: any) {
           alert(`Fehler: ${e.message}`);
@@ -269,7 +292,6 @@ export const SettingsPage = () => {
       }
   };
   
-  // NEW: Force Upload Handler
   const handleForceUpload = async () => {
       if (!appSettings.farmId) {
           alert("Bitte zuerst eine Betriebsnummer eingeben.");
@@ -282,6 +304,7 @@ export const SettingsPage = () => {
       setIsUploading(true);
       try {
           await dbService.forceUploadToFarm(); 
+          await loadFarmDetails(); // Refresh stats
           showNotification(`Daten an Betrieb ${appSettings.farmId} gesendet.`);
       } catch (e: any) {
           alert("Fehler beim Hochladen: " + e.message);
@@ -289,8 +312,6 @@ export const SettingsPage = () => {
           setIsUploading(false);
       }
   };
-  
-  // --- BACKUP IMPLEMENTATION ---
   
   const handleExportBackup = async () => { 
       try {
@@ -583,7 +604,7 @@ export const SettingsPage = () => {
             </div>
         )}
 
-        {/* --- CLOUD & DATA TAB --- */}
+        {/* --- CLOUD & DATA TAB (EXTENDED) --- */}
         {activeTab === 'sync' && (
             <div className="space-y-6 max-w-lg mx-auto pb-20">
                 
@@ -632,9 +653,29 @@ export const SettingsPage = () => {
                         </div>
                         <p className="text-xs text-blue-600 mt-1 font-medium bg-blue-100/50 p-2 rounded">
                             <AlertTriangle size={12} className="inline mr-1 -mt-0.5"/>
-                            WICHTIG: Wenn du diese PIN vergisst, musst du sie auf allen Geräten neu setzen. Alte Daten sind dann eventuell nicht mehr sichtbar, bis die richtige PIN wieder eingegeben wird.
+                            WICHTIG: Wenn du diese PIN vergisst, musst du sie auf allen Geräten neu setzen.
                         </p>
                     </div>
+
+                    {/* MEMBER LIST & STATS */}
+                    {farmMembers.length > 0 && (
+                        <div className="bg-white rounded-lg p-3 border border-blue-100 text-sm">
+                            <div className="font-bold text-blue-900 mb-2 flex items-center"><UserCheck size={14} className="mr-1"/> Verbundene Nutzer</div>
+                            <ul className="space-y-1">
+                                {farmMembers.map((m, i) => (
+                                    <li key={i} className="text-blue-700 flex justify-between">
+                                        <span>{m.email}</span>
+                                        <span className="text-xs text-blue-400">{new Date(m.joinedAt).toLocaleDateString()}</span>
+                                    </li>
+                                ))}
+                            </ul>
+                            {cloudStats && (
+                                <div className="mt-3 pt-2 border-t border-blue-50 text-xs text-blue-500">
+                                    {cloudStats.activities} Einträge in der Cloud für diesen Hof.
+                                </div>
+                            )}
+                        </div>
+                    )}
 
                     <div className="flex gap-2 mt-4">
                         <button 

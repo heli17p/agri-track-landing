@@ -1,5 +1,14 @@
 import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, DEFAULT_SETTINGS, FeedbackTicket } from '../types';
-import { saveData, loadLocalData, saveSettings as saveSettingsToStorage, loadSettings as loadSettingsFromStorage, fetchCloudData, fetchCloudSettings, isCloudConfigured } from './storage';
+import { saveData, loadLocalData, saveSettings as saveSettingsToStorage, loadSettings as loadSettingsFromStorage, fetchCloudData, fetchCloudSettings, isCloudConfigured, auth } from './storage';
+import { collection, doc, setDoc, getDoc, getDocs, query, where, updateDoc, arrayUnion, Timestamp } from 'firebase/firestore';
+import { getFirestore } from 'firebase/firestore';
+
+// Need direct access to db for advanced features
+const getDb = () => {
+    try {
+        return getFirestore();
+    } catch(e) { return null; }
+};
 
 type Listener = () => void;
 const listeners: { [key: string]: Listener[] } = {
@@ -64,19 +73,76 @@ export const dbService = {
       }
   },
   
-  // NEW: Force Upload current local data to configured farm
+  // --- FARM MANAGEMENT ---
+
+  // Join a farm (Register user as member)
+  joinFarm: async (farmId: string, email: string) => {
+      if (!isCloudConfigured() || !farmId) return;
+      const db = getDb();
+      if (!db || !auth?.currentUser) return;
+
+      try {
+          const farmRef = doc(db, 'farms', farmId);
+          // Create farm doc if not exists, add user to members
+          await setDoc(farmRef, {
+              lastActive: Timestamp.now(),
+              members: arrayUnion({
+                  uid: auth.currentUser.uid,
+                  email: email || 'Unbekannt',
+                  joinedAt: new Date().toISOString()
+              })
+          }, { merge: true });
+          console.log(`Joined farm ${farmId}`);
+      } catch (e) {
+          console.error("Join Farm failed:", e);
+      }
+  },
+
+  getFarmMembers: async (farmId: string) => {
+      if (!isCloudConfigured() || !farmId) return [];
+      const db = getDb();
+      if (!db) return [];
+
+      try {
+          const docRef = doc(db, 'farms', farmId);
+          const snap = await getDoc(docRef);
+          if (snap.exists()) {
+              return snap.data().members || [];
+          }
+      } catch (e) { console.error(e); }
+      return [];
+  },
+
+  getCloudStats: async (farmId: string) => {
+      if (!isCloudConfigured() || !farmId) return { activities: 0 };
+      const db = getDb();
+      if (!db) return { activities: 0 };
+
+      try {
+          // Count activities for this farm
+          const q = query(collection(db, 'activities'), where("farmId", "==", farmId));
+          const snap = await getDocs(q);
+          return { activities: snap.size };
+      } catch (e) { return { activities: 0 }; }
+  },
+
+  // --- FORCE UPLOAD ---
   forceUploadToFarm: async () => {
       if (!isCloudConfigured()) throw new Error("Nicht eingeloggt.");
       
       const activities = loadLocalData('activity') as ActivityRecord[];
       console.log(`[Force Upload] Starte Upload von ${activities.length} Aktivitäten...`);
       
+      if (activities.length === 0) return; 
+
       let count = 0;
-      for (const act of activities) {
-          // SaveData handles the farmId logic internally based on current settings
-          await saveData('activity', act);
-          count++;
-          if (count % 10 === 0) console.log(`[Force Upload] ${count} gesendet...`);
+      // Process in chunks
+      const chunk = 50;
+      for (let i = 0; i < activities.length; i += chunk) {
+          const batch = activities.slice(i, i + chunk);
+          await Promise.all(batch.map(act => saveData('activity', act)));
+          count += batch.length;
+          console.log(`[Force Upload] ${count}/${activities.length} gesendet...`);
       }
       console.log("[Force Upload] Fertig.");
   },
@@ -129,6 +195,7 @@ export const dbService = {
       
       console.log("[Sync] Start...");
 
+      // 1. Sync Settings First
       const cloudSettings = await fetchCloudSettings();
       if (cloudSettings) {
           const localSettings = loadSettingsFromStorage();
@@ -137,6 +204,7 @@ export const dbService = {
           console.log("[Sync] Einstellungen aktualisiert.");
       }
 
+      // 2. Sync Activities
       const cloudData = await fetchCloudData('activity') as ActivityRecord[];
       const localData = loadLocalData('activity') as ActivityRecord[];
       
@@ -258,9 +326,14 @@ export const dbService = {
 
   saveSettings: async (settings: AppSettings) => {
     await saveSettingsToStorage(settings);
+    // NEW: Register member if farmId is set
+    if (settings.farmId && auth?.currentUser?.email) {
+        await dbService.joinFarm(settings.farmId, auth.currentUser.email);
+    }
     notify('change');
   },
 
+  // --- Events ---
   onSyncComplete: (cb: Listener) => {
     listeners.sync.push(cb);
     return () => { listeners.sync = listeners.sync.filter(l => l !== cb); };
