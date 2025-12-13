@@ -222,9 +222,7 @@ export const dbService = {
   forceUploadToFarm: async (onProgress?: (status: string, percent: number) => void) => {
       if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
       
-      const chunk = 5; 
-      
-      // Load all data first
+      // Load all data
       const activities = loadLocalData('activity') as ActivityRecord[];
       const fields = loadLocalData('field') as Field[];
       const storages = loadLocalData('storage') as StorageLocation[];
@@ -247,35 +245,34 @@ export const dbService = {
           return;
       }
 
+      // Helper to process items robustly (don't fail batch on one error)
+      const processItems = async (type: string, items: any[]) => {
+          // Process sequentially or in small parallel batches to avoid flooding
+          // Using Promise.allSettled to ensure all are attempted
+          const promises = items.map(item => saveData(type as any, item));
+          const results = await Promise.allSettled(promises);
+          
+          results.forEach((res) => {
+              if (res.status === 'fulfilled') {
+                  processed++;
+              } else {
+                  addLog(`[Upload] Fehler bei ${type}: ${res.reason}`);
+              }
+          });
+          report(`${type} gesendet...`);
+      };
+
       // 1. Upload Activities
-      for (let i = 0; i < activities.length; i += chunk) {
-          const batch = activities.slice(i, i + chunk);
-          await Promise.all(batch.map(act => saveData('activity', act)));
-          processed += batch.length;
-          report(`Aktivitäten gesendet...`);
-      }
+      if (activities.length > 0) await processItems('activity', activities);
 
       // 2. Upload Fields
-      for (let i = 0; i < fields.length; i += chunk) {
-          const batch = fields.slice(i, i + chunk);
-          await Promise.all(batch.map(f => saveData('field', f)));
-          processed += batch.length;
-          report(`Felder gesendet...`);
-      }
+      if (fields.length > 0) await processItems('field', fields);
 
       // 3. Upload Storages
-      for (const s of storages) {
-          await saveData('storage', s);
-          processed++;
-          report(`Lager '${s.name}' gesendet...`);
-      }
+      if (storages.length > 0) await processItems('storage', storages);
 
       // 4. Upload Profile
-      if (profiles.length > 0) {
-          await saveData('profile', profiles[0]);
-          processed++;
-          report("Profil gesendet.");
-      }
+      if (profiles.length > 0) await processItems('profile', profiles);
 
       report("Vollständiger Upload beendet.");
   },

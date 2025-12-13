@@ -205,21 +205,31 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
   const handleSaveAll = async () => {
       setSaving(true);
-      await dbService.saveSettings(settings);
-      await dbService.saveFarmProfile(profile);
-      // Storages are saved individually
-      
-      if (isCloudConfigured()) {
-          try {
-              await syncData();
-          } catch(e) {
-              console.error("Auto-sync after save failed:", e);
+      try {
+          // 1. Save Settings & Profile
+          await dbService.saveSettings(settings);
+          await dbService.saveFarmProfile(profile);
+          
+          // Hinweis: Lager und Felder werden sofort beim Bearbeiten gespeichert.
+          // Hier triggern wir aber einen Sync, damit Änderungen übertragen werden.
+          
+          if (isCloudConfigured()) {
+              try {
+                  await syncData();
+              } catch(e) {
+                  console.error("Auto-sync after save failed:", e);
+                  // Kein Alert hier, da wir im Hintergrund syncen
+              }
           }
+          
+          setShowSaveSuccess(true);
+      } catch (e: any) {
+          alert("Fehler beim Speichern: " + e.message);
+      } finally {
+          // Critical: Always stop the spinner
+          setSaving(false);
+          setTimeout(() => setShowSaveSuccess(false), 2000);
       }
-      
-      setSaving(false);
-      setShowSaveSuccess(true);
-      setTimeout(() => setShowSaveSuccess(false), 2000);
   };
 
   const handleGeocode = async () => {
@@ -252,23 +262,30 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const handleForceUpload = async () => {
       if (!window.confirm("Alle lokalen Daten (inkl. Felder, Lager, Profil) werden erneut an die Cloud gesendet. Fortfahren?")) return;
       
+      // Ensure settings (specifically Farm ID) are saved first so upload knows where to go
       await dbService.saveSettings(settings);
 
       setIsUploading(true);
       setUploadProgress(0);
       setUploadStatusText('Vorbereitung...');
+      
       try {
           await dbService.forceUploadToFarm((msg, percent) => {
               setUploadStatusText(msg);
               setUploadProgress(percent);
           });
           setUploadStatusText('Upload erfolgreich!');
+          
+          // Force refresh of stats
+          if(settings.farmId) {
+              await loadCloudData(settings.farmId);
+          }
+          
           setTimeout(() => {
-              if(settings.farmId) loadCloudData(settings.farmId);
               setIsUploading(false);
           }, 1500);
       } catch (e: any) {
-          alert("Fehler: " + e.message);
+          alert("Upload Fehler: " + e.message + "\nBitte Internet prüfen.");
           setUploadStatusText('Fehler!');
           setIsUploading(false);
       }
@@ -714,7 +731,14 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       </div>
 
       {/* Floating Save Button */}
-      <div className="absolute bottom-24 right-6 z-30">
+      <div className="absolute bottom-24 right-6 z-30 flex flex-col items-end">
+          {/* Helper Text for clarity */}
+          {saving && (
+              <div className="mb-2 bg-black/70 backdrop-blur text-white text-xs px-3 py-1 rounded-full animate-pulse">
+                  Speichere Einstellungen...
+              </div>
+          )}
+          
           <button 
               onClick={handleSaveAll}
               disabled={saving}
@@ -725,8 +749,11 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
               }`}
           >
               {showSaveSuccess ? <CheckCircle2 size={24}/> : (saving ? <RefreshCw className="animate-spin" size={24}/> : <Save size={24}/>)}
-              <span>{showSaveSuccess ? 'Gespeichert!' : 'Speichern'}</span>
+              <span>{showSaveSuccess ? 'Gespeichert!' : 'Einstellungen Speichern'}</span>
           </button>
+          <div className="mt-1 text-[10px] text-slate-400 font-medium bg-white/80 px-2 py-0.5 rounded shadow-sm backdrop-blur">
+              Sichert Profil, Allgemein & Cloud
+          </div>
       </div>
 
       {/* DEBUG MODAL */}
