@@ -18,6 +18,9 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   
   const [isActiveTracking, setIsActiveTracking] = useState(false);
 
+  // New State for handling direct tab navigation
+  const [settingsTab, setSettingsTab] = useState<'profile' | 'storage' | 'general' | 'sync'>('profile');
+
   useEffect(() => {
       if (onFullScreenToggle) {
           onFullScreenToggle(isActiveTracking && currentView === 'TRACKING');
@@ -27,6 +30,11 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   const navigateToMap = (fieldId?: string) => {
       if (fieldId) setMapFocusFieldId(fieldId);
       setCurrentView('MAP');
+  };
+
+  const openSettingsTab = (tab: 'profile' | 'storage' | 'general' | 'sync') => {
+      setSettingsTab(tab);
+      setCurrentView('SETTINGS');
   };
 
   const activeTabId = () => {
@@ -43,7 +51,11 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       if (tabId === 'track') setCurrentView('TRACKING');
       if (tabId === 'map') setCurrentView('MAP');
       if (tabId === 'fields') setCurrentView('FIELDS');
-      if (tabId === 'settings') setCurrentView('SETTINGS');
+      if (tabId === 'settings') {
+          // Default to profile when clicking main nav, unless already in settings
+          if (currentView !== 'SETTINGS') setSettingsTab('profile'); 
+          setCurrentView('SETTINGS');
+      }
   };
 
   const isLive = isCloudConfigured();
@@ -60,7 +72,11 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
           <div className="bg-white/90 backdrop-blur-md p-3 flex justify-between items-center sticky top-0 z-30 border-b border-slate-200 shrink-0 h-14">
             <h2 className="font-extrabold text-slate-800 tracking-tight">AgriTrack Austria</h2>
             <div className="flex items-center">
-                <div className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center ${isLive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}>
+                <button 
+                    onClick={() => openSettingsTab('sync')}
+                    className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center transition-colors hover:opacity-80 ${isLive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}
+                    title="Verbindungseinstellungen öffnen"
+                >
                 {isLive ? (
                     <>
                         <ShieldCheck className="w-3 h-3 mr-1" />
@@ -72,7 +88,7 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
                         DEMO MODE
                     </>
                 )}
-                </div>
+                </button>
                 {isActiveTracking && currentView !== 'TRACKING' && (
                     <button 
                         onClick={() => setCurrentView('TRACKING')}
@@ -93,7 +109,7 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
             {currentView === 'DASHBOARD' && <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />}
             {currentView === 'MAP' && <MapPage initialEditFieldId={mapFocusFieldId} clearInitialEdit={() => setMapFocusFieldId(null)} />}
             {currentView === 'FIELDS' && <FieldsPage onNavigateToMap={navigateToMap} />}
-            {currentView === 'SETTINGS' && <SettingsPage />}
+            {currentView === 'SETTINGS' && <SettingsPage initialTab={settingsTab} />}
 
             {/* Tracking Page - ALWAYS Rendered but hidden if not needed (to keep GPS alive) */}
             <div className={currentView === 'TRACKING' ? 'w-full h-full' : 'hidden'}>

@@ -822,11 +822,9 @@ export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimiz
   };
 
   const getTrackWeight = () => {
-      if (!isSpreading) return 4;
-      if (activityType === ActivityType.FERTILIZATION) {
-          if (fertilizerType === FertilizerType.SLURRY) return (settings?.slurrySpreadWidth || 12);
-          if (fertilizerType === FertilizerType.MANURE) return (settings?.manureSpreadWidth || 10);
-      }
+      // In tracking mode (GPS), we are doing Fertilization
+      if (selectedFertilizer === FertilizerType.SLURRY) return (settings?.slurrySpreadWidth || 12);
+      if (selectedFertilizer === FertilizerType.MANURE) return (settings?.manureSpreadWidth || 10);
       return settings?.spreadWidth || 12;
   };
 

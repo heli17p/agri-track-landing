@@ -1,742 +1,716 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
+import { 
+  User, Database, Settings, Cloud, Save, Plus, Trash2, 
+  MapPin, Truck, AlertTriangle, Info, Share2, UploadCloud, 
+  Smartphone, CheckCircle2, X, Shield, Lock, Users, LogOut,
+  ChevronRight, RefreshCw, Copy
+} from 'lucide-react';
 import { dbService } from '../services/db';
-import { FarmProfile, StorageLocation, FertilizerType, GeoPoint, AppSettings, DEFAULT_SETTINGS } from '../types';
-import { Save, Plus, Trash2, Navigation, X, Building2, Droplets, Search, Loader2, Check, Pencil, Settings as SettingsIcon, Database, Download, Upload, Wifi, Palette, Users, Lock, Key, LocateFixed, Layers, Tractor, Activity, MapPin, Eye, EyeOff, AlertTriangle, CloudUpload, UserCheck } from 'lucide-react';
-import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import { authService } from '../services/auth';
+import { AppSettings, FarmProfile, StorageLocation, FertilizerType, DEFAULT_SETTINGS } from '../types';
+import { getAppIcon, ICON_THEMES } from '../utils/appIcons';
 import { geocodeAddress } from '../utils/geo';
-import L from 'leaflet';
-import { syncData } from '../services/sync';
-import { ICON_THEMES, getAppIcon } from '../utils/appIcons';
-import 'leaflet/dist/leaflet.css';
-import { auth } from '../services/storage';
+import { isCloudConfigured } from '../services/storage';
 
-// --- Shared Icon Helper (Consistent with MapPage) ---
-const createCustomIcon = (color: string, svgPath: string) => {
-  return L.divIcon({
-    className: 'custom-pin-icon',
-    html: `
-      <div style="
-        background-color: ${color};
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        border: 2px solid white;
-        box-shadow: 0 3px 8px rgba(0,0,0,0.4);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        position: relative;
-      ">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          ${svgPath}
-        </svg>
-        <div style="
-          width: 0; 
-          height: 0; 
-          border-left: 6px solid transparent; 
-          border-right: 6px solid transparent; 
-          border-top: 8px solid ${color}; 
-          position: absolute; 
-          bottom: -7px; 
-          left: 50%; 
-          transform: translateX(-50%);
-        "></div>
-      </div>
-    `,
-    iconSize: [32, 40],
-    iconAnchor: [16, 40], // Point of the pin
-    popupAnchor: [0, -42]
+interface Props {
+    initialTab?: 'profile' | 'storage' | 'general' | 'sync';
+}
+
+export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
+  const [activeTab, setActiveTab] = useState(initialTab);
+  
+  // Data State
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [profile, setProfile] = useState<FarmProfile>({
+      farmId: '',
+      operatorName: '',
+      address: '',
+      totalAreaHa: 0
   });
-};
-
-const iconPaths = {
-  house: '<path d="M3 21h18M5 21V7l8-5 8 5v14"/>',
-  droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>',
-  layers: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>'
-};
-
-// Define Icons using the same style as MapPage
-const farmIcon = createCustomIcon('#2563eb', iconPaths.house); 
-const slurryIcon = createCustomIcon('#78350f', iconPaths.droplet); 
-const manureIcon = createCustomIcon('#d97706', iconPaths.layers); 
-
-// --- Helper Components ---
-
-// Component to force recenter map when position changes
-const MapRecenter = ({ position }: { position: GeoPoint | null }) => {
-    const map = useMap();
-    useEffect(() => {
-        if (position) {
-            map.invalidateSize();
-            // Use flyTo for smooth transition
-            map.flyTo([position.lat, position.lng], 15, { animate: true, duration: 1.0 });
-        }
-    }, [position, map]);
-    return null;
-};
-
-const LocationMarker = ({ position, setPosition, iconType = 'farm' }: { position: GeoPoint | null, setPosition: (p: GeoPoint) => void, iconType?: 'farm' | 'slurry' | 'manure' }) => {
-    const map = useMap();
-    const markerRef = useRef<L.Marker>(null);
-    
-    // Select Icon based on Type
-    const icon = iconType === 'slurry' ? slurryIcon : iconType === 'manure' ? manureIcon : farmIcon;
-
-    useMapEvents({
-        click(e) {
-            setPosition({ lat: e.latlng.lat, lng: e.latlng.lng });
-        },
-    });
-
-    const eventHandlers = useMemo(
-        () => ({
-            dragend() {
-                const marker = markerRef.current;
-                if (marker != null) {
-                    const { lat, lng } = marker.getLatLng();
-                    setPosition({ lat, lng });
-                }
-            },
-        }),
-        [setPosition],
-    );
-
-    useEffect(() => {
-        setTimeout(() => map.invalidateSize(), 200);
-    }, [map]);
-
-    return position ? (
-        <Marker 
-            draggable={true}
-            eventHandlers={eventHandlers}
-            position={[position.lat, position.lng]} 
-            icon={icon} 
-            ref={markerRef}
-        />
-    ) : null;
-};
-
-const InlineMap = ({ position, setPosition, iconType = 'farm' }: { position: GeoPoint | null, setPosition: (p: GeoPoint) => void, iconType?: 'farm' | 'slurry' | 'manure' }) => {
-    const [style, setStyle] = useState<'standard' | 'satellite'>('standard');
-    // Default center only used for initial render if no position
-    const center = position || { lat: 47.5, lng: 14.5 };
-    
-    return (
-        <div className="h-64 w-full rounded-xl overflow-hidden border border-slate-300 relative mt-2 shadow-inner group z-0">
-            <MapContainer center={[center.lat, center.lng]} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-                <TileLayer attribution='&copy; OpenStreetMap' url={style === 'standard' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} />
-                <LocationMarker position={position} setPosition={setPosition} iconType={iconType} />
-                <MapRecenter position={position} />
-            </MapContainer>
-            
-            <div className="absolute top-2 right-2 flex flex-col gap-2 z-[400]">
-                 <button onClick={() => setStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white/90 p-2 rounded shadow text-slate-700 hover:text-green-600 text-xs font-bold backdrop-blur">
-                    {style === 'standard' ? 'Satellit' : 'Karte'}
-                 </button>
-                 <button onClick={() => {
-                     navigator.geolocation.getCurrentPosition(pos => {
-                         const p = {lat: pos.coords.latitude, lng: pos.coords.longitude};
-                         setPosition(p);
-                     });
-                 }} className="bg-white/90 p-2 rounded shadow text-slate-700 hover:text-blue-600 backdrop-blur" title="Mein Standort">
-                    <LocateFixed size={16}/>
-                 </button>
-            </div>
-            {!position && (
-                <div className="absolute inset-0 flex items-center justify-center bg-black/10 pointer-events-none z-[400]">
-                    <span className="bg-white/80 px-3 py-1 rounded text-sm text-slate-600 font-medium backdrop-blur">Auf Karte tippen zum Setzen</span>
-                </div>
-            )}
-        </div>
-    );
-};
-
-export const SettingsPage = () => {
-  const [activeTab, setActiveTab] = useState<'profile' | 'storage' | 'general' | 'sync'>('profile');
-  
-  // Profile State
-  const [profile, setProfile] = useState<FarmProfile>({ farmId: '', operatorName: '', address: '', totalAreaHa: 0 });
-  const [isGeocoding, setIsGeocoding] = useState(false);
-  const [notification, setNotification] = useState<string | null>(null);
-
-  // Storage State
   const [storages, setStorages] = useState<StorageLocation[]>([]);
-  const [isAddingStorage, setIsAddingStorage] = useState(false);
   
-  // App Settings State
-  const [appSettings, setAppSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  // UI State
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [showSaveSuccess, setShowSaveSuccess] = useState(false);
+  const [geoCodingStatus, setGeoCodingStatus] = useState<'IDLE'|'LOADING'|'SUCCESS'|'ERROR'>('IDLE');
   
-  // New Storage Form
-  const [newStorage, setNewStorage] = useState<Partial<StorageLocation>>({ name: '', type: FertilizerType.SLURRY, capacity: 100, currentLevel: 0, dailyGrowth: 0.5, geo: { lat: 47.5, lng: 14.5 } });
-
-  // Sync State
-  const [isTestingConn, setIsTestingConn] = useState(false);
+  // Cloud State
+  const [cloudMembers, setCloudMembers] = useState<any[]>([]);
+  const [cloudStats, setCloudStats] = useState({ activities: 0 });
   const [isUploading, setIsUploading] = useState(false);
-  
-  // Restore State
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  
-  // PIN Visibility
   const [showPin, setShowPin] = useState(false);
-  
-  // NEW STATE: Members & Stats
-  const [farmMembers, setFarmMembers] = useState<any[]>([]);
-  const [cloudStats, setCloudStats] = useState<{activities: number} | null>(null);
 
-  useEffect(() => { 
-      loadData(); 
-  }, []);
-  
-  // Load Members when Sync Tab opens
+  // Storage Edit State
+  const [editingStorage, setEditingStorage] = useState<StorageLocation | null>(null);
+
   useEffect(() => {
-      if (activeTab === 'sync' && appSettings.farmId) {
-          loadFarmDetails();
+    loadAll();
+  }, []);
+
+  useEffect(() => {
+      if (initialTab) setActiveTab(initialTab);
+  }, [initialTab]);
+
+  const loadAll = async () => {
+      setLoading(true);
+      const s = await dbService.getSettings();
+      setSettings(s);
+      
+      const p = await dbService.getFarmProfile();
+      if (p.length > 0) setProfile(p[0]);
+
+      const st = await dbService.getStorageLocations();
+      setStorages(st);
+
+      // Cloud Data
+      if (isCloudConfigured() && s.farmId) {
+          loadCloudData(s.farmId);
       }
-  }, [activeTab, appSettings.farmId]);
 
-  const showNotification = (msg: string) => {
-      setNotification(msg);
-      setTimeout(() => setNotification(null), 3000);
+      setLoading(false);
   };
 
-  const loadData = async () => {
-    const p = await dbService.getFarmProfile();
-    if (p.length > 0) setProfile(prev => ({ ...prev, ...p[0] }));
-    
-    const fields = await dbService.getFields();
-    const totalHa = fields.reduce((sum, f) => sum + f.areaHa, 0);
-    setProfile(prev => ({ ...prev, totalAreaHa: totalHa }));
-
-    const s = await dbService.getStorageLocations();
-    setStorages(s);
-
-    const as = await dbService.getSettings();
-    setAppSettings(as);
-  };
-  
-  const loadFarmDetails = async () => {
-      if (!appSettings.farmId) return;
-      const members = await dbService.getFarmMembers(appSettings.farmId);
-      setFarmMembers(members);
-      const stats = await dbService.getCloudStats(appSettings.farmId);
+  const loadCloudData = async (farmId: string) => {
+      const members = await dbService.getFarmMembers(farmId);
+      setCloudMembers(members);
+      const stats = await dbService.getCloudStats(farmId);
       setCloudStats(stats);
   };
 
-  const handleSaveProfile = async () => {
-    await dbService.saveFarmProfile(profile);
-    showNotification('Betriebsdaten gespeichert.');
+  const handleSaveAll = async () => {
+      setSaving(true);
+      await dbService.saveSettings(settings);
+      await dbService.saveFarmProfile(profile);
+      // Storages are saved individually
+      
+      setSaving(false);
+      setShowSaveSuccess(true);
+      setTimeout(() => setShowSaveSuccess(false), 2000);
+
+      // Refresh Cloud Data if farmId changed
+      if (isCloudConfigured() && settings.farmId) {
+          loadCloudData(settings.farmId);
+      }
   };
 
   const handleGeocode = async () => {
-      if(!profile.address) return;
-      setIsGeocoding(true);
+      if (!profile.address) return;
+      setGeoCodingStatus('LOADING');
       const coords = await geocodeAddress(profile.address);
-      setIsGeocoding(false);
-      if(coords) setProfile(prev => ({...prev, addressGeo: coords}));
-      else alert('Adresse konnte nicht gefunden werden.');
-  };
-
-  const handleDeleteStorage = async (id: string) => {
-    if (confirm('Lagerplatz wirklich löschen?')) {
-        await dbService.deleteStorage(id);
-        loadData();
-        showNotification('Lagerplatz gelöscht.');
-    }
-  };
-
-  const handleStartAddStorage = () => {
-    // If we have a farm location, use it as start for new storage, otherwise Austria center
-    const initialGeo = profile.addressGeo || { lat: 47.5, lng: 14.5 };
-    setNewStorage({ id: undefined, name: '', type: FertilizerType.SLURRY, capacity: 100, currentLevel: 0, dailyGrowth: 0.5, geo: initialGeo });
-    setIsAddingStorage(true);
-  };
-
-  const handleEditStorage = (storage: StorageLocation) => {
-      setNewStorage({ ...storage });
-      setIsAddingStorage(true);
-  };
-
-  const handleSaveStorage = async () => {
-    if (!newStorage.name || !newStorage.geo) { alert("Bitte Name und Standort angeben."); return; }
-    const storage: StorageLocation = {
-        id: newStorage.id || Math.random().toString(36).substr(2, 9),
-        name: newStorage.name,
-        type: newStorage.type || FertilizerType.SLURRY,
-        capacity: newStorage.capacity || 0,
-        currentLevel: newStorage.currentLevel || 0,
-        dailyGrowth: newStorage.dailyGrowth || 0,
-        geo: newStorage.geo
-    };
-    await dbService.saveStorageLocation(storage);
-    setIsAddingStorage(false);
-    loadData();
-    showNotification('Lager gespeichert.');
-  };
-
-  const handleSaveAppSettings = async () => {
-      await dbService.saveSettings(appSettings);
-      showNotification('Einstellungen gespeichert.');
-  };
-
-  const handleTestConnection = async () => {
-      setIsTestingConn(true);
-      try {
-          await syncData(); 
-          await loadFarmDetails(); // Refresh stats
-          alert(`Sync erfolgreich!\nDaten für Betrieb "${appSettings.farmId || 'Privat'}" geladen.`);
-      } catch (e: any) {
-          alert(`Fehler: ${e.message}`);
-      } finally {
-          setIsTestingConn(false);
+      if (coords) {
+          setProfile(prev => ({ ...prev, addressGeo: coords }));
+          setGeoCodingStatus('SUCCESS');
+      } else {
+          setGeoCodingStatus('ERROR');
       }
   };
-  
+
+  const handleStorageSave = async (storage: StorageLocation) => {
+      await dbService.saveStorageLocation(storage);
+      setEditingStorage(null);
+      const st = await dbService.getStorageLocations();
+      setStorages(st);
+  };
+
+  const handleStorageDelete = async (id: string) => {
+      if (window.confirm("Lager wirklich löschen?")) {
+          await dbService.deleteStorage(id);
+          const st = await dbService.getStorageLocations();
+          setStorages(st);
+      }
+  };
+
   const handleForceUpload = async () => {
-      if (!appSettings.farmId) {
-          alert("Bitte zuerst eine Betriebsnummer eingeben.");
-          return;
-      }
-      if (!confirm(`WARNUNG: Dies lädt ALLE lokalen Daten in den Betrieb "${appSettings.farmId}" hoch.\n\nNur machen, wenn die Cloud leer ist oder Daten fehlen!`)) {
-          return;
-      }
-
+      if (!window.confirm("Alle lokalen Daten werden erneut an die Cloud gesendet. Fortfahren?")) return;
       setIsUploading(true);
       try {
-          await dbService.forceUploadToFarm(); 
-          await loadFarmDetails(); // Refresh stats
-          showNotification(`Daten an Betrieb ${appSettings.farmId} gesendet.`);
+          await dbService.forceUploadToFarm();
+          alert("Upload erfolgreich!");
       } catch (e: any) {
-          alert("Fehler beim Hochladen: " + e.message);
+          alert("Fehler: " + e.message);
       } finally {
           setIsUploading(false);
       }
   };
-  
-  const handleExportBackup = async () => { 
-      try {
-          const backup = await dbService.createFullBackup();
-          const jsonStr = JSON.stringify(backup, null, 2);
-          const blob = new Blob([jsonStr], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `agritrack_backup_${new Date().toISOString().slice(0,10)}.json`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          
-          showNotification('Backup heruntergeladen.');
-      } catch (e) {
-          console.error(e);
-          alert('Fehler beim Backup erstellen.');
-      }
-  };
-  
-  const handleRestoreBackup = async (e: React.ChangeEvent<HTMLInputElement>) => {
-      const file = e.target.files?.[0];
-      if (!file) return;
-      
-      if (!confirm("WARNUNG: Alle lokalen Daten werden überschrieben! Fortfahren?")) {
-          e.target.value = '';
-          return;
-      }
 
-      try {
-          const text = await file.text();
-          const json = JSON.parse(text);
-          await dbService.restoreFullBackup(json);
-          await loadData(); // Reload UI
-          showNotification('Backup erfolgreich wiederhergestellt!');
-      } catch (err: any) {
-          console.error(err);
-          alert("Fehler beim Wiederherstellen: " + err.message);
-      } finally {
-          e.target.value = ''; // Reset input
-      }
+  const copyToClipboard = (text: string) => {
+      navigator.clipboard.writeText(text);
+      alert("Kopiert: " + text);
   };
+
+  const renderTabs = () => (
+      <div className="flex bg-white border-b border-slate-200 overflow-x-auto hide-scrollbar sticky top-0 z-10">
+          {[
+              { id: 'profile', icon: User, label: 'Betrieb' },
+              { id: 'storage', icon: Database, label: 'Lager' },
+              { id: 'general', icon: Settings, label: 'Allgemein' },
+              { id: 'sync', icon: Cloud, label: 'Cloud & Daten' }
+          ].map(tab => (
+              <button
+                  key={tab.id}
+                  onClick={() => setActiveTab(tab.id as any)}
+                  className={`flex-1 flex flex-col items-center justify-center py-4 px-4 min-w-[80px] transition-colors border-b-2 ${
+                      activeTab === tab.id 
+                      ? 'border-green-600 text-green-700 bg-green-50' 
+                      : 'border-transparent text-slate-500 hover:text-slate-700 hover:bg-slate-50'
+                  }`}
+              >
+                  <tab.icon size={20} className="mb-1" />
+                  <span className="text-xs font-bold whitespace-nowrap">{tab.label}</span>
+              </button>
+          ))}
+      </div>
+  );
+
+  if (loading) return <div className="p-8 text-center text-slate-500">Lade Einstellungen...</div>;
 
   return (
-    <div className="h-full flex flex-col bg-slate-50 relative">
-      {notification && (
-          <div className="absolute bottom-20 left-1/2 transform -translate-x-1/2 bg-slate-800 text-white px-6 py-3 rounded-full shadow-lg z-[1000] flex items-center animate-in fade-in slide-in-from-bottom-4">
-              <Check size={18} className="mr-2 text-green-400"/> {notification}
+    <div className="h-full bg-slate-50 flex flex-col relative overflow-hidden">
+      {renderTabs()}
+
+      <div className="flex-1 overflow-y-auto pb-24">
+          
+          {/* --- PROFILE TAB --- */}
+          {activeTab === 'profile' && (
+              <div className="p-4 space-y-6 max-w-2xl mx-auto">
+                  
+                  {/* Farm ID Card */}
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 text-center">
+                      <div className="w-20 h-20 bg-green-100 text-green-600 rounded-full flex items-center justify-center mx-auto mb-4">
+                          <User size={40} />
+                      </div>
+                      <h2 className="text-xl font-bold text-slate-800">
+                          {profile.operatorName || 'Mein Betrieb'}
+                      </h2>
+                      <p className="text-slate-500">{profile.farmId || 'Keine Betriebsnummer'}</p>
+                  </div>
+
+                  {/* Form */}
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                      <h3 className="font-bold text-lg text-slate-700 mb-4">Stammdaten</h3>
+                      
+                      <div>
+                          <label className="block text-sm font-bold text-slate-500 uppercase mb-1">Betriebsname / Bewirtschafter</label>
+                          <input 
+                              type="text" 
+                              value={profile.operatorName}
+                              onChange={(e) => setProfile({...profile, operatorName: e.target.value})}
+                              className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-green-500"
+                              placeholder="Max Mustermann"
+                          />
+                      </div>
+
+                      <div>
+                          <label className="block text-sm font-bold text-slate-500 uppercase mb-1">Betriebsnummer (LFBIS)</label>
+                          <input 
+                              type="text" 
+                              value={profile.farmId}
+                              onChange={(e) => setProfile({...profile, farmId: e.target.value})}
+                              className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-green-500 font-mono"
+                              placeholder="1234567"
+                          />
+                      </div>
+
+                      <div>
+                          <label className="block text-sm font-bold text-slate-500 uppercase mb-1">Hofadresse</label>
+                          <div className="flex space-x-2">
+                              <input 
+                                  type="text" 
+                                  value={profile.address}
+                                  onChange={(e) => setProfile({...profile, address: e.target.value})}
+                                  className="flex-1 p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-green-500"
+                                  placeholder="Dorfstraße 1, 1234 Ort"
+                              />
+                              <button 
+                                  onClick={handleGeocode}
+                                  className="p-3 bg-blue-50 text-blue-600 rounded-xl hover:bg-blue-100 transition-colors"
+                                  title="Adresse auf Karte suchen"
+                              >
+                                  <MapPin size={24} />
+                              </button>
+                          </div>
+                          {geoCodingStatus === 'SUCCESS' && <p className="text-xs text-green-600 mt-1 flex items-center"><CheckCircle2 size={12} className="mr-1"/> Koordinate gefunden</p>}
+                          {geoCodingStatus === 'ERROR' && <p className="text-xs text-red-600 mt-1 flex items-center"><AlertTriangle size={12} className="mr-1"/> Adresse nicht gefunden</p>}
+                      </div>
+
+                      <div>
+                          <label className="block text-sm font-bold text-slate-500 uppercase mb-1">Gesamtfläche (ha)</label>
+                          <input 
+                              type="number" 
+                              value={profile.totalAreaHa || ''}
+                              onChange={(e) => setProfile({...profile, totalAreaHa: parseFloat(e.target.value)})}
+                              className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-green-500"
+                              placeholder="Automatisch berechnet wenn leer"
+                          />
+                          <p className="text-xs text-slate-400 mt-1">Wird automatisch aus den Feldern berechnet, falls leer gelassen.</p>
+                      </div>
+                  </div>
+              </div>
+          )}
+
+          {/* --- STORAGE TAB --- */}
+          {activeTab === 'storage' && (
+              <div className="p-4 space-y-4 max-w-2xl mx-auto">
+                  <div className="flex justify-between items-center mb-2">
+                      <h3 className="font-bold text-lg text-slate-700">Meine Lager</h3>
+                      <button 
+                          onClick={() => setEditingStorage({
+                              id: Math.random().toString(36).substr(2, 9),
+                              name: '',
+                              type: FertilizerType.SLURRY,
+                              capacity: 100,
+                              currentLevel: 0,
+                              dailyGrowth: 0.5,
+                              geo: { lat: 47.5, lng: 14.5 } // Default placeholder
+                          })}
+                          className="flex items-center text-sm font-bold text-green-600 bg-green-50 px-3 py-2 rounded-lg hover:bg-green-100"
+                      >
+                          <Plus size={16} className="mr-1"/> Neu anlegen
+                      </button>
+                  </div>
+
+                  {storages.length === 0 && (
+                      <div className="text-center py-12 bg-white rounded-2xl border border-slate-200 border-dashed">
+                          <Database size={48} className="text-slate-300 mx-auto mb-3"/>
+                          <p className="text-slate-500">Noch keine Lager angelegt.</p>
+                      </div>
+                  )}
+
+                  {storages.map(storage => (
+                      <div key={storage.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-200 flex justify-between items-center">
+                          <div className="flex items-center space-x-4">
+                              <div className={`p-3 rounded-full ${storage.type === FertilizerType.SLURRY ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-800'}`}>
+                                  {storage.type === FertilizerType.SLURRY ? <Database size={24}/> : <Database size={24}/>}
+                              </div>
+                              <div>
+                                  <h4 className="font-bold text-slate-800">{storage.name}</h4>
+                                  <p className="text-xs text-slate-500">
+                                      {storage.capacity} m³ • {storage.type} • {storage.currentLevel.toFixed(1)} m³ voll
+                                  </p>
+                              </div>
+                          </div>
+                          <div className="flex space-x-2">
+                              <button onClick={() => setEditingStorage(storage)} className="p-2 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg">
+                                  <Settings size={20}/>
+                              </button>
+                              <button onClick={() => handleStorageDelete(storage.id)} className="p-2 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg">
+                                  <Trash2 size={20}/>
+                              </button>
+                          </div>
+                      </div>
+                  ))}
+
+                  {/* Info Box */}
+                  <div className="bg-blue-50 p-4 rounded-xl flex items-start text-blue-800 text-sm mt-6">
+                      <Info className="shrink-0 mr-3 mt-0.5" size={18}/>
+                      <p>
+                          <strong>Tipp:</strong> Um den Standort eines Lagers zu ändern, 
+                          öffne die Karte, tippe auf das Lager-Icon und verschiebe es. 
+                          Hier kannst du nur die Kapazitäten verwalten.
+                      </p>
+                  </div>
+              </div>
+          )}
+
+          {/* --- GENERAL TAB --- */}
+          {activeTab === 'general' && (
+              <div className="p-4 space-y-6 max-w-2xl mx-auto">
+                  
+                  {/* Equipment Settings */}
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
+                      <h3 className="font-bold text-lg text-slate-700 flex items-center">
+                          <Truck className="mr-2" size={20}/> Maschinen & Ausbringung
+                      </h3>
+                      
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Güllefass (m³)</label>
+                              <input 
+                                  type="number" 
+                                  value={settings.slurryLoadSize}
+                                  onChange={(e) => setSettings({...settings, slurryLoadSize: parseFloat(e.target.value)})}
+                                  className="w-full p-2 border border-slate-300 rounded-lg font-bold"
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Breite (m)</label>
+                              <input 
+                                  type="number" 
+                                  value={settings.slurrySpreadWidth || 12}
+                                  onChange={(e) => setSettings({...settings, slurrySpreadWidth: parseFloat(e.target.value)})}
+                                  className="w-full p-2 border border-slate-300 rounded-lg"
+                              />
+                          </div>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Miststreuer (m³)</label>
+                              <input 
+                                  type="number" 
+                                  value={settings.manureLoadSize}
+                                  onChange={(e) => setSettings({...settings, manureLoadSize: parseFloat(e.target.value)})}
+                                  className="w-full p-2 border border-slate-300 rounded-lg font-bold"
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Breite (m)</label>
+                              <input 
+                                  type="number" 
+                                  value={settings.manureSpreadWidth || 10}
+                                  onChange={(e) => setSettings({...settings, manureSpreadWidth: parseFloat(e.target.value)})}
+                                  className="w-full p-2 border border-slate-300 rounded-lg"
+                              />
+                          </div>
+                      </div>
+                  </div>
+
+                  {/* GPS Settings */}
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
+                      <h3 className="font-bold text-lg text-slate-700 flex items-center">
+                          <Smartphone className="mr-2" size={20}/> GPS Automatik
+                      </h3>
+                      
+                      <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Start-Geschwindigkeit (km/h)</label>
+                          <div className="flex items-center space-x-3">
+                              <input 
+                                  type="range" min="1" max="10" step="0.5"
+                                  value={settings.minSpeed}
+                                  onChange={(e) => setSettings({...settings, minSpeed: parseFloat(e.target.value)})}
+                                  className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                              />
+                              <span className="font-bold text-slate-700 w-12 text-right">{settings.minSpeed}</span>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1">Unterhalb dieser Geschwindigkeit wird nicht aufgezeichnet (Stillstand).</p>
+                      </div>
+
+                      <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Max. Arbeits-Geschwindigkeit (km/h)</label>
+                          <div className="flex items-center space-x-3">
+                              <input 
+                                  type="range" min="5" max="30" step="1"
+                                  value={settings.maxSpeed}
+                                  onChange={(e) => setSettings({...settings, maxSpeed: parseFloat(e.target.value)})}
+                                  className="flex-1 h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                              />
+                              <span className="font-bold text-slate-700 w-12 text-right">{settings.maxSpeed}</span>
+                          </div>
+                          <p className="text-xs text-slate-400 mt-1">Oberhalb dieser Geschwindigkeit wird die Fahrt als "Transport" gewertet (keine Ausbringung).</p>
+                      </div>
+
+                      <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Lager-Erkennungsradius (m)</label>
+                          <input 
+                              type="number" 
+                              value={settings.storageRadius}
+                              onChange={(e) => setSettings({...settings, storageRadius: parseFloat(e.target.value)})}
+                              className="w-full p-2 border border-slate-300 rounded-lg"
+                          />
+                      </div>
+                  </div>
+
+                  {/* App Icon */}
+                  <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                      <h3 className="font-bold text-lg text-slate-700">App Design (Traktor Marke)</h3>
+                      <div className="grid grid-cols-4 gap-4">
+                          {ICON_THEMES.map(theme => (
+                              <button
+                                  key={theme.id}
+                                  onClick={() => setSettings({...settings, appIcon: theme.id})}
+                                  className={`p-2 rounded-xl border-2 flex flex-col items-center space-y-2 transition-all ${
+                                      (settings.appIcon || 'standard') === theme.id 
+                                      ? 'border-green-500 bg-green-50' 
+                                      : 'border-transparent hover:bg-slate-50'
+                                  }`}
+                              >
+                                  <img src={getAppIcon(theme.id)} className="w-10 h-10 rounded-lg shadow-sm" alt={theme.label} />
+                                  <span className="text-[10px] font-bold text-slate-600 truncate w-full text-center">{theme.label}</span>
+                              </button>
+                          ))}
+                      </div>
+                  </div>
+              </div>
+          )}
+
+          {/* --- CLOUD TAB --- */}
+          {activeTab === 'sync' && (
+              <div className="p-4 space-y-6 max-w-2xl mx-auto">
+                  
+                  {/* Status Banner */}
+                  <div className={`p-6 rounded-2xl shadow-sm border text-white ${isCloudConfigured() ? 'bg-slate-800 border-slate-700' : 'bg-slate-500 border-slate-400'}`}>
+                      <div className="flex items-center space-x-4 mb-4">
+                          <div className={`p-3 rounded-full ${isCloudConfigured() ? 'bg-green-500 text-white' : 'bg-slate-400 text-slate-200'}`}>
+                              <Shield size={32} />
+                          </div>
+                          <div>
+                              <h2 className="text-xl font-bold">
+                                  {isCloudConfigured() ? 'AgriCloud Aktiv' : 'Demo Modus (Offline)'}
+                              </h2>
+                              <p className="text-white/70 text-sm">
+                                  {isCloudConfigured() ? 'Daten werden synchronisiert.' : 'Daten werden nur lokal gespeichert.'}
+                              </p>
+                          </div>
+                      </div>
+
+                      {isCloudConfigured() ? (
+                          <div className="grid grid-cols-2 gap-4 mt-4 pt-4 border-t border-white/10">
+                              <div>
+                                  <div className="text-xs uppercase font-bold text-white/50">User ID</div>
+                                  <div className="font-mono text-sm truncate">{authService.login ? 'Angemeldet' : 'Gast'}</div>
+                              </div>
+                              <div>
+                                  <div className="text-xs uppercase font-bold text-white/50">Cloud Einträge</div>
+                                  <div className="font-mono text-sm">{cloudStats.activities}</div>
+                              </div>
+                          </div>
+                      ) : (
+                          <button className="w-full bg-white text-slate-800 py-3 rounded-xl font-bold mt-2">
+                              Jetzt Anmelden / Registrieren
+                          </button>
+                      )}
+                  </div>
+
+                  {/* Connection Settings */}
+                  {isCloudConfigured() && (
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                          <div className="flex justify-between items-center mb-2">
+                              <h3 className="font-bold text-lg text-slate-700 flex items-center">
+                                  <Cloud className="mr-2" size={20}/> Hof Verbindung
+                              </h3>
+                              <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold border border-green-200 flex items-center">
+                                  <CheckCircle2 size={12} className="mr-1"/> Verbunden
+                              </div>
+                          </div>
+
+                          <p className="text-sm text-slate-500 mb-4">
+                              Um mehrere Geräte (z.B. Fahrer) mit diesem Hof zu verbinden, müssen alle die gleiche 
+                              <strong> Betriebsnummer</strong> und das gleiche <strong>Hof-Passwort</strong> eingeben.
+                          </p>
+                          
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              <div>
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Betriebsnummer (Farm ID)</label>
+                                  <input 
+                                      type="text" 
+                                      value={settings.farmId || ''}
+                                      onChange={(e) => setSettings({...settings, farmId: e.target.value})}
+                                      className="w-full p-3 border border-slate-300 rounded-xl font-mono font-bold bg-slate-50"
+                                      placeholder="LFBIS Nummer"
+                                  />
+                              </div>
+                              <div>
+                                  <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hof-Passwort (PIN)</label>
+                                  <div className="relative">
+                                      <input 
+                                          type={showPin ? "text" : "password"}
+                                          value={settings.farmPin || ''}
+                                          onChange={(e) => setSettings({...settings, farmPin: e.target.value})}
+                                          className="w-full p-3 border border-slate-300 rounded-xl font-mono font-bold bg-slate-50"
+                                          placeholder="Geheim!"
+                                      />
+                                      <button 
+                                          onClick={() => setShowPin(!showPin)}
+                                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                                      >
+                                          {showPin ? <Lock size={16}/> : <Shield size={16}/>}
+                                      </button>
+                                  </div>
+                              </div>
+                          </div>
+                          
+                          <div className="bg-yellow-50 p-4 rounded-xl border border-yellow-100 text-yellow-800 text-sm flex items-start">
+                               <Lock className="shrink-0 mr-2 mt-0.5" size={16} />
+                               <p>
+                                   <strong>Schließfach-Prinzip:</strong> Nur Geräte mit der exakt gleichen Kombination aus 
+                                   Nummer und PIN können die Daten dieses Hofes lesen oder schreiben.
+                               </p>
+                          </div>
+                      </div>
+                  )}
+
+                  {/* Extensions & Tools Section (NEW) */}
+                  {isCloudConfigured() && settings.farmId && (
+                      <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                          <h3 className="font-bold text-lg text-slate-700 border-b border-slate-100 pb-2">
+                              Erweiterungen & Werkzeuge
+                          </h3>
+                          
+                          <div className="grid grid-cols-1 gap-3">
+                              
+                              {/* Share Credentials */}
+                              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                  <div className="flex items-center">
+                                      <div className="p-2 bg-blue-100 text-blue-600 rounded-lg mr-3">
+                                          <Share2 size={20} />
+                                      </div>
+                                      <div>
+                                          <div className="font-bold text-slate-700">Zugangsdaten teilen</div>
+                                          <div className="text-xs text-slate-500">Sende ID & PIN an Mitarbeiter</div>
+                                      </div>
+                                  </div>
+                                  <button 
+                                      onClick={() => copyToClipboard(`AgriTrack Login:\nBetrieb: ${settings.farmId}\nPIN: ${settings.farmPin}`)}
+                                      className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-all text-slate-500"
+                                  >
+                                      <Copy size={18} />
+                                  </button>
+                              </div>
+
+                              {/* Force Upload */}
+                              <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                  <div className="flex items-center">
+                                      <div className="p-2 bg-orange-100 text-orange-600 rounded-lg mr-3">
+                                          <UploadCloud size={20} />
+                                      </div>
+                                      <div>
+                                          <div className="font-bold text-slate-700">Notfall-Upload</div>
+                                          <div className="text-xs text-slate-500">Erzwinge Sync aller lokalen Daten</div>
+                                      </div>
+                                  </div>
+                                  <button 
+                                      onClick={handleForceUpload}
+                                      disabled={isUploading}
+                                      className="p-2 hover:bg-white rounded-lg border border-transparent hover:border-slate-200 transition-all text-slate-500"
+                                  >
+                                      {isUploading ? <RefreshCw className="animate-spin" size={18}/> : <ChevronRight size={18} />}
+                                  </button>
+                              </div>
+
+                              {/* Connected Devices (Mock List based on DB members) */}
+                              <div className="p-3 bg-slate-50 rounded-xl border border-slate-100">
+                                  <div className="flex items-center mb-3">
+                                      <div className="p-2 bg-green-100 text-green-600 rounded-lg mr-3">
+                                          <Users size={20} />
+                                      </div>
+                                      <div>
+                                          <div className="font-bold text-slate-700">Verbundene Geräte</div>
+                                          <div className="text-xs text-slate-500">{cloudMembers.length} aktive Nutzer</div>
+                                      </div>
+                                  </div>
+                                  {cloudMembers.length > 0 && (
+                                      <div className="pl-12 space-y-2">
+                                          {cloudMembers.slice(0, 3).map((m, i) => (
+                                              <div key={i} className="text-xs text-slate-500 flex justify-between bg-white p-2 rounded border border-slate-200">
+                                                  <span>{m.email || 'Unbekannt'}</span>
+                                                  <span className="font-mono text-[10px]">{new Date(m.joinedAt).toLocaleDateString()}</span>
+                                              </div>
+                                          ))}
+                                          {cloudMembers.length > 3 && <div className="text-xs text-center text-slate-400 pt-1">...und {cloudMembers.length - 3} weitere</div>}
+                                      </div>
+                                  )}
+                              </div>
+                          </div>
+                      </div>
+                  )}
+
+                  {/* Sign Out Button */}
+                  <button 
+                      onClick={async () => {
+                          await authService.logout();
+                          window.location.reload();
+                      }}
+                      className="w-full border-2 border-slate-200 text-slate-500 py-3 rounded-xl font-bold flex items-center justify-center hover:bg-slate-100 hover:text-slate-800 transition-colors"
+                  >
+                      <LogOut size={18} className="mr-2"/> Abmelden
+                  </button>
+              </div>
+          )}
+
+      </div>
+
+      {/* Floating Save Button */}
+      <div className="absolute bottom-6 right-6">
+          <button 
+              onClick={handleSaveAll}
+              disabled={saving}
+              className={`flex items-center space-x-2 px-6 py-4 rounded-full shadow-2xl font-bold text-lg transition-all transform hover:scale-105 active:scale-95 ${
+                  showSaveSuccess 
+                  ? 'bg-green-500 text-white' 
+                  : 'bg-slate-900 text-white hover:bg-black'
+              }`}
+          >
+              {showSaveSuccess ? <CheckCircle2 size={24}/> : (saving ? <RefreshCw className="animate-spin" size={24}/> : <Save size={24}/>)}
+              <span>{showSaveSuccess ? 'Gespeichert!' : 'Speichern'}</span>
+          </button>
+      </div>
+
+      {/* Storage Edit Modal */}
+      {editingStorage && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+              <div className="bg-white rounded-2xl shadow-xl w-full max-w-sm overflow-hidden animate-fade-scale">
+                  <div className="p-4 bg-slate-800 text-white flex justify-between items-center">
+                      <h3 className="font-bold">Lager bearbeiten</h3>
+                      <button onClick={() => setEditingStorage(null)}><X size={20}/></button>
+                  </div>
+                  <div className="p-4 space-y-4">
+                      <div>
+                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Bezeichnung</label>
+                          <input 
+                              type="text" 
+                              value={editingStorage.name}
+                              onChange={(e) => setEditingStorage({...editingStorage, name: e.target.value})}
+                              className="w-full p-2 border border-slate-300 rounded-lg"
+                              placeholder="z.B. Güllegrube Hof"
+                          />
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Typ</label>
+                              <select 
+                                  value={editingStorage.type}
+                                  onChange={(e) => setEditingStorage({...editingStorage, type: e.target.value as any})}
+                                  className="w-full p-2 border border-slate-300 rounded-lg bg-white"
+                              >
+                                  <option value={FertilizerType.SLURRY}>Gülle</option>
+                                  <option value={FertilizerType.MANURE}>Mist</option>
+                              </select>
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Kapazität (m³)</label>
+                              <input 
+                                  type="number" 
+                                  value={editingStorage.capacity}
+                                  onChange={(e) => setEditingStorage({...editingStorage, capacity: parseFloat(e.target.value)})}
+                                  className="w-full p-2 border border-slate-300 rounded-lg"
+                              />
+                          </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-4">
+                           <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Aktuell (m³)</label>
+                              <input 
+                                  type="number" 
+                                  value={editingStorage.currentLevel}
+                                  onChange={(e) => setEditingStorage({...editingStorage, currentLevel: parseFloat(e.target.value)})}
+                                  className="w-full p-2 border border-slate-300 rounded-lg"
+                              />
+                          </div>
+                          <div>
+                              <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Zuwachs / Tag</label>
+                              <input 
+                                  type="number" step="0.1"
+                                  value={editingStorage.dailyGrowth}
+                                  onChange={(e) => setEditingStorage({...editingStorage, dailyGrowth: parseFloat(e.target.value)})}
+                                  className="w-full p-2 border border-slate-300 rounded-lg"
+                              />
+                          </div>
+                      </div>
+                      <div className="bg-blue-50 p-3 rounded-lg text-xs text-blue-700">
+                          <Info size={14} className="inline mr-1"/>
+                          Position kann nur auf der Karte geändert werden.
+                      </div>
+                      <button 
+                          onClick={() => handleStorageSave(editingStorage)}
+                          className="w-full py-3 bg-green-600 text-white font-bold rounded-xl hover:bg-green-700"
+                      >
+                          Speichern
+                      </button>
+                  </div>
+              </div>
           </div>
       )}
-
-      {/* Header */}
-      <div className="bg-white p-4 shadow-sm border-b border-slate-200 shrink-0">
-        <h1 className="text-2xl font-bold text-slate-800">Optionen</h1>
-        <div className="flex space-x-4 mt-4 text-sm font-medium text-slate-500 overflow-x-auto">
-            <button onClick={() => setActiveTab('profile')} className={`pb-2 border-b-2 whitespace-nowrap ${activeTab === 'profile' ? 'border-green-600 text-green-600' : 'border-transparent'}`}>Betrieb</button>
-            <button onClick={() => setActiveTab('storage')} className={`pb-2 border-b-2 whitespace-nowrap ${activeTab === 'storage' ? 'border-green-600 text-green-600' : 'border-transparent'}`}>Lager</button>
-            <button onClick={() => setActiveTab('general')} className={`pb-2 border-b-2 whitespace-nowrap ${activeTab === 'general' ? 'border-green-600 text-green-600' : 'border-transparent'}`}>Allgemein</button>
-            <button onClick={() => setActiveTab('sync')} className={`pb-2 border-b-2 whitespace-nowrap ${activeTab === 'sync' ? 'border-green-600 text-green-600' : 'border-transparent'}`}>Cloud & Daten</button>
-        </div>
-      </div>
-
-      <div className="flex-1 overflow-y-auto p-4 bg-slate-50">
-        
-        {/* --- PROFILE TAB --- */}
-        {activeTab === 'profile' && (
-            <div className="space-y-4 max-w-lg mx-auto pb-20">
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-4">
-                    <h2 className="font-bold text-lg flex items-center text-slate-700">
-                        <Building2 className="mr-2" size={20}/> Stammdaten
-                    </h2>
-                    
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Betriebsnummer (LFBIS)</label>
-                        <input 
-                            type="text" 
-                            value={profile.farmId}
-                            onChange={e => setProfile({...profile, farmId: e.target.value})}
-                            className="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-green-500 outline-none"
-                            placeholder="z.B. 1234567"
-                        />
-                    </div>
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Bewirtschafter</label>
-                        <input 
-                            type="text" 
-                            value={profile.operatorName}
-                            onChange={e => setProfile({...profile, operatorName: e.target.value})}
-                            className="w-full border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-green-500 outline-none"
-                        />
-                    </div>
-                     <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Adresse</label>
-                        <div className="flex gap-2">
-                            <input 
-                                type="text"
-                                value={profile.address}
-                                onChange={e => setProfile({...profile, address: e.target.value})}
-                                className="flex-1 border border-slate-300 rounded-lg p-2 focus:ring-2 focus:ring-green-500 outline-none"
-                            />
-                            <button onClick={handleGeocode} disabled={isGeocoding} className="bg-blue-50 text-blue-700 px-3 rounded-lg"><Search size={18}/></button>
-                        </div>
-                    </div>
-
-                    {/* RESTORED: Total Area Display */}
-                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 flex justify-between items-center">
-                        <span className="text-sm font-bold text-slate-600">Gesamtfläche (aus Feldern)</span>
-                        <span className="text-lg font-bold text-slate-800">{profile.totalAreaHa.toFixed(2)} ha</span>
-                    </div>
-
-                    {/* RESTORED: Farm Location Map */}
-                    <div>
-                        <label className="block text-sm font-medium text-slate-700 mb-1">Hofstelle (Kartenmittelpunkt)</label>
-                        <InlineMap 
-                            position={profile.addressGeo || null} 
-                            setPosition={(p) => setProfile({...profile, addressGeo: p})} 
-                            iconType='farm'
-                        />
-                    </div>
-
-                    <button onClick={handleSaveProfile} className="w-full bg-green-600 text-white py-3 rounded-xl font-bold hover:bg-green-700 transition">Speichern</button>
-                </div>
-            </div>
-        )}
-
-        {/* --- STORAGE TAB --- */}
-        {activeTab === 'storage' && (
-            <div className="space-y-4 pb-20 max-w-lg mx-auto">
-                {!isAddingStorage ? (
-                    <>
-                        {storages.map(s => (
-                            <div key={s.id} className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 flex justify-between items-center">
-                                <div className="flex items-center space-x-3">
-                                    <div className={`p-2 rounded-full ${s.type === FertilizerType.SLURRY ? 'bg-amber-100 text-amber-800' : 'bg-orange-100 text-orange-800'}`}>
-                                        {s.type === FertilizerType.SLURRY ? <Droplets size={18}/> : <Layers size={18}/>}
-                                    </div>
-                                    <div>
-                                        <div className="font-bold text-slate-800">{s.name}</div>
-                                        <div className="text-xs text-slate-500">{s.type} • {s.capacity} m³ • {s.dailyGrowth} m³/Tag</div>
-                                    </div>
-                                </div>
-                                <div className="flex space-x-2">
-                                    <button onClick={() => handleEditStorage(s)} className="p-2 text-blue-400 bg-blue-50 rounded-full hover:bg-blue-100"><Pencil size={16}/></button>
-                                    <button onClick={() => handleDeleteStorage(s.id)} className="p-2 text-red-400 bg-red-50 rounded-full hover:bg-red-100"><Trash2 size={16}/></button>
-                                </div>
-                            </div>
-                        ))}
-                        <button onClick={handleStartAddStorage} className="w-full py-4 border-2 border-dashed border-slate-300 rounded-xl text-slate-500 font-bold flex justify-center items-center hover:border-green-500 hover:text-green-600 hover:bg-green-50 transition-all">
-                            <Plus className="mr-2"/> Neues Lager hinzufügen
-                        </button>
-                    </>
-                ) : (
-                    <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200 space-y-4 animate-in fade-in slide-in-from-bottom-4">
-                        <h2 className="font-bold text-lg text-slate-800 border-b border-slate-100 pb-2">Lager Bearbeiten</h2>
-                        
-                        {/* RESTORED: Labels and Fields */}
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Bezeichnung</label>
-                            <input type="text" placeholder="z.B. Güllegrube Hof" className="w-full border p-2 rounded-lg" value={newStorage.name} onChange={e => setNewStorage({...newStorage, name: e.target.value})} />
-                        </div>
-
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Typ</label>
-                            <div className="flex space-x-2">
-                                <button 
-                                    onClick={() => setNewStorage({...newStorage, type: FertilizerType.SLURRY})}
-                                    className={`flex-1 py-2 rounded-lg border font-bold flex items-center justify-center ${newStorage.type === FertilizerType.SLURRY ? 'bg-amber-100 border-amber-500 text-amber-900' : 'bg-white border-slate-200 text-slate-400'}`}
-                                >
-                                    <Droplets size={16} className="mr-2"/> Gülle
-                                </button>
-                                <button 
-                                    onClick={() => setNewStorage({...newStorage, type: FertilizerType.MANURE})}
-                                    className={`flex-1 py-2 rounded-lg border font-bold flex items-center justify-center ${newStorage.type === FertilizerType.MANURE ? 'bg-orange-100 border-orange-500 text-orange-900' : 'bg-white border-slate-200 text-slate-400'}`}
-                                >
-                                    <Layers size={16} className="mr-2"/> Mist
-                                </button>
-                            </div>
-                        </div>
-
-                        <div className="grid grid-cols-3 gap-4">
-                            <div className="col-span-1">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Kapazität (m³)</label>
-                                <input type="number" className="w-full border p-2 rounded-lg font-bold" value={newStorage.capacity} onChange={e => setNewStorage({...newStorage, capacity: parseFloat(e.target.value)})} />
-                            </div>
-                            <div className="col-span-1">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Aktuell (m³)</label>
-                                <input type="number" className="w-full border p-2 rounded-lg" value={newStorage.currentLevel} onChange={e => setNewStorage({...newStorage, currentLevel: parseFloat(e.target.value)})} />
-                            </div>
-                            <div className="col-span-1">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Zuwachs/Tag</label>
-                                <input type="number" step="0.1" className="w-full border p-2 rounded-lg" value={newStorage.dailyGrowth} onChange={e => setNewStorage({...newStorage, dailyGrowth: parseFloat(e.target.value)})} />
-                            </div>
-                        </div>
-
-                        {/* RESTORED: Map Selection */}
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Standort</label>
-                            <InlineMap 
-                                position={newStorage.geo || null}
-                                setPosition={(p) => setNewStorage({...newStorage, geo: p})}
-                                iconType={newStorage.type === FertilizerType.SLURRY ? 'slurry' : 'manure'}
-                            />
-                        </div>
-
-                        <div className="flex justify-between pt-4">
-                            <button onClick={() => setIsAddingStorage(false)} className="px-4 py-2 text-slate-500 hover:bg-slate-100 rounded-lg">Abbrechen</button>
-                            <button onClick={handleSaveStorage} className="bg-green-600 text-white px-6 py-2 rounded-lg font-bold hover:bg-green-700 shadow-lg">Speichern</button>
-                        </div>
-                    </div>
-                )}
-            </div>
-        )}
-
-        {/* --- GENERAL TAB (UPDATED) --- */}
-        {activeTab === 'general' && (
-            <div className="space-y-6 max-w-lg mx-auto pb-20">
-                 
-                 {/* Standard Values */}
-                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-4">
-                     <h2 className="font-bold text-lg text-slate-700 flex items-center"><Tractor className="mr-2" size={20}/> Standard Lademengen</h2>
-                     <div className="grid grid-cols-2 gap-4">
-                         <div>
-                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Güllefass (m³)</label>
-                             <input type="number" value={appSettings.slurryLoadSize} onChange={e => setAppSettings({...appSettings, slurryLoadSize: parseFloat(e.target.value)})} className="w-full border p-2 rounded-lg font-bold text-slate-800"/>
-                         </div>
-                         <div>
-                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Miststreuer (m³)</label>
-                             <input type="number" value={appSettings.manureLoadSize} onChange={e => setAppSettings({...appSettings, manureLoadSize: parseFloat(e.target.value)})} className="w-full border p-2 rounded-lg font-bold text-slate-800"/>
-                         </div>
-                     </div>
-                     <div className="grid grid-cols-2 gap-4">
-                         <div>
-                             {/* RENAMED LABEL */}
-                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Arbeitsbr. Gülle (m)</label>
-                             <input type="number" value={appSettings.slurrySpreadWidth || appSettings.spreadWidth} onChange={e => setAppSettings({...appSettings, slurrySpreadWidth: parseFloat(e.target.value)})} className="w-full border p-2 rounded-lg"/>
-                         </div>
-                         <div>
-                             {/* RENAMED LABEL */}
-                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Arbeitsbr. Mist (m)</label>
-                             <input type="number" value={appSettings.manureSpreadWidth || 10} onChange={e => setAppSettings({...appSettings, manureSpreadWidth: parseFloat(e.target.value)})} className="w-full border p-2 rounded-lg"/>
-                         </div>
-                     </div>
-                 </div>
-
-                 {/* RESTORED: GPS & Tracking Settings */}
-                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-4">
-                     <h2 className="font-bold text-lg text-slate-700 flex items-center"><Activity className="mr-2" size={20}/> Tracking & GPS</h2>
-                     
-                     <div className="grid grid-cols-2 gap-4">
-                         <div>
-                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Min. Speed (km/h)</label>
-                             <input type="number" step="0.5" value={appSettings.minSpeed} onChange={e => setAppSettings({...appSettings, minSpeed: parseFloat(e.target.value)})} className="w-full border p-2 rounded-lg"/>
-                             <p className="text-[10px] text-slate-400 mt-1">Darunter kein Ausbringen.</p>
-                         </div>
-                         <div>
-                             <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Max. Speed (km/h)</label>
-                             <input type="number" value={appSettings.maxSpeed} onChange={e => setAppSettings({...appSettings, maxSpeed: parseFloat(e.target.value)})} className="w-full border p-2 rounded-lg"/>
-                             <p className="text-[10px] text-slate-400 mt-1">Maximalgeschwindigkeit.</p>
-                         </div>
-                     </div>
-
-                     <div>
-                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Lager Radius (m)</label>
-                         <input type="number" value={appSettings.storageRadius} onChange={e => setAppSettings({...appSettings, storageRadius: parseFloat(e.target.value)})} className="w-full border p-2 rounded-lg"/>
-                         <p className="text-[10px] text-slate-400 mt-1">Erkennungsbereich für automatisches Laden.</p>
-                     </div>
-                 </div>
-
-                 {/* RESTORED: App Design / Brand */}
-                 <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-4">
-                     <h2 className="font-bold text-lg text-slate-700 flex items-center"><Palette className="mr-2" size={20}/> Design / Marke</h2>
-                     <div className="grid grid-cols-4 gap-2">
-                         {ICON_THEMES.map(theme => (
-                             <button
-                                key={theme.id}
-                                onClick={() => setAppSettings({...appSettings, appIcon: theme.id})}
-                                className={`p-2 rounded-lg border-2 flex flex-col items-center ${appSettings.appIcon === theme.id ? 'border-blue-500 bg-blue-50' : 'border-transparent hover:bg-slate-50'}`}
-                             >
-                                 <div className="w-8 h-8 rounded-full mb-1 border shadow-sm" style={{backgroundColor: theme.bg}}></div>
-                                 <span className="text-[10px] font-bold text-slate-600 truncate w-full text-center">{theme.label}</span>
-                             </button>
-                         ))}
-                     </div>
-                 </div>
-
-                 <button onClick={handleSaveAppSettings} className="w-full bg-slate-800 text-white py-4 rounded-xl font-bold hover:bg-slate-900 transition shadow-lg sticky bottom-20">Einstellungen Speichern</button>
-            </div>
-        )}
-
-        {/* --- CLOUD & DATA TAB (EXTENDED) --- */}
-        {activeTab === 'sync' && (
-            <div className="space-y-6 max-w-lg mx-auto pb-20">
-                
-                {/* FARM CONNECTION SETTINGS */}
-                <div className="bg-blue-50 p-6 rounded-xl shadow-sm border border-blue-100 space-y-4">
-                    <h2 className="font-bold text-lg text-blue-900 flex items-center">
-                        <Users className="mr-2" size={20}/> Hof Verbindung
-                    </h2>
-                    <p className="text-sm text-blue-700">
-                        Verbinde dich mit deinem Betrieb, um Daten mit Mitarbeitern zu teilen. 
-                        Alle Geräte mit derselben Nummer und demselben Passwort arbeiten zusammen.
-                    </p>
-
-                    <div>
-                        <label className="block text-xs font-bold text-blue-800 uppercase mb-1">Betriebsnummer (Gruppen-ID)</label>
-                        <div className="relative">
-                            <Users className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400" size={18}/>
-                            <input 
-                                type="text" 
-                                value={appSettings.farmId || ''}
-                                onChange={e => setAppSettings({...appSettings, farmId: e.target.value})}
-                                className="w-full pl-10 pr-4 py-3 bg-white border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                placeholder="z.B. LFBIS Nummer"
-                            />
-                        </div>
-                    </div>
-
-                    <div>
-                        <label className="block text-xs font-bold text-blue-800 uppercase mb-1">Hof-Passwort (PIN)</label>
-                        <div className="relative flex items-center">
-                            <Key className="absolute left-3 top-1/2 -translate-y-1/2 text-blue-400" size={18}/>
-                            <input 
-                                type={showPin ? "text" : "password"} 
-                                value={appSettings.farmPin || ''}
-                                onChange={e => setAppSettings({...appSettings, farmPin: e.target.value})}
-                                className="w-full pl-10 pr-10 py-3 bg-white border border-blue-200 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
-                                placeholder="Sicherer Code"
-                            />
-                            <button 
-                                type="button"
-                                onClick={() => setShowPin(!showPin)}
-                                className="absolute right-3 text-blue-400 hover:text-blue-600"
-                            >
-                                {showPin ? <EyeOff size={18}/> : <Eye size={18}/>}
-                            </button>
-                        </div>
-                        <p className="text-xs text-blue-600 mt-1 font-medium bg-blue-100/50 p-2 rounded">
-                            <AlertTriangle size={12} className="inline mr-1 -mt-0.5"/>
-                            WICHTIG: Wenn du diese PIN vergisst, musst du sie auf allen Geräten neu setzen.
-                        </p>
-                    </div>
-
-                    {/* MEMBER LIST & STATS */}
-                    {farmMembers.length > 0 && (
-                        <div className="bg-white rounded-lg p-3 border border-blue-100 text-sm">
-                            <div className="font-bold text-blue-900 mb-2 flex items-center"><UserCheck size={14} className="mr-1"/> Verbundene Nutzer</div>
-                            <ul className="space-y-1">
-                                {farmMembers.map((m, i) => (
-                                    <li key={i} className="text-blue-700 flex justify-between">
-                                        <span>{m.email}</span>
-                                        <span className="text-xs text-blue-400">{new Date(m.joinedAt).toLocaleDateString()}</span>
-                                    </li>
-                                ))}
-                            </ul>
-                            {cloudStats && (
-                                <div className="mt-3 pt-2 border-t border-blue-50 text-xs text-blue-500">
-                                    {cloudStats.activities} Einträge in der Cloud für diesen Hof.
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    <div className="flex gap-2 mt-4">
-                        <button 
-                            onClick={handleSaveAppSettings}
-                            className="flex-1 bg-blue-600 text-white py-3 rounded-lg font-bold hover:bg-blue-700 transition"
-                        >
-                            Verbindung speichern
-                        </button>
-                        <button 
-                            onClick={handleTestConnection}
-                            disabled={isTestingConn}
-                            className="bg-white text-blue-700 border border-blue-200 px-4 rounded-lg font-bold hover:bg-blue-50 flex items-center"
-                        >
-                            {isTestingConn ? <Loader2 className="animate-spin"/> : <Wifi size={20}/>}
-                        </button>
-                    </div>
-
-                    {/* NEW: Force Upload Button */}
-                    <div className="pt-4 border-t border-blue-200">
-                        <button 
-                            onClick={handleForceUpload}
-                            disabled={isUploading}
-                            className="w-full text-xs font-bold text-blue-800 flex items-center justify-center hover:underline disabled:opacity-50"
-                        >
-                            {isUploading ? <Loader2 className="animate-spin mr-2" size={14}/> : <Upload className="mr-2" size={14}/>}
-                            Lokale Daten in diesen Betrieb hochladen
-                        </button>
-                        <p className="text-[10px] text-blue-600/70 text-center mt-1">
-                            Nutzen, wenn Daten auf anderen Geräten fehlen.
-                        </p>
-                    </div>
-                </div>
-
-                {/* BACKUP */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-100 space-y-4">
-                    <h2 className="font-bold text-lg text-slate-700 flex items-center">
-                        <Database className="mr-2" size={20}/> Backup & Wiederherstellung
-                    </h2>
-                    <div className="flex flex-col gap-3">
-                         <button onClick={handleExportBackup} className="w-full bg-slate-100 text-slate-700 py-3 rounded-xl font-bold flex items-center justify-center hover:bg-slate-200">
-                             <Download className="mr-2" size={20}/> Daten sichern (Export)
-                         </button>
-                         
-                         <div className="relative">
-                             <input 
-                                 type="file" 
-                                 accept=".json"
-                                 ref={fileInputRef}
-                                 onChange={handleRestoreBackup}
-                                 className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                             />
-                             <button className="w-full bg-slate-100 text-red-600 border border-red-100 py-3 rounded-xl font-bold flex items-center justify-center hover:bg-red-50">
-                                 <Upload className="mr-2" size={20}/> Daten wiederherstellen (Import)
-                             </button>
-                         </div>
-                    </div>
-                </div>
-            </div>
-        )}
-
-      </div>
     </div>
   );
 };
