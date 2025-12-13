@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { dbService } from '../services/db';
 import { FarmProfile, StorageLocation, FertilizerType, GeoPoint, AppSettings, DEFAULT_SETTINGS } from '../types';
-import { Save, Plus, Trash2, Navigation, X, Building2, Droplets, Search, Loader2, Check, Pencil, Settings as SettingsIcon, Database, Download, Upload, Wifi, Palette, Users, Lock, Key, LocateFixed, Layers, Tractor, Activity, MapPin, Eye, EyeOff, AlertTriangle, CloudUpload } from 'lucide-react';
+import { Save, Plus, Trash2, Navigation, X, Building2, Droplets, Search, Loader2, Check, Pencil, Settings as SettingsIcon, Database, Download, Upload, Wifi, Palette, Users, Lock, Key, LocateFixed, Layers, Tractor, Activity, MapPin, Eye, EyeOff, AlertTriangle } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import { geocodeAddress } from '../utils/geo';
 import L from 'leaflet';
@@ -289,7 +289,7 @@ export const SettingsPage = () => {
           setIsUploading(false);
       }
   };
-
+  
   // --- BACKUP IMPLEMENTATION ---
   
   const handleExportBackup = async () => { 
@@ -659,7 +659,7 @@ export const SettingsPage = () => {
                             disabled={isUploading}
                             className="w-full text-xs font-bold text-blue-800 flex items-center justify-center hover:underline disabled:opacity-50"
                         >
-                            {isUploading ? <Loader2 className="animate-spin mr-2" size={14}/> : <CloudUpload className="mr-2" size={14}/>}
+                            {isUploading ? <Loader2 className="animate-spin mr-2" size={14}/> : <Upload className="mr-2" size={14}/>}
                             Lokale Daten in diesen Betrieb hochladen
                         </button>
                         <p className="text-[10px] text-blue-600/70 text-center mt-1">
