@@ -1,4 +1,4 @@
-import { Activity, AppSettings, Trip, DEFAULT_SETTINGS } from '../types';
+import { Activity, AppSettings, Trip, DEFAULT_SETTINGS, Field } from '../types';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, Timestamp, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
@@ -53,6 +53,7 @@ export const isCloudConfigured = () => {
 const STORAGE_KEY_SETTINGS = 'agritrack_settings_full'; // Unified key
 const STORAGE_KEY_ACTIVITIES = 'agritrack_activities';
 const STORAGE_KEY_TRIPS = 'agritrack_trips';
+const STORAGE_KEY_FIELDS = 'agritrack_fields';
 
 // --- SETTINGS ---
 export const loadSettings = (): AppSettings => {
@@ -119,9 +120,12 @@ export const fetchCloudSettings = async (): Promise<AppSettings | null> => {
 
 // --- DATA HANDLING (HYBRID) ---
 
-export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip) => {
+export const saveData = async (type: 'activity' | 'trip' | 'field', data: Activity | Trip | Field) => {
   // 1. ALWAYS Save Locally (Offline First / Guest Mode)
-  const key = type === 'activity' ? STORAGE_KEY_ACTIVITIES : STORAGE_KEY_TRIPS;
+  let key = STORAGE_KEY_ACTIVITIES;
+  if (type === 'trip') key = STORAGE_KEY_TRIPS;
+  if (type === 'field') key = STORAGE_KEY_FIELDS;
+
   const existingStr = localStorage.getItem(key);
   let existing = existingStr ? JSON.parse(existingStr) : [];
   
@@ -139,7 +143,10 @@ export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip)
       const farmPin = settings.farmPin || '';
 
       try {
-          const colName = type === 'activity' ? 'activities' : 'trips';
+          let colName = 'activities';
+          if (type === 'trip') colName = 'trips';
+          if (type === 'field') colName = 'fields';
+
           // Deep clone to safely remove undefined values before Firestore
           const payload = JSON.parse(JSON.stringify(data)); 
           
@@ -152,7 +159,7 @@ export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip)
           await setDoc(doc(db, colName, data.id), payload);
           
           // Only log sometimes to avoid spam, or log critical ones
-          if (Math.random() > 0.8) dbService.logEvent(`[Cloud] ${type} gesendet an Farm ${farmId}`);
+          if (Math.random() > 0.8 || type === 'field') dbService.logEvent(`[Cloud] ${type} gesendet an Farm ${farmId}`);
           console.log(`[AgriCloud] Synced ${type} to farm ${farmId}.`);
       } catch (e: any) {
           dbService.logEvent(`[Cloud] Upload Fehler: ${e.message}`);
@@ -161,13 +168,16 @@ export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip)
   }
 };
 
-export const loadLocalData = (type: 'activity' | 'trip') => {
-    const key = type === 'activity' ? STORAGE_KEY_ACTIVITIES : STORAGE_KEY_TRIPS;
+export const loadLocalData = (type: 'activity' | 'trip' | 'field') => {
+    let key = STORAGE_KEY_ACTIVITIES;
+    if (type === 'trip') key = STORAGE_KEY_TRIPS;
+    if (type === 'field') key = STORAGE_KEY_FIELDS;
+
     const s = localStorage.getItem(key);
     return s ? JSON.parse(s) : [];
 }
 
-export const fetchCloudData = async (type: 'activity' | 'trip') => {
+export const fetchCloudData = async (type: 'activity' | 'trip' | 'field') => {
     if (!isCloudConfigured()) return [];
     
     const settings = loadSettings();
@@ -175,8 +185,10 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
     const targetPin = settings.farmPin || '';
 
     try {
-        dbService.logEvent(`[Cloud] Suche Daten für FarmID: ${targetFarmId}`);
-        const colName = type === 'activity' ? 'activities' : 'trips';
+        dbService.logEvent(`[Cloud] Suche ${type} für FarmID: ${targetFarmId}`);
+        let colName = 'activities';
+        if (type === 'trip') colName = 'trips';
+        if (type === 'field') colName = 'fields';
         
         const q = query(
             collection(db, colName), 
@@ -186,7 +198,7 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
         // With persistence, this might return cached data if offline
         const snapshot = await getDocs(q);
         
-        dbService.logEvent(`[Cloud] Gefunden: ${snapshot.size} Dokumente.`);
+        dbService.logEvent(`[Cloud] Gefunden: ${snapshot.size} ${type} Dokumente.`);
 
         // Client-side Filter & Sort
         const myData = snapshot.docs
@@ -195,8 +207,12 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
                 // Security Check: PIN must match if set on item
                 if (item.farmPin && item.farmPin !== targetPin) return false;
                 return true;
-            })
-            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort desc
+            });
+
+        // Sort desc if it has a date
+        if (type === 'activity' || type === 'trip') {
+             myData.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        }
 
         return myData;
     } catch (e: any) {

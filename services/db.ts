@@ -70,9 +70,22 @@ export const dbService = {
           }));
           addLog(`Inspektor: ${actsFound.length} Aktivitäten gefunden.`);
 
+          // 3. Check Fields (NEW)
+          const fieldsRef = collection(db, 'fields');
+          const qFields = query(fieldsRef, where("farmId", "==", farmId));
+          const fieldsSnap = await getDocs(qFields);
+          const fieldsFound = fieldsSnap.docs.map(d => ({
+              id: d.id,
+              name: d.data().name,
+              area: d.data().areaHa,
+              type: d.data().type
+          }));
+          addLog(`Inspektor: ${fieldsFound.length} Felder gefunden.`);
+
           return {
               settings: settingsFound,
               activities: actsFound,
+              fields: fieldsFound,
               meta: {
                   checkedFarmId: farmId,
                   timestamp: new Date().toISOString()
@@ -165,10 +178,15 @@ export const dbService = {
       if (!db) return { activities: 0 };
 
       try {
-          // Count activities for this farm
-          const q = query(collection(db, 'activities'), where("farmId", "==", farmId));
-          const snap = await getDocs(q);
-          return { activities: snap.size };
+          // Count activities
+          const qAct = query(collection(db, 'activities'), where("farmId", "==", farmId));
+          const snapAct = await getDocs(qAct);
+          
+          // Count fields
+          const qField = query(collection(db, 'fields'), where("farmId", "==", farmId));
+          const snapField = await getDocs(qField);
+
+          return { activities: snapAct.size + snapField.size };
       } catch (e: any) { 
           // Return special value to indicate error/offline
           if (e.code !== 'unavailable' && !e.message?.includes('offline')) {
@@ -182,24 +200,30 @@ export const dbService = {
   forceUploadToFarm: async () => {
       if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
       
+      // 1. Upload Activities
       const activities = loadLocalData('activity') as ActivityRecord[];
       addLog(`[Upload] Starte Upload von ${activities.length} lokalen Aktivitäten...`);
       
-      if (activities.length === 0) {
-          addLog("[Upload] Nichts zu tun (0 lokale Einträge).");
-          return;
-      }
-
       let count = 0;
-      // Process in smaller chunks to avoid timeouts on slow connections
       const chunk = 5; 
       for (let i = 0; i < activities.length; i += chunk) {
           const batch = activities.slice(i, i + chunk);
-          // With persistence, 'saveData' resolves quickly (optimistic), so this loop won't hang
           await Promise.all(batch.map(act => saveData('activity', act)));
           count += batch.length;
-          addLog(`[Upload] ${count}/${activities.length} gesendet...`);
+          addLog(`[Upload] Aktivitäten ${count}/${activities.length}...`);
       }
+
+      // 2. Upload Fields
+      const fields = loadLocalData('field') as Field[];
+      addLog(`[Upload] Starte Upload von ${fields.length} lokalen Feldern...`);
+      count = 0;
+      for (let i = 0; i < fields.length; i += chunk) {
+          const batch = fields.slice(i, i + chunk);
+          await Promise.all(batch.map(f => saveData('field', f)));
+          count += batch.length;
+          addLog(`[Upload] Felder ${count}/${fields.length}...`);
+      }
+
       addLog("[Upload] Upload vollständig.");
   },
 
@@ -207,10 +231,17 @@ export const dbService = {
   migrateGuestDataToCloud: async () => {
       if (!isCloudConfigured()) return;
       addLog("[Migration] Prüfe lokale Gast-Daten für Upload...");
+      
       const localActivities = loadLocalData('activity') as ActivityRecord[];
       for (const act of localActivities) {
           await saveData('activity', act);
       }
+
+      const localFields = loadLocalData('field') as Field[];
+      for (const f of localFields) {
+          await saveData('field', f);
+      }
+
       const localSettings = loadSettingsFromStorage();
       await saveSettingsToStorage(localSettings);
   },
@@ -249,7 +280,7 @@ export const dbService = {
       
       addLog("[Sync] Starte Synchronisation...");
       
-      // Sync Settings
+      // 1. Sync Settings
       const cloudSettings = await fetchCloudSettings();
       if (cloudSettings) {
           addLog("[Sync] Cloud-Einstellungen empfangen.");
@@ -260,24 +291,44 @@ export const dbService = {
           addLog("[Sync] Keine Cloud-Einstellungen gefunden.");
       }
 
-      // Sync Data
+      // 2. Sync Activities
       addLog("[Sync] Lade Aktivitäten herunter...");
       const cloudData = await fetchCloudData('activity') as ActivityRecord[];
       const localData = loadLocalData('activity') as ActivityRecord[];
       const localIds = new Set(localData.map(a => a.id));
-      let newItemsCount = 0;
+      let newActs = 0;
       
       cloudData.forEach(cloudItem => {
           if ((cloudItem as any).type === 'TICKET_SYNC') return; 
           if (!localIds.has(cloudItem.id)) {
               localData.push(cloudItem);
-              newItemsCount++;
+              newActs++;
           }
       });
-      
-      if (newItemsCount > 0) {
+      if (newActs > 0) {
           localStorage.setItem('agritrack_activities', JSON.stringify(localData));
-          addLog(`[Sync] ${newItemsCount} neue Einträge gespeichert.`);
+          addLog(`[Sync] ${newActs} neue Aktivitäten gespeichert.`);
+      }
+
+      // 3. Sync Fields
+      addLog("[Sync] Lade Felder herunter...");
+      const cloudFields = await fetchCloudData('field') as Field[];
+      const localFields = loadLocalData('field') as Field[];
+      const localFieldIds = new Set(localFields.map(f => f.id));
+      let newFields = 0;
+
+      cloudFields.forEach(cloudItem => {
+          if (!localFieldIds.has(cloudItem.id)) {
+              localFields.push(cloudItem);
+              newFields++;
+          }
+      });
+      if (newFields > 0) {
+          localStorage.setItem('agritrack_fields', JSON.stringify(localFields));
+          addLog(`[Sync] ${newFields} neue Felder gespeichert.`);
+      }
+
+      if (newActs > 0 || newFields > 0) {
           notify('change');
       } else {
           addLog("[Sync] Lokale Daten sind aktuell.");
@@ -308,11 +359,9 @@ export const dbService = {
   },
   saveField: async (field: Field) => {
     if (!field.id) field.id = generateId();
-    const all = await dbService.getFields();
-    const index = all.findIndex(f => f.id === field.id);
-    let newList = index >= 0 ? [...all] : [...all, field];
-    if (index >= 0) newList[index] = field;
-    localStorage.setItem('agritrack_fields', JSON.stringify(newList));
+    // 1. Save Local
+    // We do this via saveData in storage.ts to simplify code (it does local + cloud)
+    await saveData('field', field); 
     notify('change');
   },
   deleteField: async (id: string) => {

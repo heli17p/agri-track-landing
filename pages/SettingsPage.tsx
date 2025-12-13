@@ -3,7 +3,7 @@ import {
   User, Database, Settings, Cloud, Save, Plus, Trash2, 
   MapPin, Truck, AlertTriangle, Info, Share2, UploadCloud, 
   Smartphone, CheckCircle2, X, Shield, Lock, Users, LogOut,
-  ChevronRight, RefreshCw, Copy, WifiOff, FileText, Search
+  ChevronRight, RefreshCw, Copy, WifiOff, FileText, Search, Map
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
@@ -165,7 +165,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   };
 
   const handleForceUpload = async () => {
-      if (!window.confirm("Alle lokalen Daten werden erneut an die Cloud gesendet. Fortfahren?")) return;
+      if (!window.confirm("Alle lokalen Daten (inkl. Felder) werden erneut an die Cloud gesendet. Fortfahren?")) return;
       
       await dbService.saveSettings(settings);
 
@@ -615,6 +615,18 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                                               Type: {a.type} <br/>
                                                               Date: {a.date} <br/>
                                                               Status: {a.device}
+                                                          </div>
+                                                      ))
+                                                  )}
+                                              </div>
+                                              <div>
+                                                  <h4 className="font-bold text-slate-800 mb-1 flex items-center"><Map className="w-3 h-3 mr-1"/> Felder ({inspectorData.fields?.length})</h4>
+                                                  {inspectorData.fields?.length === 0 ? <div className="text-slate-400 italic">Keine gefunden.</div> : (
+                                                      inspectorData.fields.map((f: any, i: number) => (
+                                                          <div key={i} className="bg-white p-2 rounded border mb-1">
+                                                              Name: {f.name} <br/>
+                                                              Fläche: {f.area} ha <br/>
+                                                              Typ: {f.type}
                                                           </div>
                                                       ))
                                                   )}
