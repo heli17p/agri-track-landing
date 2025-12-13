@@ -218,63 +218,76 @@ export const dbService = {
       }
   },
 
-  // --- FORCE UPLOAD (IMPROVED) ---
+  // --- FORCE UPLOAD (ROBUST BATCH VERSION) ---
   forceUploadToFarm: async (onProgress?: (status: string, percent: number) => void) => {
       if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
       
-      // Load all data
-      const activities = loadLocalData('activity') as ActivityRecord[];
-      const fields = loadLocalData('field') as Field[];
-      const storages = loadLocalData('storage') as StorageLocation[];
-      const profiles = await dbService.getFarmProfile();
-
-      const totalItems = activities.length + fields.length + storages.length + (profiles.length > 0 ? 1 : 0);
-      let processed = 0;
-
-      const report = (msg: string) => {
-          const pct = totalItems > 0 ? Math.round((processed / totalItems) * 100) : 0;
-          addLog(`[Upload] ${msg} (${pct}%)`);
+      const report = (msg: string, pct: number) => {
+          addLog(`[Upload] ${msg}`);
           if (onProgress) onProgress(msg, pct);
       };
 
-      report(`Suche Daten... (${totalItems} Objekte gefunden)`);
+      report("Lese lokale Daten...", 0);
 
-      if (totalItems === 0) {
-          report("Keine lokalen Daten zum Hochladen.");
-          if (onProgress) onProgress("0 lokale Daten gefunden.", 100);
+      // 1. Gather all local items into a single queue
+      const activities = loadLocalData('activity') as any[];
+      const fields = loadLocalData('field') as any[];
+      const storages = loadLocalData('storage') as any[];
+      const profiles = await dbService.getFarmProfile();
+
+      const queue: { type: string, data: any }[] = [];
+      
+      activities.forEach(a => queue.push({ type: 'activity', data: a }));
+      fields.forEach(f => queue.push({ type: 'field', data: f }));
+      storages.forEach(s => queue.push({ type: 'storage', data: s }));
+      profiles.forEach(p => queue.push({ type: 'profile', data: p }));
+
+      if (queue.length === 0) {
+          report("Keine lokalen Daten gefunden.", 100);
           return;
       }
 
-      // Helper to process items robustly (don't fail batch on one error)
-      const processItems = async (type: string, items: any[]) => {
-          // Process items using Promise.allSettled so one failure doesn't stop the rest
-          // This is critical for guest data migration where some IDs might be old
-          const promises = items.map(item => saveData(type as any, item));
+      report(`${queue.length} Objekte vorbereitet. Starte Batch-Upload...`, 5);
+
+      // 2. Process in Batches of 5 to avoid congestion
+      const BATCH_SIZE = 5;
+      let processed = 0;
+      let errors = 0;
+
+      for (let i = 0; i < queue.length; i += BATCH_SIZE) {
+          const chunk = queue.slice(i, i + BATCH_SIZE);
+          
+          // Create promises for this chunk with a TIMEOUT wrapper
+          const promises = chunk.map(item => {
+              // Wrap saveData in a race with a timeout
+              const uploadPromise = saveData(item.type as any, item.data);
+              const timeoutPromise = new Promise((_, reject) => 
+                  setTimeout(() => reject(new Error("Timeout (5s)")), 5000)
+              );
+              return Promise.race([uploadPromise, timeoutPromise]);
+          });
+
+          // Wait for this batch to finish (settled means succeeded or failed)
           const results = await Promise.allSettled(promises);
           
-          results.forEach((res) => {
+          results.forEach(res => {
               if (res.status === 'fulfilled') {
                   processed++;
               } else {
-                  addLog(`[Upload] Fehler bei ${type}: ${res.reason}`);
+                  errors++;
+                  addLog(`[Upload] Fehler im Batch: ${res.reason}`);
               }
           });
-          report(`${type} gesendet...`);
-      };
 
-      // 1. Upload Activities
-      if (activities.length > 0) await processItems('activity', activities);
+          const percent = Math.round(((i + chunk.length) / queue.length) * 100);
+          report(`Sende Paket ${Math.floor(i/BATCH_SIZE) + 1}... (${percent}%)`, percent);
+      }
 
-      // 2. Upload Fields
-      if (fields.length > 0) await processItems('field', fields);
-
-      // 3. Upload Storages
-      if (storages.length > 0) await processItems('storage', storages);
-
-      // 4. Upload Profile
-      if (profiles.length > 0) await processItems('profile', profiles);
-
-      report("Vollständiger Upload beendet.");
+      if (errors > 0) {
+          report(`Fertig. ${processed} gesendet, ${errors} fehlgeschlagen.`, 100);
+      } else {
+          report(`Upload erfolgreich (${processed} Objekte).`, 100);
+      }
   },
 
   // --- MIGRATION (GUEST -> CLOUD) ---

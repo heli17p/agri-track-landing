@@ -282,14 +282,14 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           if(settings.farmId) {
               await loadCloudData(settings.farmId);
           }
-          
-          setTimeout(() => {
-              setIsUploading(false);
-          }, 1500);
       } catch (e: any) {
           alert("Upload Fehler: " + e.message + "\nBitte Internet prüfen.");
           setUploadStatusText('Fehler!');
-          setIsUploading(false);
+      } finally {
+          // Stop spinner in both success and error cases
+          setTimeout(() => {
+              setIsUploading(false);
+          }, 1500);
       }
   };
   
