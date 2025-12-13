@@ -20,9 +20,71 @@ const notify = (type: 'sync' | 'change') => {
     listeners[type].forEach(l => l());
 };
 
+// --- LOGGING SYSTEM ---
+const _logs: string[] = [];
+const MAX_LOGS = 100;
+
+const addLog = (msg: string) => {
+    const timestamp = new Date().toLocaleTimeString();
+    const entry = `[${timestamp}] ${msg}`;
+    _logs.unshift(entry); // Newest first
+    if (_logs.length > MAX_LOGS) _logs.pop();
+    console.log(entry); // Also log to console
+};
+
 export const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export const dbService = {
+  // Expose Logger
+  logEvent: (msg: string) => addLog(msg),
+  getLogs: () => [..._logs],
+
+  // --- DEBUG / INSPECTOR ---
+  inspectCloudData: async (farmId: string) => {
+      addLog(`Inspektor: Starte Analyse für FarmID '${farmId}'...`);
+      if (!isCloudConfigured()) {
+          addLog("Inspektor: Fehler - Nicht verbunden oder Offline.");
+          return { error: "Keine Verbindung" };
+      }
+      const db = getDb();
+      if (!db) return { error: "DB Init Fehler" };
+
+      try {
+          // 1. Check Settings/Profile Doc
+          const settingsRef = collection(db, 'settings');
+          const qSettings = query(settingsRef, where("farmId", "==", farmId));
+          const settingsSnap = await getDocs(qSettings);
+          const settingsFound = settingsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          addLog(`Inspektor: ${settingsFound.length} Einstellungs-Dokumente gefunden.`);
+
+          // 2. Check Activities
+          const actsRef = collection(db, 'activities');
+          const qActs = query(actsRef, where("farmId", "==", farmId));
+          const actsSnap = await getDocs(qActs);
+          const actsFound = actsSnap.docs.map(d => ({ 
+              id: d.id, 
+              type: d.data().type, 
+              date: d.data().date,
+              user: d.data().userId ? 'User ID vorhanden' : 'Kein User',
+              device: d.data().syncedAt ? 'Via Sync' : 'Manuell'
+          }));
+          addLog(`Inspektor: ${actsFound.length} Aktivitäten gefunden.`);
+
+          return {
+              settings: settingsFound,
+              activities: actsFound,
+              meta: {
+                  checkedFarmId: farmId,
+                  timestamp: new Date().toISOString()
+              }
+          };
+
+      } catch (e: any) {
+          addLog(`Inspektor Fehler: ${e.message}`);
+          return { error: e.message };
+      }
+  },
+
   // --- BACKUP & RESTORE (Existing code) ---
   createFullBackup: async () => {
       const activities = await dbService.getActivities();
@@ -38,7 +100,6 @@ export const dbService = {
   },
 
   restoreFullBackup: async (jsonContent: any) => {
-      // ... (Existing implementation) ...
       try {
           if (!jsonContent || !jsonContent.data) throw new Error("Ungültiges Backup");
           const { activities, fields, storages, profile, settings } = jsonContent.data;
@@ -71,7 +132,7 @@ export const dbService = {
                   joinedAt: new Date().toISOString()
               })
           }, { merge: true });
-          console.log(`Joined farm ${farmId}`);
+          addLog(`Cloud: Farm '${farmId}' beigetreten.`);
       } catch (e) {
           console.error("Join Farm failed:", e);
       }
@@ -122,9 +183,12 @@ export const dbService = {
       if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
       
       const activities = loadLocalData('activity') as ActivityRecord[];
-      console.log(`[Force Upload] Starte Upload von ${activities.length} Aktivitäten...`);
+      addLog(`[Upload] Starte Upload von ${activities.length} lokalen Aktivitäten...`);
       
-      if (activities.length === 0) return; // Nothing to upload
+      if (activities.length === 0) {
+          addLog("[Upload] Nichts zu tun (0 lokale Einträge).");
+          return;
+      }
 
       let count = 0;
       // Process in smaller chunks to avoid timeouts on slow connections
@@ -134,14 +198,15 @@ export const dbService = {
           // With persistence, 'saveData' resolves quickly (optimistic), so this loop won't hang
           await Promise.all(batch.map(act => saveData('activity', act)));
           count += batch.length;
-          console.log(`[Force Upload] ${count}/${activities.length} gesendet...`);
+          addLog(`[Upload] ${count}/${activities.length} gesendet...`);
       }
-      console.log("[Force Upload] Fertig.");
+      addLog("[Upload] Upload vollständig.");
   },
 
   // --- MIGRATION (GUEST -> CLOUD) ---
   migrateGuestDataToCloud: async () => {
       if (!isCloudConfigured()) return;
+      addLog("[Migration] Prüfe lokale Gast-Daten für Upload...");
       const localActivities = loadLocalData('activity') as ActivityRecord[];
       for (const act of localActivities) {
           await saveData('activity', act);
@@ -177,20 +242,31 @@ export const dbService = {
   },
   
   syncActivities: async () => {
-      if (!isCloudConfigured()) return;
-      // ... (Existing sync logic, shortened for brevity as it was correct) ...
+      if (!isCloudConfigured()) {
+          addLog("[Sync] Abbruch: Nicht eingeloggt.");
+          return;
+      }
+      
+      addLog("[Sync] Starte Synchronisation...");
+      
       // Sync Settings
       const cloudSettings = await fetchCloudSettings();
       if (cloudSettings) {
+          addLog("[Sync] Cloud-Einstellungen empfangen.");
           const localSettings = loadSettingsFromStorage();
           const merged = { ...localSettings, ...cloudSettings };
           saveSettingsToStorage(merged);
+      } else {
+          addLog("[Sync] Keine Cloud-Einstellungen gefunden.");
       }
+
       // Sync Data
+      addLog("[Sync] Lade Aktivitäten herunter...");
       const cloudData = await fetchCloudData('activity') as ActivityRecord[];
       const localData = loadLocalData('activity') as ActivityRecord[];
       const localIds = new Set(localData.map(a => a.id));
       let newItemsCount = 0;
+      
       cloudData.forEach(cloudItem => {
           if ((cloudItem as any).type === 'TICKET_SYNC') return; 
           if (!localIds.has(cloudItem.id)) {
@@ -198,9 +274,13 @@ export const dbService = {
               newItemsCount++;
           }
       });
+      
       if (newItemsCount > 0) {
           localStorage.setItem('agritrack_activities', JSON.stringify(localData));
+          addLog(`[Sync] ${newItemsCount} neue Einträge gespeichert.`);
           notify('change');
+      } else {
+          addLog("[Sync] Lokale Daten sind aktuell.");
       }
       notify('sync');
   },

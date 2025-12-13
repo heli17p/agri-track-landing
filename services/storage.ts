@@ -2,6 +2,7 @@ import { Activity, AppSettings, Trip, DEFAULT_SETTINGS } from '../types';
 import { initializeApp } from 'firebase/app';
 import { getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, Timestamp, enableIndexedDbPersistence } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
+import { dbService } from './db';
 
 /* 
   --- AGRICLOUD MASTER KONFIGURATION ---
@@ -28,7 +29,6 @@ try {
     auth = getAuth(app);
     
     // ENABLE OFFLINE PERSISTENCE
-    // Critical for unstable connections and "hanging" uploads
     enableIndexedDbPersistence(db).catch((err) => {
         if (err.code == 'failed-precondition') {
             console.warn('[AgriCloud] Persistence failed: Multiple tabs open.');
@@ -39,7 +39,7 @@ try {
 
     console.log("[AgriCloud] Firebase & Auth initialized successfully.");
 } catch (e) {
-    console.error("[AgriCloud] Initialization failed (check console for details):", e);
+    console.error("[AgriCloud] Initialization failed:", e);
 }
 
 export { auth };
@@ -74,15 +74,20 @@ export const saveSettings = async (settings: AppSettings) => {
   // 2. Cloud Save (if logged in)
   if (isCloudConfigured()) {
       try {
-          // Use userId as document ID for settings to avoid duplicates
           const userId = auth.currentUser.uid;
+          // IMPORTANT: If farmId is empty, we don't sync this properly or it goes to 'undefined'
+          if (!settings.farmId) {
+             dbService.logEvent("Warnung: Keine Farm-ID beim Speichern gesetzt.");
+          }
+
           await setDoc(doc(db, "settings", userId), {
               ...settings,
               updatedAt: Timestamp.now(),
               userId: userId
           });
-          console.log("[AgriCloud] Settings synced.");
-      } catch (e) {
+          dbService.logEvent("[Cloud] Einstellungen gespeichert.");
+      } catch (e: any) {
+          dbService.logEvent(`[Cloud] Fehler beim Speichern der Einstellungen: ${e.message}`);
           console.error("[AgriCloud] Failed to sync settings:", e);
       }
   }
@@ -105,7 +110,8 @@ export const fetchCloudSettings = async (): Promise<AppSettings | null> => {
             delete (mergedSettings as any).userId;
             return mergedSettings;
         }
-    } catch (e) {
+    } catch (e: any) {
+        dbService.logEvent(`[Cloud] Fehler beim Laden der Einstellungen: ${e.message}`);
         console.error("[AgriCloud] Failed to fetch settings:", e);
     }
     return null;
@@ -143,11 +149,13 @@ export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip)
           payload.farmPin = farmPin;             
           
           // Use ID as doc ID to allow updates (prevent duplicates)
-          // With persistence enabled, this promise resolves immediately (optimistic write)
           await setDoc(doc(db, colName, data.id), payload);
           
+          // Only log sometimes to avoid spam, or log critical ones
+          if (Math.random() > 0.8) dbService.logEvent(`[Cloud] ${type} gesendet an Farm ${farmId}`);
           console.log(`[AgriCloud] Synced ${type} to farm ${farmId}.`);
-      } catch (e) {
+      } catch (e: any) {
+          dbService.logEvent(`[Cloud] Upload Fehler: ${e.message}`);
           console.error("[AgriCloud] Upload failed (User might be offline):", e);
       }
   }
@@ -163,17 +171,13 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
     if (!isCloudConfigured()) return [];
     
     const settings = loadSettings();
-    // FALLBACK LOGIC: If no farm ID is set, use personal ID.
-    // CRITICAL: Ensure this matches saveData logic exactly!
     const targetFarmId = settings.farmId || 'PERSONAL_' + auth.currentUser.uid;
     const targetPin = settings.farmPin || '';
 
     try {
-        console.log(`[Sync] Fetching cloud data for Farm: ${targetFarmId}`);
+        dbService.logEvent(`[Cloud] Suche Daten für FarmID: ${targetFarmId}`);
         const colName = type === 'activity' ? 'activities' : 'trips';
         
-        // FIX: Removed 'orderBy' and 'limit' to avoid needing composite indexes initially.
-        // We filter by farmId only, then sort in memory.
         const q = query(
             collection(db, colName), 
             where("farmId", "==", targetFarmId)
@@ -182,6 +186,8 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
         // With persistence, this might return cached data if offline
         const snapshot = await getDocs(q);
         
+        dbService.logEvent(`[Cloud] Gefunden: ${snapshot.size} Dokumente.`);
+
         // Client-side Filter & Sort
         const myData = snapshot.docs
             .map(doc => ({ id: doc.id, ...doc.data() } as any))
@@ -192,9 +198,9 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
             })
             .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort desc
 
-        console.log(`[Sync] Found ${myData.length} items for this farm.`);
         return myData;
-    } catch (e) {
+    } catch (e: any) {
+        dbService.logEvent(`[Cloud] Download Fehler: ${e.message}`);
         console.error("[AgriCloud] Fetch failed:", e);
         return [];
     }
