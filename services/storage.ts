@@ -1,6 +1,6 @@
 import { Activity, AppSettings, Trip, DEFAULT_SETTINGS } from '../types';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, query, orderBy, limit, Timestamp, where, doc, setDoc, getDoc } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, Timestamp } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 
 /* 
@@ -131,7 +131,7 @@ export const saveData = async (type: 'activity' | 'trip', data: Activity | Trip)
           payload.farmId = farmId;               
           payload.farmPin = farmPin;             
           
-          // Use ID as doc ID to allow updates
+          // Use ID as doc ID to allow updates (prevent duplicates)
           await setDoc(doc(db, colName, data.id), payload);
           
           console.log(`[AgriCloud] Synced ${type} to farm ${farmId}.`);
@@ -151,6 +151,8 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
     if (!isCloudConfigured()) return [];
     
     const settings = loadSettings();
+    // FALLBACK LOGIC: If no farm ID is set, use personal ID.
+    // CRITICAL: Ensure this matches saveData logic exactly!
     const targetFarmId = settings.farmId || 'PERSONAL_' + auth.currentUser.uid;
     const targetPin = settings.farmPin || '';
 
@@ -158,32 +160,29 @@ export const fetchCloudData = async (type: 'activity' | 'trip') => {
         console.log(`[Sync] Fetching cloud data for Farm: ${targetFarmId}`);
         const colName = type === 'activity' ? 'activities' : 'trips';
         
-        // Query by Farm ID
+        // FIX: Removed 'orderBy' and 'limit' to avoid needing composite indexes initially.
+        // We filter by farmId only, then sort in memory.
         const q = query(
             collection(db, colName), 
-            where("farmId", "==", targetFarmId),
-            orderBy('date', 'desc'), 
-            limit(100)
+            where("farmId", "==", targetFarmId)
         );
         
         const snapshot = await getDocs(q);
         
-        // Filter by PIN (Client-side Security)
+        // Client-side Filter & Sort
         const myData = snapshot.docs
             .map(doc => ({ id: doc.id, ...doc.data() } as any))
             .filter(item => {
+                // Security Check: PIN must match if set on item
                 if (item.farmPin && item.farmPin !== targetPin) return false;
                 return true;
-            });
+            })
+            .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()); // Sort desc
 
+        console.log(`[Sync] Found ${myData.length} items for this farm.`);
         return myData;
     } catch (e) {
         console.error("[AgriCloud] Fetch failed:", e);
-        // Fallback for missing indexes
-        try {
-             const qSimple = query(collection(db, type === 'activity' ? 'activities' : 'trips'), where("farmId", "==", targetFarmId));
-             const snapSimple = await getDocs(qSimple);
-             return snapSimple.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
-        } catch(e2) { return []; }
+        return [];
     }
 }
