@@ -4,7 +4,7 @@ import {
   MapPin, Truck, AlertTriangle, Info, Share2, UploadCloud, 
   Smartphone, CheckCircle2, X, Shield, Lock, Users, LogOut,
   ChevronRight, RefreshCw, Copy, WifiOff, FileText, Search, Map,
-  Signal, Activity, ArrowRightLeft, Upload, DownloadCloud, Link, RotateCcw, Binary
+  Signal, Activity, ArrowRightLeft, Upload, DownloadCloud, Link, RotateCcw, Binary, AlertOctagon
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
@@ -280,6 +280,38 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           localStorage.setItem('agritrack_settings_full', JSON.stringify(resetSettings));
           setCloudStats({ total: -1, activities: 0, fields: 0, storages: 0, profiles: 0 });
           alert("Verbindung getrennt. Bitte Nummer neu eingeben.");
+      }
+  };
+
+  const handleDeleteFarm = async () => {
+      if (!settings.farmId || !settings.farmPin) {
+          alert("Fehler: Keine gültige Farm-Verbindung aktiv.");
+          return;
+      }
+      
+      const userInput = prompt(`ACHTUNG: Dies löscht unwiderruflich ALLE Daten (Aktivitäten, Felder, Lager, Profil) von Hof '${settings.farmId}' aus der Cloud!\n\nZur Bestätigung bitte 'LÖSCHEN' eintippen:`);
+      
+      if (userInput !== 'LÖSCHEN') {
+          return;
+      }
+
+      setIsLoadingCloud(true);
+      try {
+          const count = await dbService.deleteEntireFarm(settings.farmId, settings.farmPin);
+          
+          alert(`Erfolg! Der Hof wurde gelöscht.\n${count} Datensätze entfernt.\nDie Verbindung wird nun getrennt.`);
+          
+          // Reset Connection
+          setSettings(prev => ({ ...prev, farmId: '', farmPin: '' }));
+          const resetSettings = { ...settings, farmId: '', farmPin: '' };
+          localStorage.setItem('agritrack_settings_full', JSON.stringify(resetSettings));
+          setCloudStats({ total: -1, activities: 0, fields: 0, storages: 0, profiles: 0 });
+          setLocalStats({ total: 0 }); // Optionally we could keep local data, but usually delete implies full reset intent? No, keep local safe.
+          
+      } catch (e: any) {
+          alert("Fehler beim Löschen: " + e.message);
+      } finally {
+          setIsLoadingCloud(false);
       }
   };
 
@@ -928,6 +960,27 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                           ))}
                                       </div>
                                   )}
+                              </div>
+                              
+                              {/* DANGER ZONE: Delete Farm */}
+                              <div className="mt-4 p-3 bg-red-50 rounded-xl border border-red-200">
+                                  <div className="flex items-center justify-between">
+                                      <div className="flex items-center">
+                                          <div className="p-2 bg-red-100 text-red-600 rounded-lg mr-3">
+                                              <AlertOctagon size={20} />
+                                          </div>
+                                          <div>
+                                              <div className="font-bold text-red-800">Danger Zone</div>
+                                              <div className="text-xs text-red-600">Hof und alle Daten unwiderruflich löschen</div>
+                                          </div>
+                                      </div>
+                                      <button 
+                                          onClick={handleDeleteFarm}
+                                          className="px-3 py-2 bg-white text-red-600 border border-red-200 rounded-lg text-xs font-bold hover:bg-red-50"
+                                      >
+                                          Hof Löschen
+                                      </button>
+                                  </div>
                               </div>
                           </div>
                       </div>

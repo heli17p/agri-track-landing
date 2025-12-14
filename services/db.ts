@@ -1,6 +1,6 @@
 import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, DEFAULT_SETTINGS, FeedbackTicket } from '../types';
 import { saveData, loadLocalData, saveSettings as saveSettingsToStorage, loadSettings as loadSettingsFromStorage, fetchCloudData, fetchCloudSettings, isCloudConfigured, auth } from './storage';
-import { collection, doc, setDoc, getDoc, getDocs, query, where, updateDoc, arrayUnion, Timestamp } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, query, where, updateDoc, arrayUnion, Timestamp, deleteDoc, writeBatch } from 'firebase/firestore';
 import { getFirestore } from 'firebase/firestore';
 
 // Need direct access to db for advanced features
@@ -294,6 +294,62 @@ export const dbService = {
           }
           return { total: -1, activities: 0, fields: 0, storages: 0, profiles: 0 }; 
       }
+  },
+
+  // --- DELETE ENTIRE FARM (DESTRUCTIVE) ---
+  deleteEntireFarm: async (farmId: string, pin: string) => {
+      if (!isCloudConfigured()) throw new Error("Keine Verbindung");
+      const db = getDb();
+      if (!db) throw new Error("DB Error");
+
+      // 1. Verify credentials one last time
+      const verify = await dbService.verifyFarmPin(farmId, pin);
+      if (!verify.valid) throw new Error("Falsche PIN. Löschen verweigert.");
+
+      addLog(`LÖSCHE HOF '${farmId}' KOMPLETT...`);
+
+      // 2. Prepare deletion of ALL collections
+      const collections = ['activities', 'fields', 'storages', 'profiles', 'farms'];
+      
+      // Dual ID check for thorough cleaning
+      const idsToCheck = [String(farmId)];
+      const numId = Number(farmId);
+      if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
+
+      let totalDeleted = 0;
+
+      for (const col of collections) {
+          for (const idVariant of idsToCheck) {
+              // Note: 'farms' collection uses document ID as farmId, others use field 'farmId'
+              if (col === 'farms') {
+                  try {
+                      await deleteDoc(doc(db, 'farms', String(idVariant)));
+                      addLog(`- Gelöscht: Farm Mitgliedschaft (${idVariant})`);
+                  } catch(e) {}
+                  continue;
+              }
+
+              // Standard Collections
+              const q = query(collection(db, col), where("farmId", "==", idVariant));
+              const snap = await getDocs(q);
+              
+              if (!snap.empty) {
+                  const batch = writeBatch(db);
+                  snap.docs.forEach(d => {
+                      batch.delete(d.ref);
+                      totalDeleted++;
+                  });
+                  await batch.commit();
+                  addLog(`- Gelöscht: ${snap.size} Dokumente aus '${col}' (ID: ${typeof idVariant})`);
+              }
+          }
+      }
+
+      // 3. Clear settings for users who had this farmId (Optional/Harder, currently we just assume the data is gone)
+      // We can't easily query ALL users settings due to security rules usually, but the data is the important part.
+      
+      addLog(`Löschen erfolgreich abgeschlossen. ${totalDeleted} Objekte entfernt.`);
+      return totalDeleted;
   },
 
   // --- FORCE UPLOAD (FIXED ASYNC VERSION) ---
