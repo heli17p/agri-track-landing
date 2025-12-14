@@ -68,22 +68,17 @@ export const dbService = {
           
           // Write with timeout
           const writePromise = setDoc(docRef, payload);
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout beim Schreiben (5s)")), 5000));
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout beim Schreiben (7s)")), 7000));
           await Promise.race([writePromise, timeoutPromise]);
 
           // Read back (Force Server to prove connection)
           const readPromise = getDoc(docRef); // Usually cached, but if we just wrote it...
-          // Ideally use getDocsFromServer but for a single doc getDoc might check cache.
-          // To be sure, we can trust the write success if no error thrown.
-          // Or verify timestamp.
-          
           const snap = await readPromise;
           const end = Date.now();
           
           if (snap.exists() && snap.data().timestamp === payload.timestamp) {
               return { success: true, message: `Erfolg! Ping: ${end - start}ms` };
           } else {
-              // It might have worked but cache is acting up, still a success connectivity-wise usually
               return { success: true, message: "Schreiben OK, Lesen verzögert." };
           }
       } catch (e: any) {
@@ -249,7 +244,7 @@ export const dbService = {
       }
   },
 
-  // --- BACKUP & RESTORE (Existing code) ---
+  // --- BACKUP & RESTORE ---
   createFullBackup: async () => {
       const activities = await dbService.getActivities();
       const fields = await dbService.getFields();
@@ -279,50 +274,65 @@ export const dbService = {
   
   // --- FARM MANAGEMENT (NEW) ---
 
-  // Verify PIN before connecting - NOW RETURNS OWNER EMAIL
+  // Verify PIN before connecting - RETURNS OWNER EMAIL
   verifyFarmPin: async (farmId: string, pinCandidate: string) => {
       if (!isCloudConfigured() || !farmId) return { valid: false, reason: "Offline" };
       const db = getDb();
       if (!db) return { valid: false, reason: "DB Error" };
 
       try {
-          // Check if ANY settings document exists with this farmId (Dual Check) - Forced Server to avoid stale cache
+          // 1. Fetch ALL settings documents that match this Farm ID (Strings AND Numbers)
+          // We need to look through ALL of them because there might be "ghost" entries without PINs.
           const qStr = query(collection(db, 'settings'), where("farmId", "==", String(farmId)));
-          let snapshot = await getDocsFromServer(qStr);
-          
-          if(snapshot.empty) {
-              const numId = Number(farmId);
-              if(!isNaN(numId)) {
-                  const qNum = query(collection(db, 'settings'), where("farmId", "==", numId));
-                  const snapNum = await getDocsFromServer(qNum);
-                  if(!snapNum.empty) snapshot = snapNum;
-              }
-          }
+          const qNum = !isNaN(Number(farmId)) ? query(collection(db, 'settings'), where("farmId", "==", Number(farmId))) : null;
 
-          if (snapshot.empty) {
-              // Farm doesn't exist yet -> PIN is valid (creating new farm)
+          const [snapStr, snapNum] = await Promise.all([
+              getDocsFromServer(qStr),
+              qNum ? getDocsFromServer(qNum) : { empty: true, docs: [] }
+          ]);
+
+          const allDocs = [...snapStr.docs, ...(snapNum as any).docs];
+
+          if (allDocs.length === 0) {
+              // Farm doesn't exist anywhere -> New Farm
               return { valid: true, reason: "New Farm", isNew: true };
           }
 
-          // Farm exists. Check PIN on the first found config (Owner).
-          // We assume the first doc found is the owner or a valid config source.
-          const config = snapshot.docs[0].data();
-          const masterPin = config.farmPin;
+          // 2. Find the "Master" Document
+          // Prioritize: 
+          // a) Has 'farmPin' set AND matches candidate (Instant Success)
+          // b) Has 'farmPin' set (Candidate for checking)
+          // c) Has 'ownerEmail' set
           
-          // Get Owner Email for Handshake
-          let ownerEmail = "Unbekannt";
-          // Try to fetch the user record if possible, or store email in settings (which we should do now)
-          // Since we can't easily get auth email from uid without cloud function, 
-          // we rely on the client having saved the email in the settings document.
-          // Fallback: If the document ID is the UID, we just return that for debugging.
-          if (config.ownerEmail) {
-              ownerEmail = config.ownerEmail;
-          } else {
-              // Legacy fallback or privacy
-              ownerEmail = "Benutzer " + snapshot.docs[0].id.substring(0, 5) + "...";
+          let masterConfig: any = null;
+          
+          // Try to find exact match first
+          if (pinCandidate) {
+              const exactMatch = allDocs.find(d => d.data().farmPin === pinCandidate);
+              if (exactMatch) {
+                  return { valid: true, reason: "Match", ownerEmail: exactMatch.data().ownerEmail || "Besitzer (E-Mail nicht öffentlich)" };
+              }
           }
 
+          // If no exact match or checking for owner info (pinCandidate empty)
+          // Find any doc that looks like a real configuration (has PIN)
+          masterConfig = allDocs.find(d => d.data().farmPin && d.data().farmPin.length > 0)?.data();
+
+          // Fallback: Just take the first one if none have PIN (Ghost farm scenario)
+          if (!masterConfig) masterConfig = allDocs[0].data();
+
+          const ownerEmail = masterConfig.ownerEmail || "Besitzer Unbekannt (Altdaten)";
+          const masterPin = masterConfig.farmPin;
+
+          // If we are just searching (no pin candidate), return found status
+          if (!pinCandidate) {
+              return { valid: false, reason: "Exists", ownerEmail, isNew: false };
+          }
+
+          // If checking PIN
           if (!masterPin) {
+              // Edge case: Found a farm but it has NO PIN set at all. 
+              // We treat this as valid to claim (or risky).
               return { valid: true, reason: "No PIN set", ownerEmail };
           }
 
@@ -607,8 +617,8 @@ export const dbService = {
               }
           }
           
-          // Determine Timeout based on size (Minimum 15s + 1s per 2KB)
-          const timeoutMs = 15000 + (currentBatchSize * 1000 * 0.5); 
+          // Determine Timeout based on size (Minimum 45s + 1s per 2KB)
+          const timeoutMs = 45000 + (currentBatchSize * 1000 * 0.5); 
           const timeoutSec = Math.round(timeoutMs / 1000);
 
           // Report details for large items
@@ -646,8 +656,7 @@ export const dbService = {
       }
 
       if (errors > 0) {
-          report(`Fertig. ${processed} gesendet, ${errors} fehlgeschlagen.`, 100);
-          // Don't throw error to allow UI to show partial success
+          report(`Fertig. ${processed} gesendet, ${errors} fehlgeschlagen. Bitte erneut versuchen.`, 100);
       } else {
           report(`Upload erfolgreich (${processed} Objekte, ${queue.reduce((acc, i) => acc + i.sizeKB, 0).toFixed(1)} KB).`, 100);
       }
