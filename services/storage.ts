@@ -1,6 +1,6 @@
 import { Activity, AppSettings, Trip, DEFAULT_SETTINGS, Field, StorageLocation, FarmProfile } from '../types';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, Timestamp, enableIndexedDbPersistence, terminate, clearIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, Timestamp, enableIndexedDbPersistence, terminate, clearIndexedDbPersistence, getDocsFromServer } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { dbService } from './db';
 
@@ -42,7 +42,7 @@ try {
     console.error("[AgriCloud] Initialization failed:", e);
 }
 
-export { auth };
+export { auth, db }; // Export DB for direct access if needed
 
 // Check Cloud Status
 export const isCloudConfigured = () => {
@@ -229,7 +229,7 @@ export const loadLocalData = (type: 'activity' | 'trip' | 'field' | 'storage' | 
     return s ? JSON.parse(s) : (type === 'profile' ? null : []);
 }
 
-export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile') => {
+export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile', forceServer: boolean = false) => {
     if (!isCloudConfigured()) return [];
     
     const settings = loadSettings();
@@ -244,16 +244,19 @@ export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'stor
     }
 
     try {
-        dbService.logEvent(`[Cloud] Suche ${type} für FarmID: ${idsToQuery.join(' oder ')}`);
+        dbService.logEvent(`[Cloud] Suche ${type} für FarmID: ${idsToQuery.join(' oder ')}${forceServer ? ' (FORCE SERVER)' : ''}`);
         let colName = 'activities';
         if (type === 'trip') colName = 'trips';
         if (type === 'field') colName = 'fields';
         if (type === 'storage') colName = 'storages';
         if (type === 'profile') colName = 'profiles';
         
+        // Use getDocsFromServer if forceServer is true to bypass stuck cache
+        const fetchFn = forceServer ? getDocsFromServer : getDocs;
+
         // We execute multiple queries in parallel for robustness
         const queries = idsToQuery.map(id => 
-            getDocs(query(collection(db, colName), where("farmId", "==", id)))
+            fetchFn(query(collection(db, colName), where("farmId", "==", id)))
         );
         
         const snapshots = await Promise.all(queries);

@@ -3,7 +3,7 @@ import {
   Save, User, Database, Settings, Cloud, MapPin, Plus, Trash2, 
   AlertTriangle, RefreshCw, CheckCircle, Smartphone, 
   Terminal, ShieldCheck, CloudOff, Info, DownloadCloud,
-  X, Layers, Link as LinkIcon, Lock, Calendar, FileText, UserPlus, Eye, EyeOff, Wrench
+  X, Layers, Link as LinkIcon, Lock, Calendar, FileText, UserPlus, Eye, EyeOff, Wrench, Wifi, Activity, Server
 } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { authService } from '../services/auth';
@@ -71,11 +71,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   // Modals & Tools
   const [editingStorage, setEditingStorage] = useState<StorageLocation | null>(null);
   const [showDiagnose, setShowDiagnose] = useState(false);
-  const [activeDiagTab, setActiveDiagTab] = useState<'logs' | 'inspector' | 'repair'>('inspector'); 
+  const [activeDiagTab, setActiveDiagTab] = useState<'status' | 'logs' | 'inspector' | 'repair'>('status'); 
   const [inspectorData, setInspectorData] = useState<any>(null);
   const [inspectorLoading, setInspectorLoading] = useState(false);
   const [showMapPicker, setShowMapPicker] = useState<'profile' | 'storage' | null>(null);
   const [showDangerZone, setShowDangerZone] = useState(false);
+  const [userInfo, setUserInfo] = useState<any>(null);
+  const [logs, setLogs] = useState<string[]>([]);
   
   // Repair Tool State
   const [repairAnalysis, setRepairAnalysis] = useState<any>(null);
@@ -99,6 +101,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       loadAll();
       const unsubAuth = authService.onAuthStateChanged((user) => {
           setAuthState(user);
+          setUserInfo(dbService.getCurrentUserInfo());
       });
       const unsubDb = dbService.onDatabaseChange(() => {
           loadCloudData(settings.farmId);
@@ -118,6 +121,19 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           setConnectMode('VIEW'); // Or allow user to choose
       }
   }, [activeTab, settings.farmId]);
+
+  // Refresh logs when modal opens
+  useEffect(() => {
+      if (showDiagnose) {
+          setLogs(dbService.getLogs());
+          if (settings.farmId && activeDiagTab === 'inspector' && !inspectorData) {
+              runInspector();
+          }
+      } else {
+          // When closing modal, refresh stats to avoid "-"
+          if (settings.farmId) loadCloudData(settings.farmId);
+      }
+  }, [showDiagnose, activeDiagTab, settings.farmId]);
 
   const loadAll = async () => {
       const s = await dbService.getSettings();
@@ -278,6 +294,20 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           alert("Daten erfolgreich heruntergeladen.");
       } catch (e) {
           alert("Download Fehler (Offline?).");
+      } finally {
+          setIsUploading(false);
+      }
+  };
+
+  const handlePingTest = async () => {
+      setIsUploading(true);
+      setUploadProgress({ status: 'Sende Ping...', percent: 50 });
+      try {
+          const res = await dbService.testCloudConnection();
+          setUploadProgress({ status: res.message, percent: 100 });
+          alert(res.message);
+      } catch (e: any) {
+          alert("Fehler: " + e.message);
       } finally {
           setIsUploading(false);
       }
@@ -889,6 +919,223 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
         {/* --- MODALS --- */}
 
+        {/* Diagnose Modal */}
+        {showDiagnose && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg h-[80vh] flex flex-col overflow-hidden">
+                    <div className="p-4 bg-slate-800 text-white flex justify-between items-center shrink-0">
+                        <h3 className="font-bold flex items-center"><Terminal size={18} className="mr-2"/> System Diagnose</h3>
+                        <button onClick={() => setShowDiagnose(false)}><X size={20}/></button>
+                    </div>
+                    
+                    <div className="flex border-b border-slate-200 bg-slate-50">
+                        <button 
+                            onClick={() => setActiveDiagTab('status')}
+                            className={`flex-1 py-3 text-xs font-bold ${activeDiagTab === 'status' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                        >
+                            Status & User
+                        </button>
+                        <button 
+                            onClick={() => setActiveDiagTab('logs')}
+                            className={`flex-1 py-3 text-xs font-bold ${activeDiagTab === 'logs' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                        >
+                            Protokoll
+                        </button>
+                        <button 
+                            onClick={() => { setActiveDiagTab('inspector'); runInspector(); }}
+                            className={`flex-1 py-3 text-xs font-bold ${activeDiagTab === 'inspector' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                        >
+                            Cloud Inhalt
+                        </button>
+                        <button 
+                            onClick={() => { setActiveDiagTab('repair'); analyzeRepair(); }}
+                            className={`flex-1 py-3 text-xs font-bold ${activeDiagTab === 'repair' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                        >
+                            Reparatur
+                        </button>
+                    </div>
+
+                    <div className="flex-1 overflow-y-auto p-4 bg-slate-50 font-mono text-xs">
+                        
+                        {/* TAB: STATUS */}
+                        {activeDiagTab === 'status' && (
+                            <div className="space-y-4">
+                                <div className="bg-white p-4 rounded border border-slate-200 shadow-sm">
+                                    <h4 className="font-bold text-slate-800 mb-3 text-sm flex items-center"><User size={14} className="mr-2"/> Aktueller Benutzer (Handy)</h4>
+                                    <div className="space-y-2">
+                                        <div className="flex justify-between border-b border-slate-100 pb-1">
+                                            <span className="text-slate-500">Status:</span>
+                                            <span className={`font-bold ${userInfo?.status === 'Eingeloggt' ? 'text-green-600' : 'text-red-500'}`}>{userInfo?.status || 'Offline'}</span>
+                                        </div>
+                                        <div className="flex justify-between border-b border-slate-100 pb-1">
+                                            <span className="text-slate-500">E-Mail:</span>
+                                            <span className="font-bold select-all">{userInfo?.email || '-'}</span>
+                                        </div>
+                                        <div>
+                                            <span className="text-slate-500 block mb-1">User ID (UID):</span>
+                                            <div className="bg-slate-100 p-2 rounded text-[10px] break-all select-all font-bold border border-slate-200">
+                                                {userInfo?.uid || '-'}
+                                            </div>
+                                            <p className="text-[9px] text-slate-400 mt-1">Vergleiche diese ID mit dem PC, um sicherzugehen, dass es das gleiche Konto ist.</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div className="bg-white p-4 rounded border border-slate-200 shadow-sm">
+                                    <h4 className="font-bold text-slate-800 mb-3 text-sm flex items-center"><Server size={14} className="mr-2"/> Verbindungstest</h4>
+                                    
+                                    <button 
+                                        onClick={handlePingTest}
+                                        disabled={isUploading}
+                                        className="w-full py-2 bg-blue-50 border border-blue-200 text-blue-700 rounded font-bold hover:bg-blue-100 mb-2"
+                                    >
+                                        {isUploading ? 'Teste...' : 'Cloud Verbindung testen (Ping)'}
+                                    </button>
+                                    
+                                    {uploadProgress.percent === 100 && (
+                                        <div className="p-2 bg-green-50 text-green-700 border border-green-100 rounded text-center">
+                                            {uploadProgress.status}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <div className="bg-white p-4 rounded border border-slate-200 shadow-sm">
+                                    <h4 className="font-bold text-slate-800 mb-3 text-sm">Aktuelle Cloud Stats</h4>
+                                    <pre className="text-[10px] bg-slate-100 p-2 rounded">
+                                        {JSON.stringify(cloudStats, null, 2)}
+                                    </pre>
+                                </div>
+                            </div>
+                        )}
+
+                        {/* TAB: LOGS */}
+                        {activeDiagTab === 'logs' && (
+                            <div className="bg-black text-green-400 p-3 rounded h-full overflow-y-auto whitespace-pre-wrap">
+                                {logs.length === 0 ? "Keine Logs vorhanden." : logs.join('\n')}
+                            </div>
+                        )}
+
+                        {/* TAB: INSPECTOR */}
+                        {activeDiagTab === 'inspector' && (
+                            <div className="space-y-4">
+                                <div className="flex justify-between items-center mb-2">
+                                    <span>Farm ID: <strong>{settings.farmId}</strong></span>
+                                    <button onClick={runInspector} className="bg-white border px-2 py-1 rounded shadow-sm">Neu laden</button>
+                                </div>
+                                
+                                {inspectorLoading && <div className="text-center p-4">Lade Daten...</div>}
+                                
+                                {inspectorData && !inspectorLoading && (
+                                    <>
+                                        <div className="bg-white p-2 rounded border mb-2">
+                                            <strong>Aktivitäten ({inspectorData.activities.length})</strong>
+                                            <div className="max-h-40 overflow-y-auto mt-2 border-t pt-2 space-y-1">
+                                                {inspectorData.activities.map((a: any, i: number) => (
+                                                    <div key={i} className="border-b border-slate-100 pb-1">
+                                                        {a.date ? a.date.substring(0,10) : 'No Date'} - {a.type} ({a.farmIdType})
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="bg-white p-2 rounded border mb-2">
+                                            <strong>Felder ({inspectorData.fields.length})</strong>
+                                            <div className="max-h-40 overflow-y-auto mt-2 border-t pt-2 space-y-1">
+                                                {inspectorData.fields.map((f: any, i: number) => (
+                                                    <div key={i} className="border-b border-slate-100 pb-1">
+                                                        {f.name} ({f.area} ha)
+                                                    </div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                        <div className="text-slate-500 mt-2">
+                                            Lager: {inspectorData.storages.length}, Profile: {inspectorData.profiles.length}
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        )}
+
+                        {/* TAB: REPAIR */}
+                        {activeDiagTab === 'repair' && (
+                            <div className="space-y-4 p-2">
+                                <div className="bg-amber-50 p-3 rounded text-amber-800 border border-amber-200 mb-4">
+                                    <strong>Datentyp-Konflikt Löser</strong><br/>
+                                    Behebt das Problem, dass Daten am PC (als Zahl gespeichert) am Handy (als Text gesucht) nicht gefunden werden.
+                                </div>
+                                
+                                {repairLoading ? (
+                                    <div className="text-center p-4">Analysiere...</div>
+                                ) : (
+                                    repairAnalysis && (
+                                        <div className="bg-white p-3 rounded border space-y-2">
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-bold text-green-600">{repairAnalysis.stringIdCount}</span>
+                                                <span>Einträge als TEXT (Neu)</span>
+                                            </div>
+                                            <div className="text-xs text-slate-400 pl-4">ID: '{settings.farmId}'</div>
+                                            
+                                            <div className="border-t my-2"></div>
+                                            
+                                            <div className="flex justify-between items-center">
+                                                <span className="font-bold text-red-600">{repairAnalysis.numberIdCount}</span>
+                                                <span>Einträge als ZAHL (Alt)</span>
+                                            </div>
+                                            <div className="text-xs text-slate-400 pl-4">ID: {Number(settings.farmId)}</div>
+
+                                            <div className="mt-4 pt-2 border-t">
+                                                <div className="text-[10px] text-slate-500 mb-2">Details:</div>
+                                                {repairAnalysis.details.map((line: string, i: number) => (
+                                                    <div key={i} className="text-[10px] text-slate-600">{line}</div>
+                                                ))}
+                                            </div>
+                                        </div>
+                                    )
+                                )}
+
+                                <button 
+                                    onClick={executeRepair}
+                                    disabled={repairLoading}
+                                    className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold shadow hover:bg-blue-700 disabled:opacity-50"
+                                >
+                                    Daten zusammenführen (Zahl zu Text konvertieren)
+                                </button>
+                            </div>
+                        )}
+
+                    </div>
+
+                    <div className="p-4 border-t border-slate-200 bg-white shrink-0">
+                        <button 
+                            onClick={handleHardReset}
+                            className="w-full py-3 bg-red-50 text-red-600 border border-red-200 rounded-lg font-bold hover:bg-red-100 flex items-center justify-center"
+                        >
+                            <Trash2 size={16} className="mr-2"/> App & Datenbank komplett zurücksetzen
+                        </button>
+                        <p className="text-[10px] text-center text-slate-400 mt-2">
+                            Nutzen Sie dies, wenn sich der Cache "verschluckt" hat.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        )}
+
+        {/* Upload Overlay */}
+        {isUploading && (
+            <div className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-sm flex items-center justify-center p-8">
+                <div className="bg-white rounded-xl p-6 w-full max-w-sm text-center">
+                    <RefreshCw size={40} className="mx-auto text-blue-500 animate-spin mb-4"/>
+                    <h3 className="text-lg font-bold text-slate-800 mb-2">{uploadProgress.status}</h3>
+                    <div className="w-full bg-slate-200 rounded-full h-2.5 mb-2 overflow-hidden">
+                        <div 
+                            className={`h-2.5 rounded-full transition-all duration-300 ${uploadProgress.status.includes('Fehler') || uploadProgress.status.includes('fehlgeschlagen') ? 'bg-red-500' : 'bg-blue-600'}`} 
+                            style={{ width: `${uploadProgress.percent}%` }}
+                        ></div>
+                    </div>
+                    <p className="text-xs text-slate-500">{uploadProgress.percent}%</p>
+                </div>
+            </div>
+        )}
+
         {/* Storage Editor Modal */}
         {editingStorage && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
@@ -908,46 +1155,55 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                 <input type="number" value={editingStorage.capacity} onChange={e => setEditingStorage({...editingStorage, capacity: parseFloat(e.target.value)})} className="w-full p-2 border rounded" />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Typ</label>
-                                <select value={editingStorage.type} onChange={e => setEditingStorage({...editingStorage, type: e.target.value as any})} className="w-full p-2 border rounded">
-                                    <option value={FertilizerType.SLURRY}>Gülle</option>
-                                    <option value={FertilizerType.MANURE}>Mist</option>
-                                </select>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Aktuell (m³)</label>
+                                <input type="number" value={editingStorage.currentLevel} onChange={e => setEditingStorage({...editingStorage, currentLevel: parseFloat(e.target.value)})} className="w-full p-2 border rounded" />
                             </div>
                         </div>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Aktuell (m³)</label>
-                                <input type="number" value={editingStorage.currentLevel} onChange={e => setEditingStorage({...editingStorage, currentLevel: parseFloat(e.target.value)})} className="w-full p-2 border rounded" />
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Typ</label>
+                                <select 
+                                    value={editingStorage.type} 
+                                    onChange={e => setEditingStorage({...editingStorage, type: e.target.value as FertilizerType})} 
+                                    className="w-full p-2 border rounded bg-white"
+                                >
+                                    <option value={FertilizerType.SLURRY}>Gülle</option>
+                                    <option value={FertilizerType.MANURE}>Mist</option>
+                                </select>
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Zuwachs / Tag</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Zuwachs / Tag (m³)</label>
                                 <input type="number" value={editingStorage.dailyGrowth} onChange={e => setEditingStorage({...editingStorage, dailyGrowth: parseFloat(e.target.value)})} className="w-full p-2 border rounded" />
                             </div>
                         </div>
-                        <div>
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Standort (Karte)</label>
-                            <div className="h-48 w-full rounded-lg overflow-hidden border relative">
-                                <MapContainer center={[editingStorage.geo.lat, editingStorage.geo.lng]} zoom={13} style={{height: '100%', width: '100%'}}>
-                                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"/>
+                        
+                        <div className="border-t pt-4">
+                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Standort auf Karte</label>
+                            <div className="h-48 rounded-lg overflow-hidden border border-slate-200 relative">
+                                <MapContainer center={editingStorage.geo} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                                     <LocationPickerMap 
                                         position={editingStorage.geo} 
-                                        onPick={(lat, lng) => setEditingStorage({...editingStorage, geo: {lat, lng}})}
+                                        onPick={(lat, lng) => setEditingStorage({...editingStorage, geo: { lat, lng }})}
                                         icon={editingStorage.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
                                     />
                                 </MapContainer>
+                                <div className="absolute bottom-2 left-2 right-2 bg-white/90 p-2 text-center text-xs rounded shadow backdrop-blur-sm pointer-events-none">
+                                    Tippen um Position zu setzen
+                                </div>
                             </div>
                         </div>
-                        <div className="flex space-x-2 pt-2">
+
+                        <div className="flex space-x-3 pt-2">
                             <button 
                                 onClick={async () => {
-                                    if(confirm("Lager löschen?")) {
+                                    if(confirm("Lager wirklich löschen?")) {
                                         await dbService.deleteStorage(editingStorage.id);
                                         setEditingStorage(null);
                                         loadAll();
                                     }
                                 }}
-                                className="px-4 py-3 border border-red-200 text-red-600 rounded-lg font-bold"
+                                className="px-4 py-3 border border-red-200 text-red-500 rounded-xl hover:bg-red-50"
                             >
                                 <Trash2 size={20}/>
                             </button>
@@ -956,8 +1212,8 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                     await dbService.saveStorageLocation(editingStorage);
                                     setEditingStorage(null);
                                     loadAll();
-                                }}
-                                className="flex-1 py-3 bg-green-600 text-white rounded-lg font-bold shadow"
+                                }} 
+                                className="flex-1 bg-slate-900 text-white py-3 rounded-xl font-bold hover:bg-slate-800"
                             >
                                 Speichern
                             </button>
@@ -967,249 +1223,26 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
             </div>
         )}
 
-        {/* Map Picker Modal (Generic) */}
-        {showMapPicker && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
-                <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg h-[80vh] flex flex-col">
-                    <div className="p-3 border-b flex justify-between items-center">
-                        <h3 className="font-bold">Standort wählen</h3>
-                        <button onClick={() => setShowMapPicker(null)}><X/></button>
-                    </div>
-                    <div className="flex-1 relative">
-                        <MapContainer center={[47.5, 14.5]} zoom={7} style={{height: '100%', width: '100%'}}>
-                            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"/>
-                            <LocationPickerMap 
-                                position={profile.addressGeo} 
-                                onPick={(lat, lng) => setProfile({...profile, addressGeo: {lat, lng}})}
-                                icon={farmIcon}
-                            />
-                        </MapContainer>
-                        <div className="absolute bottom-4 left-4 right-4 bg-white/90 p-3 rounded-lg shadow text-center text-sm pointer-events-none">
-                            Klicke auf die Karte um den Pin zu setzen.
-                        </div>
-                    </div>
-                    <div className="p-4 border-t">
-                        <button onClick={() => setShowMapPicker(null)} className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold">Übernehmen</button>
+        {/* Map Picker Modal (Profile) */}
+        {showMapPicker === 'profile' && (
+            <div className="fixed inset-0 z-50 bg-black/80 flex flex-col">
+                <div className="bg-white p-4 flex justify-between items-center">
+                    <h3 className="font-bold">Hofstelle Standort wählen</h3>
+                    <button onClick={() => setShowMapPicker(null)} className="px-4 py-2 bg-slate-100 rounded font-bold">Fertig</button>
+                </div>
+                <div className="flex-1 relative">
+                    <MapContainer center={profile.addressGeo || { lat: 47.5, lng: 14.5 }} zoom={13} style={{ height: '100%', width: '100%' }}>
+                        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                        <LocationPickerMap 
+                            position={profile.addressGeo} 
+                            onPick={(lat, lng) => setProfile({...profile, addressGeo: { lat, lng }})}
+                            icon={farmIcon}
+                        />
+                    </MapContainer>
+                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-white/90 px-4 py-2 rounded-full shadow-lg font-bold text-sm pointer-events-none z-[1000]">
+                        Klicke auf die Karte um den Hof zu markieren
                     </div>
                 </div>
-            </div>
-        )}
-
-        {/* Diagnose Modal with Tabs and Inspector */}
-        {showDiagnose && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl h-[85vh] flex flex-col overflow-hidden">
-                    <div className="p-4 border-b flex justify-between items-center bg-slate-50 shrink-0">
-                        <h3 className="font-bold text-lg flex items-center"><Terminal size={20} className="mr-2"/> System Diagnose</h3>
-                        {/* FORCE RELOAD ON CLOSE */}
-                        <button onClick={() => { setShowDiagnose(false); loadCloudData(settings.farmId); }}><X/></button>
-                    </div>
-                    
-                    {/* TABS */}
-                    <div className="flex border-b border-slate-200 bg-white shrink-0">
-                        <button onClick={() => setActiveDiagTab('logs')} className={`flex-1 py-3 text-xs font-bold transition-colors ${activeDiagTab === 'logs' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:bg-slate-50'}`}>Protokoll</button>
-                        <button onClick={() => setActiveDiagTab('inspector')} className={`flex-1 py-3 text-xs font-bold transition-colors ${activeDiagTab === 'inspector' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:bg-slate-50'}`}>Cloud Inhalt</button>
-                        <button onClick={() => { setActiveDiagTab('repair'); analyzeRepair(); }} className={`flex-1 py-3 text-xs font-bold transition-colors ${activeDiagTab === 'repair' ? 'text-red-600 border-b-2 border-red-600' : 'text-slate-400 hover:bg-slate-50'}`}>Erweiterte Analyse</button>
-                    </div>
-
-                    <div className="flex-1 overflow-y-auto bg-slate-50">
-                        {activeDiagTab === 'logs' ? (
-                            // LOG VIEW
-                            <div className="p-4 font-mono text-xs bg-slate-900 text-green-400 min-h-full space-y-2">
-                                {dbService.getLogs().map((log, i) => (
-                                    <div key={i} className="border-b border-green-900/30 pb-1 break-words">{log}</div>
-                                ))}
-                            </div>
-                        ) : activeDiagTab === 'inspector' ? (
-                            // INSPECTOR VIEW
-                            <div className="p-4 space-y-6">
-                                <div className="flex justify-between items-center mb-2">
-                                    <h4 className="font-bold text-slate-700 text-sm">Gespeicherte Daten für '{settings.farmId}'</h4>
-                                    <button onClick={runInspector} className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded text-xs font-bold flex items-center hover:bg-blue-200 transition-colors shadow-sm">
-                                        {inspectorLoading ? <RefreshCw className="animate-spin mr-1" size={14}/> : <RefreshCw size={14} className="mr-1"/>} Inhalt laden
-                                    </button>
-                                </div>
-
-                                {!inspectorData ? (
-                                    <div className="text-center py-12 border-2 border-dashed border-slate-300 rounded-xl">
-                                        <Cloud size={32} className="mx-auto text-slate-300 mb-2"/>
-                                        <p className="text-sm text-slate-500">Klicke auf "Inhalt laden", um die Cloud abzufragen.</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-6">
-                                        {/* Stats Summary */}
-                                        <div className="grid grid-cols-4 gap-2 text-center">
-                                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
-                                                <div className="font-bold text-lg text-slate-800">{inspectorData.activities?.length || 0}</div>
-                                                <div className="text-[10px] text-slate-500 uppercase font-bold">Aktivitäten</div>
-                                            </div>
-                                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
-                                                <div className="font-bold text-lg text-slate-800">{inspectorData.fields?.length || 0}</div>
-                                                <div className="text-[10px] text-slate-500 uppercase font-bold">Felder</div>
-                                            </div>
-                                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
-                                                <div className="font-bold text-lg text-slate-800">{inspectorData.storages?.length || 0}</div>
-                                                <div className="text-[10px] text-slate-500 uppercase font-bold">Lager</div>
-                                            </div>
-                                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
-                                                <div className="font-bold text-lg text-slate-800">{inspectorData.profiles?.length || 0}</div>
-                                                <div className="text-[10px] text-slate-500 uppercase font-bold">Profil</div>
-                                            </div>
-                                        </div>
-
-                                        {/* Activities List */}
-                                        {inspectorData.activities?.length > 0 && (
-                                            <div>
-                                                <h5 className="text-xs font-bold text-slate-500 uppercase mb-2">Letzte Aktivitäten</h5>
-                                                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100 max-h-48 overflow-y-auto">
-                                                    {inspectorData.activities.map((a: any, i: number) => (
-                                                        <div key={i} className="p-3 text-xs flex justify-between items-center hover:bg-slate-50">
-                                                            <div>
-                                                                <span className="font-bold block text-slate-700">{new Date(a.date).toLocaleDateString()}</span>
-                                                                <span className="text-slate-500">{a.type}</span>
-                                                            </div>
-                                                            <span className="bg-slate-100 px-2 py-1 rounded text-slate-600">{a.device}</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-
-                                        {/* Fields List */}
-                                        {inspectorData.fields?.length > 0 && (
-                                            <div>
-                                                <h5 className="text-xs font-bold text-slate-500 uppercase mb-2">Felder</h5>
-                                                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100 max-h-48 overflow-y-auto">
-                                                    {inspectorData.fields.map((f: any, i: number) => (
-                                                        <div key={i} className="p-3 text-xs flex justify-between items-center hover:bg-slate-50">
-                                                            <span className="font-bold text-slate-700">{f.name}</span>
-                                                            <span className="text-slate-500">{f.area?.toFixed(2)} ha</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                        
-                                        {/* Storages List */}
-                                        {inspectorData.storages?.length > 0 && (
-                                            <div>
-                                                <h5 className="text-xs font-bold text-slate-500 uppercase mb-2">Lager</h5>
-                                                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
-                                                    {inspectorData.storages.map((s: any, i: number) => (
-                                                        <div key={i} className="p-3 text-xs flex justify-between items-center hover:bg-slate-50">
-                                                            <span className="font-bold text-slate-700">{s.name}</span>
-                                                            <span className="text-slate-500">{s.capacity} m³ ({s.type})</span>
-                                                        </div>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        )}
-                                    </div>
-                                )}
-                            </div>
-                        ) : (
-                            // REPAIR VIEW
-                            <div className="p-6">
-                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
-                                    <h4 className="font-bold text-orange-900 flex items-center mb-2">
-                                        <Wrench className="mr-2" size={18}/> Datentyp Konflikt Analyse
-                                    </h4>
-                                    <p className="text-sm text-orange-800">
-                                        Prüft, ob Daten unter zwei verschiedenen ID-Formaten (Zahl vs. Text) gespeichert sind. 
-                                        Dies ist oft der Grund, warum Geräte unterschiedliche Daten sehen.
-                                    </p>
-                                </div>
-
-                                {repairLoading ? (
-                                    <div className="text-center py-8 text-slate-500">
-                                        <RefreshCw className="animate-spin mx-auto mb-2"/>
-                                        Analysiere Datenbank...
-                                    </div>
-                                ) : repairAnalysis ? (
-                                    <div className="space-y-6">
-                                        <div className="grid grid-cols-2 gap-4">
-                                            <div className="bg-white p-4 rounded-xl border-2 border-blue-100 text-center">
-                                                <div className="text-2xl font-bold text-blue-600">{repairAnalysis.stringIdCount}</div>
-                                                <div className="text-xs font-bold text-slate-500">Einträge als TEXT (Neu)</div>
-                                                <div className="text-[10px] text-slate-400 font-mono mt-1">ID: '{settings.farmId}'</div>
-                                            </div>
-                                            <div className="bg-white p-4 rounded-xl border-2 border-amber-100 text-center">
-                                                <div className="text-2xl font-bold text-amber-600">{repairAnalysis.numberIdCount}</div>
-                                                <div className="text-xs font-bold text-slate-500">Einträge als ZAHL (Alt)</div>
-                                                <div className="text-[10px] text-slate-400 font-mono mt-1">ID: {settings.farmId}</div>
-                                            </div>
-                                        </div>
-
-                                        <div className="bg-white rounded-lg border border-slate-200 p-4 text-xs font-mono text-slate-600 space-y-1">
-                                            {repairAnalysis.details.map((line: string, i: number) => (
-                                                <div key={i}>{line}</div>
-                                            ))}
-                                        </div>
-
-                                        {repairAnalysis.numberIdCount > 0 && (
-                                            <button 
-                                                onClick={executeRepair}
-                                                className="w-full py-4 bg-green-600 text-white rounded-xl font-bold shadow-lg hover:bg-green-700 flex items-center justify-center animate-pulse"
-                                            >
-                                                <Wrench className="mr-2"/> Daten zusammenführen (Reparieren)
-                                            </button>
-                                        )}
-                                        
-                                        {repairAnalysis.numberIdCount === 0 && (
-                                            <div className="text-center text-green-600 font-bold p-4 bg-green-50 rounded-xl">
-                                                Alles OK! Keine Konflikte gefunden.
-                                            </div>
-                                        )}
-                                    </div>
-                                ) : (
-                                    <button onClick={analyzeRepair} className="w-full py-3 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">
-                                        Analyse Starten
-                                    </button>
-                                )}
-                            </div>
-                        )}
-                    </div>
-
-                    {/* Footer Info */}
-                    <div className="p-4 border-t bg-slate-800 text-slate-400 text-[10px] font-mono shrink-0">
-                        {settings.farmId && (
-                            <div>
-                                Farm ID: ['{settings.farmId}'] (Länge: {settings.farmId.length})<br/>
-                                ASCII Check: {settings.farmId.split('').map(c => `${c} (${c.charCodeAt(0)})`).join(' ')}
-                            </div>
-                        )}
-                    </div>
-                    
-                    <div className="p-4 border-t bg-slate-100 flex justify-between items-center shrink-0">
-                        <button 
-                            onClick={handleHardReset} 
-                            className="bg-red-600 text-white px-4 py-3 w-full rounded text-sm font-bold hover:bg-red-700 transition-colors shadow-lg animate-pulse"
-                        >
-                            ⚠️ App & Datenbank komplett zurücksetzen (Hard Reset)
-                        </button>
-                    </div>
-                </div>
-            </div>
-        )}
-
-        {/* Upload Progress Overlay */}
-        {isUploading && (
-            <div className="fixed inset-0 z-[100] bg-black/80 flex flex-col items-center justify-center text-white">
-                <Cloud size={48} className="animate-bounce mb-4 text-blue-400"/>
-                <h3 className="text-xl font-bold mb-2">{uploadProgress.status}</h3>
-                <div className="w-64 h-3 bg-slate-700 rounded-full overflow-hidden">
-                    <div 
-                        className={`h-full transition-all duration-300 ${uploadProgress.status.includes('fehlgeschlagen') ? 'bg-red-500' : 'bg-blue-500'}`} 
-                        style={{width: `${uploadProgress.percent}%`}}
-                    ></div>
-                </div>
-                <div className="mt-2 font-mono">{uploadProgress.percent}%</div>
-                
-                {uploadProgress.status.includes('fehlgeschlagen') && (
-                    <button onClick={() => setIsUploading(false)} className="mt-6 px-6 py-2 bg-white text-slate-900 rounded-full font-bold hover:bg-slate-200">
-                        Schließen
-                    </button>
-                )}
             </div>
         )}
 

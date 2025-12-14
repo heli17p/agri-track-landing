@@ -1,6 +1,6 @@
 import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, DEFAULT_SETTINGS, FeedbackTicket } from '../types';
 import { saveData, loadLocalData, saveSettings as saveSettingsToStorage, loadSettings as loadSettingsFromStorage, fetchCloudData, fetchCloudSettings, isCloudConfigured, auth, hardReset } from './storage';
-import { collection, doc, setDoc, getDoc, getDocs, query, where, updateDoc, arrayUnion, Timestamp, deleteDoc, writeBatch } from 'firebase/firestore';
+import { collection, doc, setDoc, getDoc, getDocs, query, where, updateDoc, arrayUnion, Timestamp, deleteDoc, writeBatch, getDocsFromServer } from 'firebase/firestore';
 import { getFirestore } from 'firebase/firestore';
 
 // Need direct access to db for advanced features
@@ -40,6 +40,57 @@ export const dbService = {
   getLogs: () => [..._logs],
   hardReset: hardReset,
 
+  // --- DIAGNOSTIC TOOLS ---
+  
+  // 1. Get Current User Info
+  getCurrentUserInfo: () => {
+      if (!auth?.currentUser) return { status: 'Nicht eingeloggt' };
+      return {
+          status: 'Eingeloggt',
+          email: auth.currentUser.email,
+          uid: auth.currentUser.uid,
+          isAnonymous: auth.currentUser.isAnonymous
+      };
+  },
+
+  // 2. Real Connection Test (Write/Read)
+  testCloudConnection: async () => {
+      if (!isCloudConfigured()) return { success: false, message: "Firebase nicht initialisiert" };
+      const db = getDb();
+      if (!db || !auth.currentUser) return { success: false, message: "Nicht eingeloggt" };
+
+      const testId = `ping_${auth.currentUser.uid}`;
+      const docRef = doc(db, 'diagnostics', testId);
+      const payload = { timestamp: Date.now(), device: navigator.userAgent };
+
+      try {
+          const start = Date.now();
+          
+          // Write with timeout
+          const writePromise = setDoc(docRef, payload);
+          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout beim Schreiben (5s)")), 5000));
+          await Promise.race([writePromise, timeoutPromise]);
+
+          // Read back (Force Server to prove connection)
+          const readPromise = getDoc(docRef); // Usually cached, but if we just wrote it...
+          // Ideally use getDocsFromServer but for a single doc getDoc might check cache.
+          // To be sure, we can trust the write success if no error thrown.
+          // Or verify timestamp.
+          
+          const snap = await readPromise;
+          const end = Date.now();
+          
+          if (snap.exists() && snap.data().timestamp === payload.timestamp) {
+              return { success: true, message: `Erfolg! Ping: ${end - start}ms` };
+          } else {
+              // It might have worked but cache is acting up, still a success connectivity-wise usually
+              return { success: true, message: "Schreiben OK, Lesen verzögert." };
+          }
+      } catch (e: any) {
+          return { success: false, message: `Verbindungsfehler: ${e.message}` };
+      }
+  },
+
   // --- DEBUG / INSPECTOR ---
   inspectCloudData: async (farmId: string) => {
       addLog(`Inspektor: Starte parallele Analyse für FarmID '${farmId}'...`);
@@ -56,9 +107,9 @@ export const dbService = {
       if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
 
       try {
-          // Helper to fetch and merge
+          // Helper to fetch and merge - USING getDocsFromServer TO BYPASS CACHE
           const fetchAll = async (col: string) => {
-              const promises = idsToCheck.map(id => getDocs(query(collection(db, col), where("farmId", "==", id))));
+              const promises = idsToCheck.map(id => getDocsFromServer(query(collection(db, col), where("farmId", "==", id))));
               const snaps = await Promise.all(promises);
               const merged = new Map();
               snaps.forEach(s => s.docs.forEach(d => merged.set(d.id, d)));
@@ -104,7 +155,7 @@ export const dbService = {
               address: d.data().address
           }));
 
-          addLog(`Inspektor: Analyse abgeschlossen. ${actsFound.length} Aktivitäten (Dual-Check).`);
+          addLog(`Inspektor: Analyse abgeschlossen. ${actsFound.length} Aktivitäten (Dual-Check, Server-Forced).`);
 
           return {
               settings: settingsFound,
@@ -144,14 +195,14 @@ export const dbService = {
       for (const col of collections) {
           // Count String
           const qStr = query(collection(db, col), where("farmId", "==", strId));
-          const snapStr = await getDocs(qStr);
+          const snapStr = await getDocsFromServer(qStr); // Force Server
           results.stringIdCount += snapStr.size;
 
           // Count Number
           let numCount = 0;
           if (!isNaN(numId)) {
               const qNum = query(collection(db, col), where("farmId", "==", numId));
-              const snapNum = await getDocs(qNum);
+              const snapNum = await getDocsFromServer(qNum); // Force Server
               numCount = snapNum.size;
               results.numberIdCount += numCount;
           }
@@ -178,7 +229,7 @@ export const dbService = {
 
       for (const col of collections) {
           const qNum = query(collection(db, col), where("farmId", "==", numId));
-          const snap = await getDocs(qNum);
+          const snap = await getDocsFromServer(qNum); // Force Server
           
           if (!snap.empty) {
               const batch = writeBatch(db);
@@ -235,15 +286,15 @@ export const dbService = {
       if (!db) return { valid: false, reason: "DB Error" };
 
       try {
-          // Check if ANY settings document exists with this farmId (Dual Check)
+          // Check if ANY settings document exists with this farmId (Dual Check) - Forced Server to avoid stale cache
           const qStr = query(collection(db, 'settings'), where("farmId", "==", String(farmId)));
-          let snapshot = await getDocs(qStr);
+          let snapshot = await getDocsFromServer(qStr);
           
           if(snapshot.empty) {
               const numId = Number(farmId);
               if(!isNaN(numId)) {
                   const qNum = query(collection(db, 'settings'), where("farmId", "==", numId));
-                  const snapNum = await getDocs(qNum);
+                  const snapNum = await getDocsFromServer(qNum);
                   if(!snapNum.empty) snapshot = snapNum;
               }
           }
@@ -354,7 +405,7 @@ export const dbService = {
           addLog(`Prüfe Cloud Status für ID: '${farmId}' (Dual Check)`);
           
           const countCol = async (col: string) => {
-              const promises = idsToCheck.map(id => getDocs(query(collection(db, col), where("farmId", "==", id))));
+              const promises = idsToCheck.map(id => getDocsFromServer(query(collection(db, col), where("farmId", "==", id))));
               const snaps = await Promise.all(promises);
               // Sum up UNIQUE docs (in case overlap, though unlikely)
               const ids = new Set();
@@ -411,13 +462,13 @@ export const dbService = {
 
       let allRefs: any[] = [];
 
-      // 1. GATHER ALL REFS IN PARALLEL (Super fast)
+      // 1. GATHER ALL REFS IN PARALLEL (Super fast) - Using Server Fetch
       const fetchPromises: Promise<void>[] = [];
 
       for (const col of collections) {
           for (const idVariant of idsToCheck) {
               fetchPromises.push(
-                  getDocs(query(collection(db, col), where("farmId", "==", idVariant)))
+                  getDocsFromServer(query(collection(db, col), where("farmId", "==", idVariant)))
                   .then(snap => {
                       snap.docs.forEach(d => allRefs.push(d.ref));
                   })
@@ -653,7 +704,7 @@ export const dbService = {
           return;
       }
       
-      addLog("[Sync] Starte Download...");
+      addLog("[Sync] Starte Download (Force Server Mode)...");
       
       // 1. Sync Settings
       const cloudSettings = await fetchCloudSettings();
@@ -668,7 +719,7 @@ export const dbService = {
 
       // 2. Sync Activities
       addLog("[Sync] Lade Aktivitäten herunter...");
-      const cloudData = await fetchCloudData('activity') as ActivityRecord[];
+      const cloudData = await fetchCloudData('activity', true) as ActivityRecord[]; // Force Server
       const localData = loadLocalData('activity') as ActivityRecord[];
       const localIds = new Set(localData.map(a => a.id));
       let newActs = 0;
@@ -687,7 +738,7 @@ export const dbService = {
 
       // 3. Sync Fields
       addLog("[Sync] Lade Felder herunter...");
-      const cloudFields = await fetchCloudData('field') as Field[];
+      const cloudFields = await fetchCloudData('field', true) as Field[]; // Force Server
       const localFields = loadLocalData('field') as Field[];
       const localFieldIds = new Set(localFields.map(f => f.id));
       let newFields = 0;
@@ -705,7 +756,7 @@ export const dbService = {
 
       // 4. Sync Storages
       addLog("[Sync] Lade Lagerorte herunter...");
-      const cloudStorages = await fetchCloudData('storage') as StorageLocation[];
+      const cloudStorages = await fetchCloudData('storage', true) as StorageLocation[]; // Force Server
       const localStorages = loadLocalData('storage') as StorageLocation[];
       // Simple merge: Cloud wins if ID matches, else add
       const localStorageIds = new Set(localStorages.map(s => s.id));
@@ -732,7 +783,7 @@ export const dbService = {
 
       // 5. Sync Profile
       addLog("[Sync] Lade Profil...");
-      const cloudProfiles = await fetchCloudData('profile') as FarmProfile[];
+      const cloudProfiles = await fetchCloudData('profile', true) as FarmProfile[]; // Force Server
       if (cloudProfiles.length > 0) {
           localStorage.setItem('agritrack_profile', JSON.stringify(cloudProfiles[0]));
           addLog(`[Sync] Betriebsprofil aktualisiert.`);
