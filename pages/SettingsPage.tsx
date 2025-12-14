@@ -115,7 +115,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   
   // Cloud State
   const [cloudMembers, setCloudMembers] = useState<any[]>([]);
-  const [cloudStats, setCloudStats] = useState({ total: 0 });
+  const [cloudStats, setCloudStats] = useState({ total: 0, activities: 0, fields: 0, storages: 0, profiles: 0 });
   const [localStats, setLocalStats] = useState({ total: 0 });
   
   const [isUploading, setIsUploading] = useState(false);
@@ -274,7 +274,8 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       setIsLoadingCloud(false);
       
       if (stats.total >= 0) {
-          alert(`Erfolg! Verbindung zu Hof '${cleanId}' hergestellt.\n\n${stats.total} Einträge gefunden.`);
+          const detailStr = `(Aktivitäten: ${stats.activities}, Felder: ${stats.fields}, Lager: ${stats.storages}, Profile: ${stats.profiles})`;
+          alert(`Erfolg! Verbindung zu Hof '${cleanId}' hergestellt.\n\n${stats.total} Einträge gefunden.\n${detailStr}`);
           loadCloudData(cleanId);
       } else {
           alert(`Verbindung fehlgeschlagen.\nIst die Betriebsnummer '${cleanId}' korrekt?\nSind Sie online?`);
@@ -370,6 +371,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const copyToClipboard = (text: string) => {
       navigator.clipboard.writeText(text);
       alert("Kopiert: " + text);
+  };
+
+  const handleClearCache = () => {
+      if(window.confirm('Achtung: Dies löscht alle lokalen Daten auf diesem Gerät und lädt die App neu.\n\nNicht gespeicherte Daten gehen verloren!\nNur ausführen, wenn die Cloud-Daten aktuell sind.')) {
+          localStorage.clear();
+          window.location.reload();
+      }
   };
 
   const renderTabs = () => (
@@ -908,7 +916,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                       ) : (
                           <div className="space-y-4">
                               <div className="bg-blue-100 p-3 rounded text-blue-800 border border-blue-200 mb-2">
-                                  <strong>Farm ID:</strong> '{settings.farmId}' <br/>
+                                  <strong>Farm ID:</strong> ['{settings.farmId}'] (Länge: {settings.farmId?.length}) <br/>
                                   Dies zeigt rohe Daten direkt aus der Datenbank.
                               </div>
 
@@ -991,9 +999,12 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                       )}
                   </div>
                   
-                  <div className="p-3 bg-white border-t border-slate-200 shrink-0">
-                      <button onClick={handleOpenDebug} className="w-full bg-slate-100 text-slate-700 py-2 rounded font-bold hover:bg-slate-200">
+                  <div className="p-3 bg-white border-t border-slate-200 shrink-0 flex gap-2">
+                      <button onClick={handleOpenDebug} className="flex-1 bg-slate-100 text-slate-700 py-2 rounded font-bold hover:bg-slate-200">
                           Aktualisieren
+                      </button>
+                      <button onClick={handleClearCache} className="flex-1 bg-red-50 text-red-600 border border-red-200 py-2 rounded font-bold hover:bg-red-100">
+                          Cache leeren & Neustart
                       </button>
                   </div>
               </div>

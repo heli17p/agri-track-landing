@@ -195,12 +195,12 @@ export const dbService = {
   },
 
   getCloudStats: async (farmId: string) => {
-      if (!isCloudConfigured() || !farmId) return { total: 0 };
+      if (!isCloudConfigured() || !farmId) return { total: 0, activities: 0, fields: 0, storages: 0, profiles: 0 };
       const db = getDb();
-      if (!db) return { total: 0 };
+      if (!db) return { total: 0, activities: 0, fields: 0, storages: 0, profiles: 0 };
 
       try {
-          addLog(`Prüfe Cloud Status für ID: '${farmId}'`);
+          addLog(`Prüfe Cloud Status für ID: '${farmId}' (Länge: ${farmId.length})`);
           // Parallel count of ALL collections
           const [actSnap, fieldSnap, storeSnap, profSnap] = await Promise.all([
               getDocs(query(collection(db, 'activities'), where("farmId", "==", farmId))),
@@ -209,13 +209,19 @@ export const dbService = {
               getDocs(query(collection(db, 'profiles'), where("farmId", "==", farmId)))
           ]);
 
-          return { total: actSnap.size + fieldSnap.size + storeSnap.size + profSnap.size };
+          return { 
+              total: actSnap.size + fieldSnap.size + storeSnap.size + profSnap.size,
+              activities: actSnap.size,
+              fields: fieldSnap.size,
+              storages: storeSnap.size,
+              profiles: profSnap.size
+          };
       } catch (e: any) { 
           // Return special value to indicate error/offline
           if (e.code !== 'unavailable' && !e.message?.includes('offline')) {
              console.error("Cloud Stats Error:", e);
           }
-          return { total: -1 }; 
+          return { total: -1, activities: 0, fields: 0, storages: 0, profiles: 0 }; 
       }
   },
 
