@@ -455,6 +455,9 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       )
   };
 
+  // Determine actual farm connection state
+  const isFarmLinked = isCloudConfigured() && !!settings.farmId && settings.farmId.trim().length > 0;
+
   if (loading) return <div className="p-8 text-center text-slate-500 flex items-center justify-center h-full"><RefreshCw className="animate-spin mr-2"/> Lade Einstellungen...</div>;
 
   return (
@@ -625,17 +628,22 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
               <div className="p-4 space-y-6 max-w-2xl mx-auto">
                   
                   {/* Status Banner */}
-                  <div className={`p-6 rounded-2xl shadow-sm border text-white ${isCloudConfigured() ? 'bg-slate-800 border-slate-700' : 'bg-slate-500 border-slate-400'}`}>
+                  <div className={`p-6 rounded-2xl shadow-sm border text-white ${isFarmLinked ? 'bg-slate-800 border-slate-700' : isCloudConfigured() ? 'bg-slate-600 border-slate-500' : 'bg-slate-500 border-slate-400'}`}>
                       <div className="flex items-center space-x-4 mb-4">
-                          <div className={`p-3 rounded-full ${isCloudConfigured() ? 'bg-green-500 text-white' : 'bg-slate-400 text-slate-200'}`}>
+                          <div className={`p-3 rounded-full ${isFarmLinked ? 'bg-green-500 text-white' : 'bg-slate-400 text-slate-200'}`}>
                               <Shield size={32} />
                           </div>
                           <div>
                               <h2 className="text-xl font-bold">
-                                  {isCloudConfigured() ? 'AgriCloud Aktiv' : 'Demo Modus (Offline)'}
+                                  {isFarmLinked ? 'AgriCloud Aktiv' : isCloudConfigured() ? 'Account OK - Hof fehlt' : 'Demo Modus (Offline)'}
                               </h2>
                               <p className="text-white/70 text-sm">
-                                  {isCloudConfigured() ? 'Daten werden synchronisiert.' : 'Daten werden nur lokal gespeichert.'}
+                                  {isFarmLinked 
+                                    ? 'Daten werden synchronisiert.' 
+                                    : isCloudConfigured() 
+                                        ? 'Bitte Betriebsnummer eingeben.' 
+                                        : 'Daten werden nur lokal gespeichert.'
+                                  }
                               </p>
                           </div>
                       </div>
@@ -671,11 +679,11 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
                   {/* Warning if no Farm ID */}
                   {isCloudConfigured() && !settings.farmId && (
-                      <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl flex items-start animate-pulse">
+                      <div className="bg-amber-50 border border-amber-200 text-amber-800 p-4 rounded-xl flex items-start animate-pulse">
                           <AlertTriangle className="mr-3 shrink-0" size={20}/>
                           <div className="text-sm font-bold">
-                              Achtung: Keine Betriebsnummer gespeichert.<br/>
-                              Bitte unten eingeben und "Speichern" drücken, um Daten zu laden.
+                              Sie sind angemeldet, aber mit keinem Hof verbunden.<br/>
+                              Bitte Betriebsnummer eingeben und "Speichern".
                           </div>
                       </div>
                   )}
@@ -687,9 +695,15 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                               <h3 className="font-bold text-lg text-slate-700 flex items-center">
                                   <Cloud className="mr-2" size={20}/> Hof Verbindung
                               </h3>
-                              <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold border border-green-200 flex items-center">
-                                  <CheckCircle2 size={12} className="mr-1"/> Verbunden
-                              </div>
+                              {isFarmLinked ? (
+                                  <div className="px-3 py-1 bg-green-100 text-green-700 rounded-full text-xs font-bold border border-green-200 flex items-center">
+                                      <CheckCircle2 size={12} className="mr-1"/> Verbunden
+                                  </div>
+                              ) : (
+                                  <div className="px-3 py-1 bg-amber-100 text-amber-700 rounded-full text-xs font-bold border border-amber-200 flex items-center">
+                                      <Link size={12} className="mr-1"/> Kein Hof gewählt
+                                  </div>
+                              )}
                           </div>
 
                           {/* Anti-Autofill Wrapper: Using a form with autoComplete="off" + hidden dummy fields */}
@@ -762,7 +776,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                   )}
 
                   {/* Extensions & Tools Section (NEW) */}
-                  {isCloudConfigured() && settings.farmId && (
+                  {isFarmLinked && (
                       <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                           <h3 className="font-bold text-lg text-slate-700 border-b border-slate-100 pb-2">
                               Erweiterungen & Werkzeuge
