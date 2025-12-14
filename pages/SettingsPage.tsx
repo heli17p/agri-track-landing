@@ -3,7 +3,8 @@ import {
   Save, User, Database, Settings, Cloud, MapPin, Plus, Trash2, 
   AlertTriangle, RefreshCw, CheckCircle, Smartphone, 
   Terminal, ShieldCheck, CloudOff, Info, DownloadCloud,
-  X, Layers, Link as LinkIcon, Lock, Calendar, FileText, UserPlus, Eye, EyeOff, Wrench, Wifi, Activity, Server
+  X, Layers, Link as LinkIcon, Lock, Calendar, FileText, UserPlus, Eye, EyeOff, Wrench, Wifi, Activity, Server,
+  Split
 } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { authService } from '../services/auth';
@@ -71,7 +72,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   // Modals & Tools
   const [editingStorage, setEditingStorage] = useState<StorageLocation | null>(null);
   const [showDiagnose, setShowDiagnose] = useState(false);
-  const [activeDiagTab, setActiveDiagTab] = useState<'status' | 'logs' | 'inspector' | 'repair'>('status'); 
+  const [activeDiagTab, setActiveDiagTab] = useState<'status' | 'logs' | 'inspector' | 'repair' | 'conflicts'>('status'); 
   const [inspectorData, setInspectorData] = useState<any>(null);
   const [inspectorLoading, setInspectorLoading] = useState(false);
   const [showMapPicker, setShowMapPicker] = useState<'profile' | 'storage' | null>(null);
@@ -82,6 +83,10 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   // Repair Tool State
   const [repairAnalysis, setRepairAnalysis] = useState<any>(null);
   const [repairLoading, setRepairLoading] = useState(false);
+
+  // Conflicts Tool State
+  const [conflicts, setConflicts] = useState<any[]>([]);
+  const [conflictsLoading, setConflictsLoading] = useState(false);
 
   // Upload State
   const [isUploading, setIsUploading] = useState(false);
@@ -389,6 +394,30 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           alert("Fehler: " + e.message);
       } finally {
           setRepairLoading(false);
+      }
+  };
+
+  const loadConflicts = async () => {
+      if (!settings.farmId) return;
+      setConflictsLoading(true);
+      try {
+          const list = await dbService.findFarmConflicts(settings.farmId);
+          setConflicts(list);
+      } finally {
+          setConflictsLoading(false);
+      }
+  };
+
+  const deleteConflict = async (docId: string) => {
+      if(!confirm("Eintrag unwiderruflich löschen?")) return;
+      setConflictsLoading(true);
+      try {
+          await dbService.deleteSettingsDoc(docId);
+          await loadConflicts(); // Refresh
+      } catch(e) {
+          alert("Fehler beim Löschen");
+      } finally {
+          setConflictsLoading(false);
       }
   };
 
@@ -928,30 +957,36 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                         <button onClick={() => setShowDiagnose(false)}><X size={20}/></button>
                     </div>
                     
-                    <div className="flex border-b border-slate-200 bg-slate-50">
+                    <div className="flex border-b border-slate-200 bg-slate-50 overflow-x-auto hide-scrollbar">
                         <button 
                             onClick={() => setActiveDiagTab('status')}
-                            className={`flex-1 py-3 text-xs font-bold ${activeDiagTab === 'status' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                            className={`flex-1 min-w-[70px] py-3 text-xs font-bold ${activeDiagTab === 'status' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
                         >
-                            Status & User
+                            Status
                         </button>
                         <button 
                             onClick={() => setActiveDiagTab('logs')}
-                            className={`flex-1 py-3 text-xs font-bold ${activeDiagTab === 'logs' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                            className={`flex-1 min-w-[70px] py-3 text-xs font-bold ${activeDiagTab === 'logs' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
                         >
-                            Protokoll
+                            Log
                         </button>
                         <button 
                             onClick={() => { setActiveDiagTab('inspector'); runInspector(); }}
-                            className={`flex-1 py-3 text-xs font-bold ${activeDiagTab === 'inspector' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                            className={`flex-1 min-w-[70px] py-3 text-xs font-bold ${activeDiagTab === 'inspector' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
                         >
-                            Cloud Inhalt
+                            Inhalt
                         </button>
                         <button 
                             onClick={() => { setActiveDiagTab('repair'); analyzeRepair(); }}
-                            className={`flex-1 py-3 text-xs font-bold ${activeDiagTab === 'repair' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                            className={`flex-1 min-w-[70px] py-3 text-xs font-bold ${activeDiagTab === 'repair' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
                         >
-                            Reparatur
+                            Repair
+                        </button>
+                        <button 
+                            onClick={() => { setActiveDiagTab('conflicts'); loadConflicts(); }}
+                            className={`flex-1 min-w-[70px] py-3 text-xs font-bold ${activeDiagTab === 'conflicts' ? 'bg-white border-b-2 border-red-500 text-red-600' : 'text-slate-500 hover:bg-slate-100'}`}
+                        >
+                            Konflikte
                         </button>
                     </div>
 
@@ -1098,6 +1133,55 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                     className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold shadow hover:bg-blue-700 disabled:opacity-50"
                                 >
                                     Daten zusammenführen (Zahl zu Text konvertieren)
+                                </button>
+                            </div>
+                        )}
+
+                        {/* TAB: CONFLICTS */}
+                        {activeDiagTab === 'conflicts' && (
+                            <div className="space-y-4 p-2">
+                                <div className="bg-red-50 p-3 rounded text-red-800 border border-red-200 mb-4">
+                                    <strong>Hof-Duplikate bereinigen</strong><br/>
+                                    Löschen Sie hier verwaiste oder doppelte Hof-Einträge. Lassen Sie nur den Eintrag stehen, der Ihre E-Mail und PIN hat.
+                                </div>
+
+                                {conflictsLoading && <div className="text-center p-4">Lade Einträge...</div>}
+
+                                {!conflictsLoading && conflicts.length === 0 && (
+                                    <div className="text-center p-4">Keine Konflikte gefunden.</div>
+                                )}
+
+                                {!conflictsLoading && conflicts.map((c, i) => (
+                                    <div key={i} className="bg-white p-3 rounded border border-slate-200 shadow-sm flex flex-col space-y-2">
+                                        <div className="flex justify-between items-start">
+                                            <div>
+                                                <div className="text-[10px] text-slate-400">Doc ID: {c.docId}</div>
+                                                <div className="font-bold text-slate-800">
+                                                    Besitzer: <span className={c.email ? 'text-blue-600' : 'text-red-500'}>{c.email || 'Unbekannt'}</span>
+                                                </div>
+                                            </div>
+                                            <button 
+                                                onClick={() => deleteConflict(c.docId)}
+                                                className="bg-red-50 text-red-600 p-2 rounded hover:bg-red-100"
+                                                title="Eintrag löschen"
+                                            >
+                                                <Trash2 size={16}/>
+                                            </button>
+                                        </div>
+                                        
+                                        <div className="grid grid-cols-2 gap-2 text-[10px] text-slate-600 bg-slate-50 p-2 rounded">
+                                            <div>PIN Gesetzt: <strong>{c.hasPin ? 'JA' : 'NEIN'}</strong></div>
+                                            <div>ID Typ: <strong>{c.farmIdType === 'string' ? 'Text' : 'Zahl'}</strong></div>
+                                            <div className="col-span-2">Update: {c.updatedAt}</div>
+                                        </div>
+                                    </div>
+                                ))}
+                                
+                                <button 
+                                    onClick={loadConflicts}
+                                    className="w-full bg-slate-100 text-slate-600 py-2 rounded font-bold hover:bg-slate-200"
+                                >
+                                    Liste aktualisieren
                                 </button>
                             </div>
                         )}

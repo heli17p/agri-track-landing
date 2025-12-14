@@ -170,6 +170,52 @@ export const dbService = {
       }
   },
 
+  // --- CONFLICT RESOLUTION TOOL ---
+  findFarmConflicts: async (farmId: string) => {
+      if (!isCloudConfigured()) return [];
+      const db = getDb();
+      if (!db) return [];
+
+      const idsToCheck = [String(farmId)];
+      const numId = Number(farmId);
+      if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
+
+      try {
+          const promises = idsToCheck.map(id => getDocsFromServer(query(collection(db, 'settings'), where("farmId", "==", id))));
+          const snaps = await Promise.all(promises);
+          
+          const docs: any[] = [];
+          snaps.forEach(snap => {
+              snap.docs.forEach(d => {
+                  // Prevent duplicates if multiple queries return same doc
+                  if (!docs.some(existing => existing.docId === d.id)) {
+                      const data = d.data();
+                      docs.push({
+                          docId: d.id,
+                          farmIdStored: data.farmId,
+                          farmIdType: typeof data.farmId,
+                          email: data.ownerEmail,
+                          hasPin: !!data.farmPin,
+                          updatedAt: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'Unbekannt'
+                      });
+                  }
+              });
+          });
+          return docs;
+      } catch (e) {
+          console.error("Conflict find error", e);
+          return [];
+      }
+  },
+
+  deleteSettingsDoc: async (docId: string) => {
+      if (!isCloudConfigured()) throw new Error("Offline");
+      const db = getDb();
+      if (!db) throw new Error("DB Error");
+      await deleteDoc(doc(db, 'settings', docId));
+      addLog(`Konflikt gelöst: Settings Dokument ${docId} gelöscht.`);
+  },
+
   // --- DATA TYPE REPAIR TOOL ---
   analyzeDataTypes: async (farmId: string) => {
       if (!isCloudConfigured()) return null;
