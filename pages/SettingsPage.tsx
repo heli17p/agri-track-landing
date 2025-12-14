@@ -72,7 +72,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   // Modals
   const [editingStorage, setEditingStorage] = useState<StorageLocation | null>(null);
   const [showDiagnose, setShowDiagnose] = useState(false);
-  const [activeDiagTab, setActiveDiagTab] = useState<'logs' | 'inspector'>('logs');
+  const [activeDiagTab, setActiveDiagTab] = useState<'logs' | 'inspector'>('inspector'); // Default to Inspector for better visibility
   const [inspectorData, setInspectorData] = useState<any>(null);
   const [inspectorLoading, setInspectorLoading] = useState(false);
 
@@ -91,7 +91,6 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       loadAll();
       const unsubAuth = authService.onAuthStateChanged((user) => {
           setAuthState(user);
-          if (user) loadCloudData(settings.farmId);
       });
       const unsubDb = dbService.onDatabaseChange(() => {
           loadCloudData(settings.farmId);
@@ -103,11 +102,12 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
 
+  // FIX: Added settings.farmId dependency to ensure stats load when settings arrive
   useEffect(() => {
-      if (activeTab === 'sync') {
+      if (activeTab === 'sync' && settings.farmId) {
           loadCloudData(settings.farmId);
       }
-  }, [activeTab]);
+  }, [activeTab, settings.farmId]);
 
   const loadAll = async () => {
       const s = await dbService.getSettings();
@@ -818,7 +818,8 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                 <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl h-[85vh] flex flex-col overflow-hidden">
                     <div className="p-4 border-b flex justify-between items-center bg-slate-50 shrink-0">
                         <h3 className="font-bold text-lg flex items-center"><Terminal size={20} className="mr-2"/> System Diagnose</h3>
-                        <button onClick={() => setShowDiagnose(false)}><X/></button>
+                        {/* FORCE RELOAD ON CLOSE */}
+                        <button onClick={() => { setShowDiagnose(false); loadCloudData(settings.farmId); }}><X/></button>
                     </div>
                     
                     {/* TABS */}
