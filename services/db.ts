@@ -376,7 +376,7 @@ export const dbService = {
       return uniqueRefs.length;
   },
 
-  // --- FORCE UPLOAD (FIXED ASYNC VERSION) ---
+  // --- FORCE UPLOAD (FIXED ASYNC VERSION WITH RELAXED TIMEOUT) ---
   forceUploadToFarm: async (onProgress?: (status: string, percent: number) => void) => {
       if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
       
@@ -430,8 +430,10 @@ export const dbService = {
       report(`${queue.length} Objekte bereit. Starte Upload...`, 5);
       await new Promise(r => setTimeout(r, 500)); // Visual pause
 
-      // 3. Process in small batches with strict timeout
-      const BATCH_SIZE = 3; // Even smaller batch size for robustness
+      // 3. Process in VERY small batches with RELAXED timeout for stability
+      const BATCH_SIZE = 2; // Small batch size
+      const UPLOAD_TIMEOUT = 45000; // 45 seconds per batch (relaxed)
+      
       let processed = 0;
       let errors = 0;
 
@@ -443,7 +445,7 @@ export const dbService = {
               // Timeout wrapper for individual item
               const uploadPromise = saveData(item.type as any, item.data);
               const timeoutPromise = new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error("Timeout (10s)")), 10000)
+                  setTimeout(() => reject(new Error(`Timeout (${UPLOAD_TIMEOUT/1000}s)`)), UPLOAD_TIMEOUT)
               );
               return Promise.race([uploadPromise, timeoutPromise]);
           });
@@ -462,12 +464,13 @@ export const dbService = {
           const percent = Math.round(((i + chunk.length) / queue.length) * 100);
           report(`Sende ${processed}/${queue.length}... (${percent}%)`, percent);
           
-          // Force a small pause between batches to keep UI responsive
-          await new Promise(r => setTimeout(r, 100));
+          // Force a small pause between batches to keep UI responsive and network breathing
+          await new Promise(r => setTimeout(r, 200));
       }
 
       if (errors > 0) {
-          report(`Fertig. ${processed} gesendet, ${errors} fehlgeschlagen.`, 100);
+          report(`Fertig. ${processed} gesendet, ${errors} fehlgeschlagen. Bitte erneut versuchen.`, 100);
+          throw new Error(`${errors} Dateien konnten nicht gesendet werden (Timeout).`);
       } else {
           report(`Upload erfolgreich (${processed} Objekte).`, 100);
       }
