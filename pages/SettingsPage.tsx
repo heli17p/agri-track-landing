@@ -4,7 +4,7 @@ import {
   MapPin, Truck, AlertTriangle, Info, Share2, UploadCloud, 
   Smartphone, CheckCircle2, X, Shield, Lock, Users, LogOut,
   ChevronRight, RefreshCw, Copy, WifiOff, FileText, Search, Map,
-  Signal, Activity, ArrowRightLeft, Upload, DownloadCloud, Link, RotateCcw
+  Signal, Activity, ArrowRightLeft, Upload, DownloadCloud, Link, RotateCcw, Binary
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
@@ -192,7 +192,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
   const loadCloudData = async (farmId: string) => {
       if (!farmId) return;
-      const cleanId = farmId.trim();
+      const cleanId = cleanFarmId(farmId);
       setIsLoadingCloud(true);
       try {
         const local = await dbService.getLocalStats();
@@ -214,8 +214,8 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
   const cleanFarmId = (id: string | undefined) => {
       if (!id) return '';
-      // Remove all spaces and invisible characters
-      return id.replace(/\s/g, '');
+      // Aggressively remove ANYTHING that isn't alphanumeric or dash/underscore
+      return id.replace(/[^a-zA-Z0-9-_]/g, '');
   };
 
   const handleSaveAll = async () => {
@@ -440,6 +440,20 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           ))}
       </div>
   );
+
+  // Helper to show ASCII codes of string
+  const renderAsciiBreakdown = (str: string) => {
+      if(!str) return null;
+      return (
+          <div className="flex flex-wrap gap-1 mt-2">
+              {str.split('').map((char, i) => (
+                  <span key={i} className="text-[10px] bg-white border px-1 rounded font-mono" title={`ASCII: ${char.charCodeAt(0)}`}>
+                      {char} <span className="text-slate-400">({char.charCodeAt(0)})</span>
+                  </span>
+              ))}
+          </div>
+      )
+  };
 
   if (loading) return <div className="p-8 text-center text-slate-500 flex items-center justify-center h-full"><RefreshCw className="animate-spin mr-2"/> Lade Einstellungen...</div>;
 
@@ -981,7 +995,8 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                           <div className="space-y-4">
                               <div className="bg-blue-100 p-3 rounded text-blue-800 border border-blue-200 mb-2">
                                   <strong>Farm ID:</strong> ['{settings.farmId}'] (Länge: {settings.farmId?.length}) <br/>
-                                  Dies zeigt rohe Daten direkt aus der Datenbank.
+                                  <strong>ASCII Check:</strong>
+                                  {renderAsciiBreakdown(settings.farmId || '')}
                               </div>
 
                               {inspectorLoading ? (
