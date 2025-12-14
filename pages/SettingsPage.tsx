@@ -211,12 +211,19 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       }
   };
 
+  const cleanFarmId = (id: string | undefined) => {
+      if (!id) return '';
+      // Remove all spaces and invisible characters
+      return id.replace(/\s/g, '');
+  };
+
   const handleSaveAll = async () => {
       setSaving(true);
       
-      // AUTO-TRIM INPUTS
-      const cleanSettings = { ...settings, farmId: settings.farmId ? settings.farmId.trim() : '' };
-      const cleanProfile = { ...profile, farmId: profile.farmId ? profile.farmId.trim() : '' };
+      // AUTO-CLEAN INPUTS (Remove ALL whitespace)
+      const cleanId = cleanFarmId(settings.farmId);
+      const cleanSettings = { ...settings, farmId: cleanId };
+      const cleanProfile = { ...profile, farmId: cleanId };
       
       setSettings(cleanSettings);
       setProfile(cleanProfile);
@@ -256,7 +263,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           return;
       }
       setIsLoadingCloud(true);
-      const cleanId = settings.farmId.trim();
+      
+      // Use aggressive cleaning for check
+      const cleanId = cleanFarmId(settings.farmId);
+      
+      // Update state to reflect cleaned version
+      setSettings(prev => ({ ...prev, farmId: cleanId }));
+
       const stats = await dbService.getCloudStats(cleanId);
       setIsLoadingCloud(false);
       
@@ -421,7 +434,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                           <input 
                               type="text" 
                               value={profile.farmId}
-                              onChange={(e) => setProfile({...profile, farmId: e.target.value})}
+                              onChange={(e) => setProfile({...profile, farmId: cleanFarmId(e.target.value)})}
                               className="w-full p-3 border border-slate-300 rounded-xl outline-none focus:ring-2 focus:ring-green-500 font-mono"
                               placeholder="1234567"
                           />
@@ -627,7 +640,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                       <input 
                                           type="text" 
                                           value={settings.farmId || ''}
-                                          onChange={(e) => setSettings({...settings, farmId: e.target.value})}
+                                          onChange={(e) => setSettings({...settings, farmId: cleanFarmId(e.target.value)})}
                                           className="flex-1 p-3 border border-slate-300 rounded-xl font-mono font-bold bg-slate-50"
                                           placeholder="LFBIS Nummer"
                                       />
@@ -895,7 +908,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                       ) : (
                           <div className="space-y-4">
                               <div className="bg-blue-100 p-3 rounded text-blue-800 border border-blue-200 mb-2">
-                                  <strong>Farm ID:</strong> {settings.farmId} <br/>
+                                  <strong>Farm ID:</strong> '{settings.farmId}' <br/>
                                   Dies zeigt rohe Daten direkt aus der Datenbank.
                               </div>
 
