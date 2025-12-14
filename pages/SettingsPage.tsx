@@ -164,11 +164,14 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   }, [initialTab]);
 
   // Specific effect to reload cloud stats when farmId changes or becomes available
+  // AND when the user switches to the sync tab
   useEffect(() => {
       if (isCloudConfigured() && settings.farmId) {
-          loadCloudData(settings.farmId);
+          if (activeTab === 'sync') {
+              loadCloudData(settings.farmId);
+          }
       }
-  }, [settings.farmId]);
+  }, [settings.farmId, activeTab]);
 
   const loadAll = async () => {
       const s = await dbService.getSettings();
@@ -182,8 +185,8 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       
       setLoading(false); 
 
-      // Load Cloud Data in background if configured
-      if (isCloudConfigured() && s.farmId) {
+      // Only load cloud data if we are already on sync tab or just starting up
+      if (isCloudConfigured() && s.farmId && activeTab === 'sync') {
           loadCloudData(s.farmId);
       }
   };
@@ -628,9 +631,18 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                       <span className="text-xs font-bold text-slate-500 uppercase flex items-center">
                                           <ArrowRightLeft className="w-3 h-3 mr-1"/> Datenstatus
                                       </span>
-                                      <div className="flex space-x-4 text-xs font-mono">
-                                          <span className="text-slate-600">Lokal: <strong>{localStats.total}</strong></span>
-                                          <span className="text-slate-600">Cloud: <strong>{cloudStats.total === -1 ? '-' : cloudStats.total}</strong></span>
+                                      <div className="flex space-x-3 items-center">
+                                          <div className="flex space-x-2 text-xs font-mono">
+                                              <span className="text-slate-600">Lokal: <strong>{localStats.total}</strong></span>
+                                              <span className="text-slate-600">Cloud: <strong>{cloudStats.total === -1 ? '-' : cloudStats.total}</strong></span>
+                                          </div>
+                                          <button 
+                                            onClick={() => settings.farmId && loadCloudData(settings.farmId)}
+                                            className="bg-white p-1 rounded border border-slate-300 hover:bg-slate-50 text-slate-500"
+                                            title="Status aktualisieren"
+                                          >
+                                              <RefreshCw size={10} className={isLoadingCloud ? "animate-spin" : ""} />
+                                          </button>
                                       </div>
                                   </div>
                                   
@@ -776,30 +788,27 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           )}
       </div>
 
-      {/* Floating Save Button */}
-      <div className="absolute bottom-24 right-6 z-30 flex flex-col items-end">
+      {/* Floating Save Button - COMPACT DESIGN */}
+      <div className="absolute bottom-24 right-4 z-30 flex flex-col items-end">
           {/* Helper Text for clarity */}
           {saving && (
               <div className="mb-2 bg-black/70 backdrop-blur text-white text-xs px-3 py-1 rounded-full animate-pulse">
-                  Speichere Einstellungen...
+                  Speichere...
               </div>
           )}
           
           <button 
               onClick={handleSaveAll}
               disabled={saving}
-              className={`flex items-center space-x-2 px-6 py-4 rounded-full shadow-2xl font-bold text-lg transition-all transform hover:scale-105 active:scale-95 ${
+              className={`flex items-center space-x-2 px-5 py-3 rounded-full shadow-2xl font-bold text-sm transition-all transform hover:scale-105 active:scale-95 ${
                   showSaveSuccess 
                   ? 'bg-green-500 text-white' 
                   : 'bg-slate-900 text-white hover:bg-black'
               }`}
           >
-              {showSaveSuccess ? <CheckCircle2 size={24}/> : (saving ? <RefreshCw className="animate-spin" size={24}/> : <Save size={24}/>)}
-              <span>{showSaveSuccess ? 'Gespeichert!' : 'Einstellungen Speichern'}</span>
+              {showSaveSuccess ? <CheckCircle2 size={20}/> : (saving ? <RefreshCw className="animate-spin" size={20}/> : <Save size={20}/>)}
+              <span>{showSaveSuccess ? 'Gespeichert!' : 'Speichern'}</span>
           </button>
-          <div className="mt-1 text-[10px] text-slate-400 font-medium bg-white/80 px-2 py-0.5 rounded shadow-sm backdrop-blur">
-              Sichert Betrieb, Allgemein & Cloud
-          </div>
       </div>
 
       {/* DEBUG MODAL */}
@@ -946,7 +955,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                           <input 
                               type="text" 
                               value={editingStorage.name}
-                              onChange={(e) => setEditingStorage({...editingStorage, name: e.target.value})}
+                              onChange={(e) => setEditingStorage({...editingStorage,name: e.target.value})}
                               className="w-full p-2 border border-slate-300 rounded-lg"
                           />
                       </div>
