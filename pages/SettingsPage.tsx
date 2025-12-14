@@ -283,10 +283,9 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       }
   };
 
-  const handleClearCache = () => {
-      if(confirm("ACHTUNG: Dies löscht die LOKALE Datenbank der App. Nicht gespeicherte Daten gehen verloren. Nur bei Problemen nutzen!")) {
-          localStorage.clear();
-          window.location.reload();
+  const handleHardReset = async () => {
+      if(confirm("ACHTUNG: Dies führt einen vollständigen Reset durch. Die App wird geschlossen und der Speicher bereinigt. Fortfahren?")) {
+          await dbService.hardReset();
       }
   }
 
@@ -1183,10 +1182,10 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                     
                     <div className="p-4 border-t bg-slate-100 flex justify-between items-center shrink-0">
                         <button 
-                            onClick={handleClearCache} 
-                            className="bg-red-100 text-red-600 px-4 py-2 rounded text-xs font-bold hover:bg-red-200 transition-colors"
+                            onClick={handleHardReset} 
+                            className="bg-red-600 text-white px-4 py-3 w-full rounded text-sm font-bold hover:bg-red-700 transition-colors shadow-lg animate-pulse"
                         >
-                            App Reset / Cache leeren
+                            ⚠️ App & Datenbank komplett zurücksetzen (Hard Reset)
                         </button>
                     </div>
                 </div>

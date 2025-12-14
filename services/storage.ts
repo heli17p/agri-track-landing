@@ -1,6 +1,6 @@
 import { Activity, AppSettings, Trip, DEFAULT_SETTINGS, Field, StorageLocation, FarmProfile } from '../types';
 import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, Timestamp, enableIndexedDbPersistence } from 'firebase/firestore';
+import { getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, Timestamp, enableIndexedDbPersistence, terminate, clearIndexedDbPersistence } from 'firebase/firestore';
 import { getAuth } from 'firebase/auth';
 import { dbService } from './db';
 
@@ -56,6 +56,29 @@ const STORAGE_KEY_TRIPS = 'agritrack_trips';
 const STORAGE_KEY_FIELDS = 'agritrack_fields';
 const STORAGE_KEY_STORAGE = 'agritrack_storage';
 const STORAGE_KEY_PROFILE = 'agritrack_profile';
+
+// --- HARD RESET ---
+export const hardReset = async () => {
+    try {
+        console.log("[System] Starte Hard Reset...");
+        // 1. Clear Local Storage
+        localStorage.clear();
+        
+        // 2. Clear Firestore Persistence (Deep Clean)
+        if (db) {
+            await terminate(db);
+            await clearIndexedDbPersistence(db);
+            console.log("[System] Datenbank bereinigt.");
+        }
+        
+        // 3. Reload
+        window.location.reload();
+    } catch (e) {
+        console.error("Reset Error:", e);
+        // Fallback reload
+        window.location.reload();
+    }
+};
 
 // --- SETTINGS ---
 export const loadSettings = (): AppSettings => {

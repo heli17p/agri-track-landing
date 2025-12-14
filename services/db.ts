@@ -1,5 +1,5 @@
 import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, DEFAULT_SETTINGS, FeedbackTicket } from '../types';
-import { saveData, loadLocalData, saveSettings as saveSettingsToStorage, loadSettings as loadSettingsFromStorage, fetchCloudData, fetchCloudSettings, isCloudConfigured, auth } from './storage';
+import { saveData, loadLocalData, saveSettings as saveSettingsToStorage, loadSettings as loadSettingsFromStorage, fetchCloudData, fetchCloudSettings, isCloudConfigured, auth, hardReset } from './storage';
 import { collection, doc, setDoc, getDoc, getDocs, query, where, updateDoc, arrayUnion, Timestamp, deleteDoc, writeBatch } from 'firebase/firestore';
 import { getFirestore } from 'firebase/firestore';
 
@@ -35,9 +35,10 @@ const addLog = (msg: string) => {
 export const generateId = () => Math.random().toString(36).substr(2, 9);
 
 export const dbService = {
-  // Expose Logger
+  // Expose Logger & Tools
   logEvent: (msg: string) => addLog(msg),
   getLogs: () => [..._logs],
+  hardReset: hardReset,
 
   // --- DEBUG / INSPECTOR ---
   inspectCloudData: async (farmId: string) => {
