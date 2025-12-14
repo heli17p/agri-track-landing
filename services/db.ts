@@ -366,7 +366,7 @@ export const dbService = {
           return;
       }
       
-      addLog("[Sync] Starte Synchronisation...");
+      addLog("[Sync] Starte Download...");
       
       // 1. Sync Settings
       const cloudSettings = await fetchCloudSettings();
@@ -376,7 +376,7 @@ export const dbService = {
           const merged = { ...localSettings, ...cloudSettings };
           saveSettingsToStorage(merged);
       } else {
-          addLog("[Sync] Keine Cloud-Einstellungen gefunden.");
+          addLog("[Sync] Keine Cloud-Einstellungen gefunden (oder Offline).");
       }
 
       // 2. Sync Activities
@@ -395,7 +395,7 @@ export const dbService = {
       });
       if (newActs > 0) {
           localStorage.setItem('agritrack_activities', JSON.stringify(localData));
-          addLog(`[Sync] ${newActs} neue Aktivitäten gespeichert.`);
+          addLog(`[Sync] ${newActs} neue Aktivitäten empfangen.`);
       }
 
       // 3. Sync Fields
@@ -413,7 +413,7 @@ export const dbService = {
       });
       if (newFields > 0) {
           localStorage.setItem('agritrack_fields', JSON.stringify(localFields));
-          addLog(`[Sync] ${newFields} neue Felder gespeichert.`);
+          addLog(`[Sync] ${newFields} neue Felder empfangen.`);
       }
 
       // 4. Sync Storages
@@ -423,6 +423,7 @@ export const dbService = {
       // Simple merge: Cloud wins if ID matches, else add
       const localStorageIds = new Set(localStorages.map(s => s.id));
       let newStorages = 0;
+      let updatedStorages = 0;
       
       cloudStorages.forEach(cloudItem => {
           if (!localStorageIds.has(cloudItem.id)) {
@@ -431,12 +432,15 @@ export const dbService = {
           } else {
               // Update existing? For now, we prefer cloud data if we assume it's master
               const idx = localStorages.findIndex(s => s.id === cloudItem.id);
-              if (idx >= 0) localStorages[idx] = cloudItem;
+              if (idx >= 0) {
+                  localStorages[idx] = cloudItem;
+                  updatedStorages++;
+              }
           }
       });
-      if (newStorages > 0 || cloudStorages.length > 0) {
+      if (newStorages > 0 || updatedStorages > 0) {
           localStorage.setItem('agritrack_storage', JSON.stringify(localStorages));
-          addLog(`[Sync] Lagerorte aktualisiert.`);
+          addLog(`[Sync] Lagerorte: ${newStorages} neu, ${updatedStorages} aktualisiert.`);
       }
 
       // 5. Sync Profile
@@ -447,10 +451,11 @@ export const dbService = {
           addLog(`[Sync] Betriebsprofil aktualisiert.`);
       }
 
-      if (newActs > 0 || newFields > 0 || newStorages > 0) {
+      if (newActs > 0 || newFields > 0 || newStorages > 0 || updatedStorages > 0) {
           notify('change');
+          addLog("[Sync] Daten erfolgreich aktualisiert.");
       } else {
-          addLog("[Sync] Lokale Daten sind aktuell.");
+          addLog("[Sync] Lokale Daten sind bereits aktuell.");
       }
       notify('sync');
   },

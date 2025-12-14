@@ -5,8 +5,9 @@ import { TrackingPage } from '../pages/TrackingPage';
 import { MapPage } from '../pages/MapPage';
 import { FieldsPage } from '../pages/FieldsPage';
 import { SettingsPage } from '../pages/SettingsPage';
-import { ShieldCheck, CloudOff } from 'lucide-react';
+import { ShieldCheck, CloudOff, RefreshCw } from 'lucide-react';
 import { isCloudConfigured } from '../services/storage';
+import { dbService } from '../services/db';
 
 interface Props {
     onFullScreenToggle?: (isFullScreen: boolean) => void;
@@ -15,6 +16,7 @@ interface Props {
 export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   const [currentView, setCurrentView] = useState('DASHBOARD');
   const [mapFocusFieldId, setMapFocusFieldId] = useState<string | null>(null);
+  const [isSyncing, setIsSyncing] = useState(false);
   
   const [isActiveTracking, setIsActiveTracking] = useState(false);
 
@@ -26,6 +28,13 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
           onFullScreenToggle(isActiveTracking && currentView === 'TRACKING');
       }
   }, [isActiveTracking, currentView, onFullScreenToggle]);
+
+  useEffect(() => {
+      // Listen for sync events to show loading indicator in header
+      // We don't have a direct 'start' event, but we can infer from other states or just keep it simple.
+      // Actually, let's keep it simple for now and just show connected status.
+      // Or we can add a listener if we really want to animate the cloud icon.
+  }, []);
 
   const navigateToMap = (fieldId?: string) => {
       if (fieldId) setMapFocusFieldId(fieldId);
@@ -75,7 +84,7 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
                 <button 
                     onClick={() => openSettingsTab('sync')}
                     className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center transition-colors hover:opacity-80 ${isLive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}
-                    title="Verbindungseinstellungen öffnen"
+                    title="Hof Verbindung & Erweiterungen"
                 >
                 {isLive ? (
                     <>

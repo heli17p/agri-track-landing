@@ -4,7 +4,7 @@ import {
   MapPin, Truck, AlertTriangle, Info, Share2, UploadCloud, 
   Smartphone, CheckCircle2, X, Shield, Lock, Users, LogOut,
   ChevronRight, RefreshCw, Copy, WifiOff, FileText, Search, Map,
-  Signal, Activity, ArrowRightLeft, Upload
+  Signal, Activity, ArrowRightLeft, Upload, DownloadCloud
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
@@ -117,9 +117,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [cloudMembers, setCloudMembers] = useState<any[]>([]);
   const [cloudStats, setCloudStats] = useState({ total: 0 });
   const [localStats, setLocalStats] = useState({ total: 0 });
+  
   const [isUploading, setIsUploading] = useState(false);
   const [uploadStatusText, setUploadStatusText] = useState<string>('');
   const [uploadProgress, setUploadProgress] = useState(0);
+  
+  const [isDownloading, setIsDownloading] = useState(false); // New Download State
+
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
   const [showPin, setShowPin] = useState(false);
   
@@ -291,6 +295,20 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           setTimeout(() => {
               setIsUploading(false);
           }, 1500);
+      }
+  };
+
+  const handleManualDownload = async () => {
+      setIsDownloading(true);
+      try {
+          await syncData();
+          await loadAll(); // Refresh local state
+          if (settings.farmId) await loadCloudData(settings.farmId); // Refresh cloud stats
+          alert("Daten wurden erfolgreich heruntergeladen!");
+      } catch (e: any) {
+          alert("Download fehlgeschlagen: " + e.message);
+      } finally {
+          setIsDownloading(false);
       }
   };
   
@@ -624,7 +642,32 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                       </div>
                                   )}
 
-                                  <div className="p-3">
+                                  <div className="p-3 space-y-4">
+                                      {/* DOWNLOAD BUTTON (New Feature) */}
+                                      <div className="flex items-center justify-between">
+                                          <div className="flex items-center">
+                                              <div className="p-2 bg-blue-100 text-blue-600 rounded-lg mr-3">
+                                                  <DownloadCloud size={20} />
+                                              </div>
+                                              <div>
+                                                  <div className="font-bold text-slate-700">Daten herunterladen</div>
+                                                  <div className="text-xs text-slate-500">
+                                                      {isDownloading ? "Lade Daten..." : "Vom Server auf dieses Gerät"}
+                                                  </div>
+                                              </div>
+                                          </div>
+                                          <button 
+                                              onClick={handleManualDownload}
+                                              disabled={isDownloading || isUploading}
+                                              className="p-2 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition-all text-slate-600 shadow-sm"
+                                          >
+                                              {isDownloading ? <RefreshCw className="animate-spin" size={18}/> : <RefreshCw size={18} />}
+                                          </button>
+                                      </div>
+
+                                      <div className="w-full h-px bg-slate-200"></div>
+
+                                      {/* UPLOAD BUTTON */}
                                       <div className="flex flex-col">
                                           <div className="flex items-center justify-between mb-2">
                                               <div className="flex items-center">
@@ -640,7 +683,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                               </div>
                                               <button 
                                                   onClick={handleForceUpload}
-                                                  disabled={isUploading}
+                                                  disabled={isUploading || isDownloading}
                                                   className="p-2 bg-white hover:bg-slate-50 rounded-lg border border-slate-200 transition-all text-slate-600 shadow-sm"
                                               >
                                                   {isUploading ? <RefreshCw className="animate-spin" size={18}/> : <Upload size={18} />}
