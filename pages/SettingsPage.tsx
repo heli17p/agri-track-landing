@@ -641,18 +641,27 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                               </div>
                           </div>
 
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                          {/* Anti-Autofill Wrapper: Using a form with autoComplete="off" + hidden dummy fields */}
+                          <form autoComplete="off" className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                              {/* DUMMY FIELDS to catch browser autofill */}
+                              <input type="text" name="email" style={{display: 'none'}} />
+                              <input type="password" name="password" style={{display: 'none'}} />
+                              
                               <div>
                                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Betriebsnummer (Farm ID)</label>
                                   <div className="flex space-x-2">
                                       <input 
                                           type="text" 
+                                          name="agri_farm_id_custom_field" /* Unique name to avoid standard 'username' detection */
+                                          id="agri_farm_id_input"
+                                          autoComplete="off"
                                           value={settings.farmId || ''}
                                           onChange={(e) => setSettings({...settings, farmId: cleanFarmId(e.target.value)})}
                                           className="flex-1 p-3 border border-slate-300 rounded-xl font-mono font-bold bg-slate-50"
                                           placeholder="LFBIS Nummer"
                                       />
                                       <button 
+                                        type="button" /* Prevent form submit */
                                         onClick={handleCheckConnection}
                                         className="p-3 bg-slate-100 rounded-xl text-slate-600 hover:bg-slate-200 font-bold text-sm"
                                         title="Verbindung prüfen"
@@ -666,12 +675,16 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                   <div className="relative">
                                       <input 
                                           type={showPin ? "text" : "password"}
+                                          name="agri_farm_pin_custom_field" /* Unique name to avoid standard 'password' detection */
+                                          id="agri_farm_pin_input"
+                                          autoComplete="new-password" /* Strongest signal to browser not to fill */
                                           value={settings.farmPin || ''}
                                           onChange={(e) => setSettings({...settings, farmPin: e.target.value})}
                                           className="w-full p-3 border border-slate-300 rounded-xl font-mono font-bold bg-slate-50"
                                           placeholder="Geheim!"
                                       />
                                       <button 
+                                          type="button"
                                           onClick={() => setShowPin(!showPin)}
                                           className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
                                       >
@@ -679,7 +692,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                       </button>
                                   </div>
                               </div>
-                          </div>
+                          </form>
                       </div>
                   )}
 
