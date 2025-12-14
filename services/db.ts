@@ -282,7 +282,7 @@ export const dbService = {
 
       try {
           // 1. Fetch ALL settings documents that match this Farm ID (Strings AND Numbers)
-          // We need to look through ALL of them because there might be "ghost" entries without PINs.
+          // We look for both to catch legacy issues and ghost farms
           const qStr = query(collection(db, 'settings'), where("farmId", "==", String(farmId)));
           const qNum = !isNaN(Number(farmId)) ? query(collection(db, 'settings'), where("farmId", "==", Number(farmId))) : null;
 
@@ -294,53 +294,42 @@ export const dbService = {
           const allDocs = [...snapStr.docs, ...(snapNum as any).docs];
 
           if (allDocs.length === 0) {
-              // Farm doesn't exist anywhere -> New Farm
               return { valid: true, reason: "New Farm", isNew: true };
           }
 
-          // 2. Find the "Master" Document
-          // Prioritize: 
-          // a) Has 'farmPin' set AND matches candidate (Instant Success)
-          // b) Has 'farmPin' set (Candidate for checking)
-          // c) Has 'ownerEmail' set
+          // 2. Sort documents by "Quality" to find the Real Farm vs Ghost Farms
+          // Priority: 
+          // 1. Has PIN & Email (Best)
+          // 2. Has PIN
+          // 3. Has Email
+          // 4. Nothing
+          const sortedDocs = allDocs.map(d => d.data()).sort((a, b) => {
+              const scoreA = (a.farmPin ? 2 : 0) + (a.ownerEmail ? 1 : 0);
+              const scoreB = (b.farmPin ? 2 : 0) + (b.ownerEmail ? 1 : 0);
+              return scoreB - scoreA; // Descending
+          });
+
+          // The best candidate for display/verification
+          const bestDoc = sortedDocs[0];
+          const ownerEmail = bestDoc.ownerEmail || "Besitzer Unbekannt (Altdaten)";
           
-          let masterConfig: any = null;
-          
-          // Try to find exact match first
+          // 3. IF CHECKING PIN: Look for ANY document that matches the PIN
           if (pinCandidate) {
-              const exactMatch = allDocs.find(d => d.data().farmPin === pinCandidate);
-              if (exactMatch) {
-                  return { valid: true, reason: "Match", ownerEmail: exactMatch.data().ownerEmail || "Besitzer (E-Mail nicht öffentlich)" };
+              const match = sortedDocs.find(d => d.farmPin === pinCandidate);
+              if (match) {
+                  return { valid: true, reason: "Match", ownerEmail: match.ownerEmail || ownerEmail };
+              } else {
+                  return { valid: false, reason: "Wrong PIN", ownerEmail };
               }
           }
 
-          // If no exact match or checking for owner info (pinCandidate empty)
-          // Find any doc that looks like a real configuration (has PIN)
-          masterConfig = allDocs.find(d => d.data().farmPin && d.data().farmPin.length > 0)?.data();
-
-          // Fallback: Just take the first one if none have PIN (Ghost farm scenario)
-          if (!masterConfig) masterConfig = allDocs[0].data();
-
-          const ownerEmail = masterConfig.ownerEmail || "Besitzer Unbekannt (Altdaten)";
-          const masterPin = masterConfig.farmPin;
-
-          // If we are just searching (no pin candidate), return found status
-          if (!pinCandidate) {
-              return { valid: false, reason: "Exists", ownerEmail, isNew: false };
+          // 4. IF JUST SEARCHING: Return info from best doc
+          // If the best doc has NO PIN, we might treat it as a new farm or a ghost farm.
+          if (!bestDoc.farmPin) {
+               return { valid: true, reason: "No PIN set", ownerEmail };
           }
 
-          // If checking PIN
-          if (!masterPin) {
-              // Edge case: Found a farm but it has NO PIN set at all. 
-              // We treat this as valid to claim (or risky).
-              return { valid: true, reason: "No PIN set", ownerEmail };
-          }
-
-          if (masterPin === pinCandidate) {
-              return { valid: true, reason: "Match", ownerEmail };
-          } else {
-              return { valid: false, reason: "Wrong PIN", ownerEmail };
-          }
+          return { valid: false, reason: "Exists", ownerEmail, isNew: false };
 
       } catch (e: any) {
           console.error("PIN Check failed:", e);
@@ -883,7 +872,7 @@ export const dbService = {
     return loadSettingsFromStorage();
   },
   saveSettings: async (settings: AppSettings) => {
-    // Capture the current user's email as 'ownerEmail' if not already set or if creating a new farm
+    // Force capture the current user's email as 'ownerEmail' ALWAYS if logged in
     const currentSettings = { ...settings };
     if (auth?.currentUser?.email) {
         currentSettings.ownerEmail = auth.currentUser.email;
