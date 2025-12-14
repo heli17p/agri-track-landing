@@ -296,7 +296,7 @@ export const dbService = {
       }
   },
 
-  // --- DELETE ENTIRE FARM (DESTRUCTIVE) ---
+  // --- DELETE ENTIRE FARM (OPTIMIZED PARALLEL BATCHING) ---
   deleteEntireFarm: async (farmId: string, pin: string, onProgress?: (msg: string) => void) => {
       if (!isCloudConfigured()) throw new Error("Keine Verbindung");
       const db = getDb();
@@ -308,59 +308,72 @@ export const dbService = {
       };
 
       report("Verifiziere PIN...");
-      // 1. Verify credentials one last time
       const verify = await dbService.verifyFarmPin(farmId, pin);
       if (!verify.valid) throw new Error("Falsche PIN. Löschen verweigert.");
 
-      report(`LÖSCHE HOF '${farmId}' KOMPLETT...`);
+      report("Scanne Cloud-Datenbank (Turbo-Modus)...");
 
-      // 2. Prepare deletion of ALL collections
-      const collections = ['activities', 'fields', 'storages', 'profiles', 'farms'];
+      // Collections to wipe
+      const collections = ['activities', 'fields', 'storages', 'profiles'];
       
-      // Dual ID check for thorough cleaning
+      // Dual ID check
       const idsToCheck = [String(farmId)];
       const numId = Number(farmId);
       if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
 
-      let totalDeleted = 0;
+      let allRefs: any[] = [];
+
+      // 1. GATHER ALL REFS IN PARALLEL (Super fast)
+      const fetchPromises: Promise<void>[] = [];
 
       for (const col of collections) {
-          report(`Prüfe Sammlung: ${col}...`);
-          
           for (const idVariant of idsToCheck) {
-              // Note: 'farms' collection uses document ID as farmId, others use field 'farmId'
-              if (col === 'farms') {
-                  try {
-                      await deleteDoc(doc(db, 'farms', String(idVariant)));
-                      report(`- Gelöscht: Farm Mitgliedschaft (${idVariant})`);
-                  } catch(e) {}
-                  continue;
-              }
-
-              // Standard Collections
-              try {
-                  const q = query(collection(db, col), where("farmId", "==", idVariant));
-                  const snap = await getDocs(q);
-                  
-                  if (!snap.empty) {
-                      report(`Lösche ${snap.size} Einträge aus '${col}'...`);
-                      // Batch delete (max 500)
-                      const batch = writeBatch(db);
-                      snap.docs.forEach(d => {
-                          batch.delete(d.ref);
-                          totalDeleted++;
-                      });
-                      await batch.commit();
-                      report(`- OK: ${col} bereinigt.`);
-                  }
-              } catch (e: any) {
-                  report(`Fehler bei ${col}: ${e.message}`);
-              }
+              fetchPromises.push(
+                  getDocs(query(collection(db, col), where("farmId", "==", idVariant)))
+                  .then(snap => {
+                      snap.docs.forEach(d => allRefs.push(d.ref));
+                  })
+              );
           }
       }
+      
+      // Also fetch the 'farms' membership document separately (by Doc ID)
+      for (const idVariant of idsToCheck) {
+          allRefs.push(doc(db, 'farms', String(idVariant)));
+      }
 
-      report(`Löschen erfolgreich abgeschlossen. ${totalDeleted} Objekte entfernt.`);
-      return totalDeleted;
+      await Promise.all(fetchPromises);
+
+      // Remove duplicates (if any)
+      const uniqueRefs = Array.from(new Set(allRefs.map(r => r.path))).map(path => {
+          return allRefs.find(r => r.path === path);
+      });
+
+      if (uniqueRefs.length === 0) {
+          report("Keine Daten gefunden. Hof ist bereits leer.");
+          return 0;
+      }
+
+      report(`${uniqueRefs.length} Objekte zum Löschen gefunden.`);
+
+      // 2. BATCH DELETE (Chunking)
+      const CHUNK_SIZE = 450; // Safety margin under 500 limit
+      const batches = [];
+      
+      for (let i = 0; i < uniqueRefs.length; i += CHUNK_SIZE) {
+          const chunk = uniqueRefs.slice(i, i + CHUNK_SIZE);
+          const batch = writeBatch(db);
+          chunk.forEach(ref => batch.delete(ref));
+          batches.push(batch.commit());
+      }
+
+      report(`Führe ${batches.length} Batch-Operationen aus...`);
+      
+      // Execute all batches in parallel
+      await Promise.all(batches);
+
+      report(`Erfolg! ${uniqueRefs.length} Objekte wurden unwiderruflich gelöscht.`);
+      return uniqueRefs.length;
   },
 
   // --- FORCE UPLOAD (FIXED ASYNC VERSION) ---
