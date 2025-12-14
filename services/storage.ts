@@ -73,7 +73,7 @@ export const loadSettings = (): AppSettings => {
 export const saveSettings = async (settings: AppSettings) => {
   // Enforce Clean Farm ID (No spaces)
   const cleanSettings = { ...settings };
-  if (cleanSettings.farmId) cleanSettings.farmId = cleanSettings.farmId.trim();
+  if (cleanSettings.farmId) cleanSettings.farmId = String(cleanSettings.farmId).trim();
 
   // 1. Local Save
   localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(cleanSettings));
@@ -153,7 +153,8 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
   if (isCloudConfigured()) {
       const settings = loadSettings();
       // Target Farm ID: Either from settings OR private user ID
-      const farmId = settings.farmId || 'PERSONAL_' + auth.currentUser.uid;
+      // FORCE STRING to prevent type mismatch issues
+      let farmId = settings.farmId ? String(settings.farmId).trim() : ('PERSONAL_' + auth.currentUser.uid);
       const farmPin = settings.farmPin || '';
 
       try {
@@ -209,31 +210,47 @@ export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'stor
     if (!isCloudConfigured()) return [];
     
     const settings = loadSettings();
-    const targetFarmId = settings.farmId || 'PERSONAL_' + auth.currentUser.uid;
+    const rawFarmId = settings.farmId || 'PERSONAL_' + auth.currentUser.uid;
     const targetPin = settings.farmPin || '';
 
+    // DUAL QUERY STRATEGY: Try both String and Number representation of ID to handle legacy data type mismatches
+    const idsToQuery = [String(rawFarmId)];
+    const numId = Number(rawFarmId);
+    if (!isNaN(numId) && String(numId) === String(rawFarmId)) {
+        idsToQuery.push(numId as any);
+    }
+
     try {
-        dbService.logEvent(`[Cloud] Suche ${type} für FarmID: ${targetFarmId}`);
+        dbService.logEvent(`[Cloud] Suche ${type} für FarmID: ${idsToQuery.join(' oder ')}`);
         let colName = 'activities';
         if (type === 'trip') colName = 'trips';
         if (type === 'field') colName = 'fields';
         if (type === 'storage') colName = 'storages';
         if (type === 'profile') colName = 'profiles';
         
-        const q = query(
-            collection(db, colName), 
-            where("farmId", "==", targetFarmId)
+        // We execute multiple queries in parallel for robustness
+        const queries = idsToQuery.map(id => 
+            getDocs(query(collection(db, colName), where("farmId", "==", id)))
         );
         
-        // With persistence, this might return cached data if offline
-        const snapshot = await getDocs(q);
+        const snapshots = await Promise.all(queries);
         
-        dbService.logEvent(`[Cloud] Gefunden: ${snapshot.size} ${type} Dokumente.`);
+        // Merge results using Map to avoid duplicates
+        const mergedDocs = new Map();
+        let totalFound = 0;
+
+        snapshots.forEach(snap => {
+            totalFound += snap.size;
+            snap.docs.forEach(doc => {
+                mergedDocs.set(doc.id, { id: doc.id, ...doc.data() });
+            });
+        });
+        
+        dbService.logEvent(`[Cloud] Gefunden: ${mergedDocs.size} ${type} Dokumente (Raw: ${totalFound}).`);
 
         // Client-side Filter & Sort
-        const myData = snapshot.docs
-            .map(doc => ({ id: doc.id, ...doc.data() } as any))
-            .filter(item => {
+        const myData = Array.from(mergedDocs.values())
+            .filter((item: any) => {
                 // Security Check: PIN must match if set on item
                 if (item.farmPin && item.farmPin !== targetPin) return false;
                 return true;

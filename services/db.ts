@@ -49,47 +49,61 @@ export const dbService = {
       const db = getDb();
       if (!db) return { error: "DB Init Fehler" };
 
+      // Dual Query Setup
+      const idsToCheck = [String(farmId)];
+      const numId = Number(farmId);
+      if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
+
       try {
-          // Parallel Execution for Speed
-          const [settingsSnap, actsSnap, fieldsSnap, storageSnap, profileSnap] = await Promise.all([
-              getDocs(query(collection(db, 'settings'), where("farmId", "==", farmId))),
-              getDocs(query(collection(db, 'activities'), where("farmId", "==", farmId))),
-              getDocs(query(collection(db, 'fields'), where("farmId", "==", farmId))),
-              getDocs(query(collection(db, 'storages'), where("farmId", "==", farmId))),
-              getDocs(query(collection(db, 'profiles'), where("farmId", "==", farmId)))
+          // Helper to fetch and merge
+          const fetchAll = async (col: string) => {
+              const promises = idsToCheck.map(id => getDocs(query(collection(db, col), where("farmId", "==", id))));
+              const snaps = await Promise.all(promises);
+              const merged = new Map();
+              snaps.forEach(s => s.docs.forEach(d => merged.set(d.id, d)));
+              return Array.from(merged.values());
+          };
+
+          const [settingsDocs, actsDocs, fieldsDocs, storageDocs, profileDocs] = await Promise.all([
+              fetchAll('settings'),
+              fetchAll('activities'),
+              fetchAll('fields'),
+              fetchAll('storages'),
+              fetchAll('profiles')
           ]);
 
-          const settingsFound = settingsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
+          const settingsFound = settingsDocs.map(d => ({ id: d.id, ...d.data() }));
           
-          const actsFound = actsSnap.docs.map(d => ({ 
+          const actsFound = actsDocs.map(d => ({ 
               id: d.id, 
               type: d.data().type, 
               date: d.data().date,
               user: d.data().userId ? 'User ID vorhanden' : 'Kein User',
-              device: d.data().syncedAt ? 'Via Sync' : 'Manuell'
+              device: d.data().syncedAt ? 'Via Sync' : 'Manuell',
+              farmIdType: typeof d.data().farmId // Debug: Show type
           }));
 
-          const fieldsFound = fieldsSnap.docs.map(d => ({
+          const fieldsFound = fieldsDocs.map(d => ({
               id: d.id,
               name: d.data().name,
               area: d.data().areaHa,
               type: d.data().type
           }));
 
-          const storageFound = storageSnap.docs.map(d => ({
+          const storageFound = storageDocs.map(d => ({
               id: d.id,
               name: d.data().name,
               type: d.data().type,
               capacity: d.data().capacity
           }));
 
-          const profileFound = profileSnap.docs.map(d => ({
+          const profileFound = profileDocs.map(d => ({
               id: d.id,
               name: d.data().operatorName,
               address: d.data().address
           }));
 
-          addLog(`Inspektor: Analyse abgeschlossen. ${actsFound.length} Aktivitäten, ${fieldsFound.length} Felder.`);
+          addLog(`Inspektor: Analyse abgeschlossen. ${actsFound.length} Aktivitäten (Dual-Check).`);
 
           return {
               settings: settingsFound,
@@ -146,9 +160,19 @@ export const dbService = {
       if (!db) return { valid: false, reason: "DB Error" };
 
       try {
-          // Check if ANY settings document exists with this farmId
-          const q = query(collection(db, 'settings'), where("farmId", "==", farmId));
-          const snapshot = await getDocs(q);
+          // Check if ANY settings document exists with this farmId (Dual Check)
+          // We check String first as it is the preferred format
+          const qStr = query(collection(db, 'settings'), where("farmId", "==", String(farmId)));
+          let snapshot = await getDocs(qStr);
+          
+          if(snapshot.empty) {
+              const numId = Number(farmId);
+              if(!isNaN(numId)) {
+                  const qNum = query(collection(db, 'settings'), where("farmId", "==", numId));
+                  const snapNum = await getDocs(qNum);
+                  if(!snapNum.empty) snapshot = snapNum;
+              }
+          }
 
           if (snapshot.empty) {
               // Farm doesn't exist yet -> PIN is valid (creating new farm)
@@ -156,12 +180,10 @@ export const dbService = {
           }
 
           // Farm exists. Check PIN on the first found config (Owner).
-          // We assume the first config found is authoritative enough for the PIN check.
           const config = snapshot.docs[0].data();
           const masterPin = config.farmPin;
 
           if (!masterPin) {
-              // No PIN set on master -> Open access
               return { valid: true, reason: "No PIN set" };
           }
 
@@ -173,8 +195,6 @@ export const dbService = {
 
       } catch (e: any) {
           console.error("PIN Check failed:", e);
-          // If offline, we can't verify, so we might have to allow locally or block.
-          // For security, blocking is better, but UX wise... let's return valid false.
           return { valid: false, reason: "Check Failed" };
       }
   },
@@ -186,8 +206,8 @@ export const dbService = {
       if (!db || !auth?.currentUser) return;
 
       try {
-          const farmRef = doc(db, 'farms', farmId);
-          // Create farm doc if not exists, add user to members
+          // Farm Membership doc ID should use string ID
+          const farmRef = doc(db, 'farms', String(farmId));
           await setDoc(farmRef, {
               lastActive: Timestamp.now(),
               members: arrayUnion({
@@ -208,14 +228,12 @@ export const dbService = {
       if (!db) return [];
 
       try {
-          const docRef = doc(db, 'farms', farmId);
-          // With persistence, this works better offline
+          const docRef = doc(db, 'farms', String(farmId));
           const snap = await getDoc(docRef);
           if (snap.exists()) {
               return snap.data().members || [];
           }
       } catch (e: any) { 
-          // Suppress offline errors
           if (e.code !== 'unavailable' && !e.message?.includes('offline')) {
              console.error("Fetch members error:", e); 
           }
@@ -240,24 +258,37 @@ export const dbService = {
       if (!db) return { total: 0, activities: 0, fields: 0, storages: 0, profiles: 0 };
 
       try {
-          addLog(`Prüfe Cloud Status für ID: '${farmId}' (Länge: ${farmId.length})`);
-          // Parallel count of ALL collections
-          const [actSnap, fieldSnap, storeSnap, profSnap] = await Promise.all([
-              getDocs(query(collection(db, 'activities'), where("farmId", "==", farmId))),
-              getDocs(query(collection(db, 'fields'), where("farmId", "==", farmId))),
-              getDocs(query(collection(db, 'storages'), where("farmId", "==", farmId))),
-              getDocs(query(collection(db, 'profiles'), where("farmId", "==", farmId)))
+          // Setup Dual IDs
+          const idsToCheck = [String(farmId)];
+          const numId = Number(farmId);
+          if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
+
+          addLog(`Prüfe Cloud Status für ID: '${farmId}' (Dual Check)`);
+          
+          const countCol = async (col: string) => {
+              const promises = idsToCheck.map(id => getDocs(query(collection(db, col), where("farmId", "==", id))));
+              const snaps = await Promise.all(promises);
+              // Sum up UNIQUE docs (in case overlap, though unlikely)
+              const ids = new Set();
+              snaps.forEach(s => s.docs.forEach(d => ids.add(d.id)));
+              return ids.size;
+          };
+
+          const [actSize, fieldSize, storeSize, profSize] = await Promise.all([
+              countCol('activities'),
+              countCol('fields'),
+              countCol('storages'),
+              countCol('profiles')
           ]);
 
           return { 
-              total: actSnap.size + fieldSnap.size + storeSnap.size + profSnap.size,
-              activities: actSnap.size,
-              fields: fieldSnap.size,
-              storages: storeSnap.size,
-              profiles: profSnap.size
+              total: actSize + fieldSize + storeSize + profSize,
+              activities: actSize,
+              fields: fieldSize,
+              storages: storeSize,
+              profiles: profSize
           };
       } catch (e: any) { 
-          // Return special value to indicate error/offline
           if (e.code !== 'unavailable' && !e.message?.includes('offline')) {
              console.error("Cloud Stats Error:", e);
           }
