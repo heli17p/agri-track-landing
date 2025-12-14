@@ -123,6 +123,80 @@ export const dbService = {
       }
   },
 
+  // --- DATA TYPE REPAIR TOOL ---
+  analyzeDataTypes: async (farmId: string) => {
+      if (!isCloudConfigured()) return null;
+      const db = getDb();
+      if (!db) return null;
+
+      const strId = String(farmId);
+      const numId = Number(farmId);
+      
+      const results = {
+          stringIdCount: 0,
+          numberIdCount: 0,
+          details: [] as string[]
+      };
+
+      const collections = ['activities', 'fields', 'storages', 'profiles'];
+
+      for (const col of collections) {
+          // Count String
+          const qStr = query(collection(db, col), where("farmId", "==", strId));
+          const snapStr = await getDocs(qStr);
+          results.stringIdCount += snapStr.size;
+
+          // Count Number
+          let numCount = 0;
+          if (!isNaN(numId)) {
+              const qNum = query(collection(db, col), where("farmId", "==", numId));
+              const snapNum = await getDocs(qNum);
+              numCount = snapNum.size;
+              results.numberIdCount += numCount;
+          }
+          
+          results.details.push(`${col}: ${snapStr.size} (Text) vs ${numCount} (Zahl)`);
+      }
+      return results;
+  },
+
+  repairDataTypes: async (farmId: string) => {
+      if (!isCloudConfigured()) throw new Error("Offline");
+      const db = getDb();
+      if (!db) throw new Error("DB Error");
+
+      const numId = Number(farmId);
+      const strId = String(farmId);
+
+      if (isNaN(numId)) return "Keine Reparatur nötig (ID ist kein Zahl-Format).";
+
+      addLog(`Reparatur: Suche nach veralteten 'Number' IDs (${numId})...`);
+      
+      const collections = ['activities', 'fields', 'storages', 'profiles', 'settings'];
+      let fixedCount = 0;
+
+      for (const col of collections) {
+          const qNum = query(collection(db, col), where("farmId", "==", numId));
+          const snap = await getDocs(qNum);
+          
+          if (!snap.empty) {
+              const batch = writeBatch(db);
+              snap.docs.forEach(doc => {
+                  batch.update(doc.ref, { farmId: strId }); // Convert to String
+                  fixedCount++;
+              });
+              await batch.commit();
+              addLog(`Reparatur: ${snap.size} Einträge in '${col}' korrigiert.`);
+          }
+      }
+
+      if (fixedCount > 0) {
+          return `Erfolg! ${fixedCount} Datensätze wurden repariert. Bitte jetzt synchronisieren.`;
+      } else {
+          return "Keine fehlerhaften Datensätze gefunden.";
+      }
+  },
+
   // --- BACKUP & RESTORE (Existing code) ---
   createFullBackup: async () => {
       const activities = await dbService.getActivities();

@@ -3,7 +3,7 @@ import {
   Save, User, Database, Settings, Cloud, MapPin, Plus, Trash2, 
   AlertTriangle, RefreshCw, CheckCircle, Smartphone, 
   Terminal, ShieldCheck, CloudOff, Info, DownloadCloud,
-  X, Layers, Link as LinkIcon, Lock, Calendar, FileText, UserPlus, Eye, EyeOff
+  X, Layers, Link as LinkIcon, Lock, Calendar, FileText, UserPlus, Eye, EyeOff, Wrench
 } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { authService } from '../services/auth';
@@ -71,11 +71,15 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   // Modals & Tools
   const [editingStorage, setEditingStorage] = useState<StorageLocation | null>(null);
   const [showDiagnose, setShowDiagnose] = useState(false);
-  const [activeDiagTab, setActiveDiagTab] = useState<'logs' | 'inspector'>('inspector'); 
+  const [activeDiagTab, setActiveDiagTab] = useState<'logs' | 'inspector' | 'repair'>('inspector'); 
   const [inspectorData, setInspectorData] = useState<any>(null);
   const [inspectorLoading, setInspectorLoading] = useState(false);
   const [showMapPicker, setShowMapPicker] = useState<'profile' | 'storage' | null>(null);
   const [showDangerZone, setShowDangerZone] = useState(false);
+  
+  // Repair Tool State
+  const [repairAnalysis, setRepairAnalysis] = useState<any>(null);
+  const [repairLoading, setRepairLoading] = useState(false);
 
   // Upload State
   const [isUploading, setIsUploading] = useState(false);
@@ -330,6 +334,33 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
         } finally {
             setInspectorLoading(false);
         }
+  };
+
+  const analyzeRepair = async () => {
+      if (!settings.farmId) return;
+      setRepairLoading(true);
+      try {
+          const res = await dbService.analyzeDataTypes(settings.farmId);
+          setRepairAnalysis(res);
+      } finally {
+          setRepairLoading(false);
+      }
+  };
+
+  const executeRepair = async () => {
+      if (!settings.farmId) return;
+      if (!confirm("Reparatur starten? Dies konvertiert alte 'Zahlen-IDs' in 'Text-IDs'.")) return;
+      setRepairLoading(true);
+      try {
+          const msg = await dbService.repairDataTypes(settings.farmId);
+          alert(msg);
+          analyzeRepair(); // Refresh
+          loadCloudData(settings.farmId); // Update Main Stats
+      } catch (e: any) {
+          alert("Fehler: " + e.message);
+      } finally {
+          setRepairLoading(false);
+      }
   };
 
   return (
@@ -979,6 +1010,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                     <div className="flex border-b border-slate-200 bg-white shrink-0">
                         <button onClick={() => setActiveDiagTab('logs')} className={`flex-1 py-3 text-xs font-bold transition-colors ${activeDiagTab === 'logs' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:bg-slate-50'}`}>Protokoll</button>
                         <button onClick={() => setActiveDiagTab('inspector')} className={`flex-1 py-3 text-xs font-bold transition-colors ${activeDiagTab === 'inspector' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:bg-slate-50'}`}>Cloud Inhalt</button>
+                        <button onClick={() => { setActiveDiagTab('repair'); analyzeRepair(); }} className={`flex-1 py-3 text-xs font-bold transition-colors ${activeDiagTab === 'repair' ? 'text-red-600 border-b-2 border-red-600' : 'text-slate-400 hover:bg-slate-50'}`}>Erweiterte Analyse</button>
                     </div>
 
                     <div className="flex-1 overflow-y-auto bg-slate-50">
@@ -989,7 +1021,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                     <div key={i} className="border-b border-green-900/30 pb-1 break-words">{log}</div>
                                 ))}
                             </div>
-                        ) : (
+                        ) : activeDiagTab === 'inspector' ? (
                             // INSPECTOR VIEW
                             <div className="p-4 space-y-6">
                                 <div className="flex justify-between items-center mb-2">
@@ -1074,6 +1106,66 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                             </div>
                                         )}
                                     </div>
+                                )}
+                            </div>
+                        ) : (
+                            // REPAIR VIEW
+                            <div className="p-6">
+                                <div className="bg-orange-50 border border-orange-200 rounded-lg p-4 mb-6">
+                                    <h4 className="font-bold text-orange-900 flex items-center mb-2">
+                                        <Wrench className="mr-2" size={18}/> Datentyp Konflikt Analyse
+                                    </h4>
+                                    <p className="text-sm text-orange-800">
+                                        Prüft, ob Daten unter zwei verschiedenen ID-Formaten (Zahl vs. Text) gespeichert sind. 
+                                        Dies ist oft der Grund, warum Geräte unterschiedliche Daten sehen.
+                                    </p>
+                                </div>
+
+                                {repairLoading ? (
+                                    <div className="text-center py-8 text-slate-500">
+                                        <RefreshCw className="animate-spin mx-auto mb-2"/>
+                                        Analysiere Datenbank...
+                                    </div>
+                                ) : repairAnalysis ? (
+                                    <div className="space-y-6">
+                                        <div className="grid grid-cols-2 gap-4">
+                                            <div className="bg-white p-4 rounded-xl border-2 border-blue-100 text-center">
+                                                <div className="text-2xl font-bold text-blue-600">{repairAnalysis.stringIdCount}</div>
+                                                <div className="text-xs font-bold text-slate-500">Einträge als TEXT (Neu)</div>
+                                                <div className="text-[10px] text-slate-400 font-mono mt-1">ID: '{settings.farmId}'</div>
+                                            </div>
+                                            <div className="bg-white p-4 rounded-xl border-2 border-amber-100 text-center">
+                                                <div className="text-2xl font-bold text-amber-600">{repairAnalysis.numberIdCount}</div>
+                                                <div className="text-xs font-bold text-slate-500">Einträge als ZAHL (Alt)</div>
+                                                <div className="text-[10px] text-slate-400 font-mono mt-1">ID: {settings.farmId}</div>
+                                            </div>
+                                        </div>
+
+                                        <div className="bg-white rounded-lg border border-slate-200 p-4 text-xs font-mono text-slate-600 space-y-1">
+                                            {repairAnalysis.details.map((line: string, i: number) => (
+                                                <div key={i}>{line}</div>
+                                            ))}
+                                        </div>
+
+                                        {repairAnalysis.numberIdCount > 0 && (
+                                            <button 
+                                                onClick={executeRepair}
+                                                className="w-full py-4 bg-green-600 text-white rounded-xl font-bold shadow-lg hover:bg-green-700 flex items-center justify-center animate-pulse"
+                                            >
+                                                <Wrench className="mr-2"/> Daten zusammenführen (Reparieren)
+                                            </button>
+                                        )}
+                                        
+                                        {repairAnalysis.numberIdCount === 0 && (
+                                            <div className="text-center text-green-600 font-bold p-4 bg-green-50 rounded-xl">
+                                                Alles OK! Keine Konflikte gefunden.
+                                            </div>
+                                        )}
+                                    </div>
+                                ) : (
+                                    <button onClick={analyzeRepair} className="w-full py-3 bg-slate-200 text-slate-700 font-bold rounded-lg hover:bg-slate-300">
+                                        Analyse Starten
+                                    </button>
                                 )}
                             </div>
                         )}
