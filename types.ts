@@ -179,6 +179,7 @@ export interface AppSettings {
   // Multi-User Cloud Sync
   farmId?: string; // LFBIS Nummer als Gruppen-ID
   farmPin?: string; // Passwort für die Gruppe
+  ownerEmail?: string; // Email des Hof-Besitzers für Handshake
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {

@@ -1,10 +1,9 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Save, User, Database, Settings, Cloud, MapPin, Plus, Trash2, 
   AlertTriangle, RefreshCw, CheckCircle, Smartphone, 
   Terminal, ShieldCheck, CloudOff, Info, DownloadCloud,
-  X, Layers, Link as LinkIcon, Lock, Calendar, FileText
+  X, Layers, Link as LinkIcon, Lock, Calendar, FileText, UserPlus, Eye, EyeOff
 } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { authService } from '../services/auth';
@@ -69,13 +68,12 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [localStats, setLocalStats] = useState({ total: 0 });
   const [authState, setAuthState] = useState<any>(null);
   
-  // Modals
+  // Modals & Tools
   const [editingStorage, setEditingStorage] = useState<StorageLocation | null>(null);
   const [showDiagnose, setShowDiagnose] = useState(false);
-  const [activeDiagTab, setActiveDiagTab] = useState<'logs' | 'inspector'>('inspector'); // Default to Inspector for better visibility
+  const [activeDiagTab, setActiveDiagTab] = useState<'logs' | 'inspector'>('inspector'); 
   const [inspectorData, setInspectorData] = useState<any>(null);
   const [inspectorLoading, setInspectorLoading] = useState(false);
-
   const [showMapPicker, setShowMapPicker] = useState<'profile' | 'storage' | null>(null);
   const [showDangerZone, setShowDangerZone] = useState(false);
 
@@ -83,9 +81,15 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ status: '', percent: 0 });
 
-  // Connection Check
-  const [connectionStatus, setConnectionStatus] = useState<'idle' | 'checking' | 'success' | 'error' | 'pin_required'>('idle');
-  const [checkResult, setCheckResult] = useState<string>('');
+  // --- CONNECT / JOIN FLOW STATE ---
+  const [connectMode, setConnectMode] = useState<'VIEW' | 'JOIN' | 'CREATE'>('VIEW');
+  const [inputFarmId, setInputFarmId] = useState('');
+  const [inputPin, setInputPin] = useState('');
+  const [showPin, setShowPin] = useState(false);
+  
+  const [searchStatus, setSearchStatus] = useState<'IDLE' | 'SEARCHING' | 'FOUND' | 'NOT_FOUND'>('IDLE');
+  const [foundOwnerEmail, setFoundOwnerEmail] = useState<string | null>(null);
+  const [connectError, setConnectError] = useState<string | null>(null);
 
   useEffect(() => {
       loadAll();
@@ -102,10 +106,12 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
 
-  // FIX: Added settings.farmId dependency to ensure stats load when settings arrive
   useEffect(() => {
       if (activeTab === 'sync' && settings.farmId) {
           loadCloudData(settings.farmId);
+          setConnectMode('VIEW');
+      } else if (activeTab === 'sync' && !settings.farmId) {
+          setConnectMode('VIEW'); // Or allow user to choose
       }
   }, [activeTab, settings.farmId]);
 
@@ -121,16 +127,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       
       setLoading(false);
       
-      // Load cloud async
       if (s.farmId) loadCloudData(s.farmId);
   };
 
   const loadCloudData = async (farmId?: string) => {
-      // Load Local Stats first
       const local = await dbService.getLocalStats();
       setLocalStats(local);
 
-      // Then Cloud
       if (farmId) {
           const stats = await dbService.getCloudStats(farmId);
           setCloudStats(stats);
@@ -139,32 +142,21 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       }
   };
 
+  // --- SAVE LOGIC ---
   const handleSaveAll = async () => {
       setIsSaving(true);
       try {
-          // 1. Save Profile
           await dbService.saveFarmProfile(profile);
           
-          // 2. Save Settings (Sanitize Farm ID)
           const cleanSettings = { ...settings };
           if (cleanSettings.farmId) cleanSettings.farmId = String(cleanSettings.farmId).trim();
           await dbService.saveSettings(cleanSettings);
 
-          // 3. Verify PIN / Security Check if Farm ID changed
-          if (cleanSettings.farmId) {
-              const verify = await dbService.verifyFarmPin(cleanSettings.farmId, cleanSettings.farmPin || '');
-              if (!verify.valid && verify.reason !== "New Farm") {
-                  alert(`Warnung: Die Farm-ID existiert, aber die PIN ist falsch (${verify.reason}). Sie können keine Daten hochladen.`);
-              }
-          }
-
-          // 4. Trigger Sync in Background
+          // Trigger Sync
           syncData().catch(console.error);
           
           setShowToast(true);
           setTimeout(() => setShowToast(false), 2000);
-          
-          // Reload stats
           loadCloudData(cleanSettings.farmId);
 
       } catch (e) {
@@ -175,35 +167,82 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       }
   };
 
-  const handleCheckConnection = async () => {
-      if (!settings.farmId) return;
-      setConnectionStatus('checking');
-      const cleanId = String(settings.farmId).trim();
+  // --- JOIN FLOW ---
+  const handleSearchFarm = async () => {
+      if (!inputFarmId) return;
+      setSearchStatus('SEARCHING');
+      setConnectError(null);
+      setFoundOwnerEmail(null);
+
+      const cleanId = inputFarmId.trim();
       
-      const stats = await dbService.getCloudStats(cleanId);
+      // Perform handshake check
+      // Pass empty PIN to check existence and get owner info
+      const result = await dbService.verifyFarmPin(cleanId, ''); 
       
-      if (stats.total === -1) {
-          setConnectionStatus('error');
-          setCheckResult("Offline oder Fehler.");
+      if (result.isNew) {
+          setSearchStatus('NOT_FOUND');
+      } else {
+          setSearchStatus('FOUND');
+          // Mask email for privacy (e.g. m***@gmail.com)
+          const rawEmail = result.ownerEmail || 'Unbekannt';
+          let maskedEmail = rawEmail;
+          if (rawEmail.includes('@')) {
+              const [name, domain] = rawEmail.split('@');
+              maskedEmail = `${name.substring(0, 2)}***@${domain}`;
+          }
+          setFoundOwnerEmail(maskedEmail);
+      }
+  };
+
+  const handleJoinFarm = async () => {
+      if (!inputPin) {
+          setConnectError("Bitte PIN eingeben.");
+          return;
+      }
+      
+      const cleanId = inputFarmId.trim();
+      const result = await dbService.verifyFarmPin(cleanId, inputPin);
+
+      if (result.valid) {
+          // Success! Save settings and switch mode
+          const newSettings = { ...settings, farmId: cleanId, farmPin: inputPin };
+          setSettings(newSettings);
+          await dbService.saveSettings(newSettings); // This triggers joinFarm in DB service
+          
+          // Trigger download
+          await syncData();
+          
+          setConnectMode('VIEW');
+          loadCloudData(cleanId);
+          alert(`Erfolg! Verbindung zu Hof ${cleanId} hergestellt.`);
+      } else {
+          setConnectError("PIN ist falsch.");
+      }
+  };
+
+  const handleCreateFarm = async () => {
+      if (!inputFarmId || !inputPin) {
+          setConnectError("Bitte ID und PIN wählen.");
+          return;
+      }
+      
+      const cleanId = inputFarmId.trim();
+      
+      // Double check it doesn't exist
+      const check = await dbService.verifyFarmPin(cleanId, '');
+      if (!check.isNew) {
+          setConnectError("Dieser Hof existiert bereits! Bitte 'Hof beitreten' nutzen.");
           return;
       }
 
-      // Check PIN
-      const pinCheck = await dbService.verifyFarmPin(cleanId, settings.farmPin || '');
+      const newSettings = { ...settings, farmId: cleanId, farmPin: inputPin };
+      setSettings(newSettings);
+      await dbService.saveSettings(newSettings); // Will create new entry with owner email
       
-      if (stats.total > 0) {
-          if (pinCheck.valid) {
-              setConnectionStatus('success');
-              setCheckResult(`Verbindung OK! ${stats.total} Einträge (${stats.activities} Akt., ${stats.fields} Felder).`);
-          } else {
-              setConnectionStatus('pin_required');
-              setCheckResult(`Hof gefunden, aber PIN falsch.`);
-          }
-      } else {
-          setConnectionStatus('success');
-          setCheckResult("Hof-ID ist frei (Neu).");
-      }
-      setCloudStats(stats);
+      setConnectMode('VIEW');
+      loadCloudData(cleanId);
+      alert(`Hof ${cleanId} erfolgreich erstellt!`);
   };
 
   const handleForceUpload = async () => {
@@ -213,16 +252,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       setUploadProgress({ status: 'Vorbereitung...', percent: 0 });
 
       try {
-          // Save settings first locally to ensure ID is set
           localStorage.setItem('agritrack_settings_full', JSON.stringify(settings));
-          
           await dbService.forceUploadToFarm((status, percent) => {
               setUploadProgress({ status, percent });
           });
-          
           alert("Upload erfolgreich abgeschlossen!");
           loadCloudData(settings.farmId);
-          setIsUploading(false); // Only clear on success here, catch handles failure
+          setIsUploading(false);
       } catch (e: any) {
           alert(`Upload fehlgeschlagen: ${e.message}`);
           setIsUploading(false);
@@ -230,7 +266,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   };
 
   const handleManualDownload = async () => {
-      setIsUploading(true); // Reuse loading state
+      setIsUploading(true); 
       setUploadProgress({ status: 'Lade herunter...', percent: 50 });
       try {
           await syncData();
@@ -256,21 +292,16 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           alert("Falsche PIN. Abbruch.");
           return;
       }
-      
       if(!confirm("Sind Sie absolut sicher? Dies kann nicht rückgängig gemacht werden!")) return;
 
       setIsUploading(true);
-      setUploadProgress({ status: 'Starte Löschvorgang...', percent: 5 }); // Nicht 100% sofort
-      
+      setUploadProgress({ status: 'Starte Löschvorgang...', percent: 5 }); 
       try {
-          // Pass callback to show progress in UI
           const deleted = await dbService.deleteEntireFarm(settings.farmId!, pin, (msg) => {
               setUploadProgress({ status: msg, percent: 50 });
           });
-          
           setUploadProgress({ status: 'Fertig!', percent: 100 });
           alert(`Hof gelöscht. ${deleted} Datensätze entfernt.`);
-          
           setSettings({ ...settings, farmId: '', farmPin: '' });
           await handleSaveAll();
       } catch(e: any) {
@@ -519,83 +550,203 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                         )}
                     </div>
 
-                    {/* Connection Form */}
-                    {authState && (
+                    {/* Connection Form - NEW LOGIC */}
+                    {authState && !settings.farmId && connectMode === 'VIEW' && (
+                        <div className="grid grid-cols-1 gap-4">
+                            <button 
+                                onClick={() => { setConnectMode('JOIN'); setInputFarmId(''); setInputPin(''); setConnectError(null); setSearchStatus('IDLE'); }}
+                                className="bg-white p-6 rounded-xl border-2 border-slate-200 hover:border-blue-500 hover:bg-blue-50 transition-all text-left group"
+                            >
+                                <div className="flex items-center mb-2 text-blue-600 group-hover:text-blue-700">
+                                    <UserPlus size={24} className="mr-3"/>
+                                    <h3 className="font-bold text-lg">Hof beitreten</h3>
+                                </div>
+                                <p className="text-sm text-slate-500">
+                                    Du bist Mitarbeiter oder Familienmitglied? Gib die Betriebsnummer ein, um dich zu verbinden.
+                                </p>
+                            </button>
+
+                            <button 
+                                onClick={() => { setConnectMode('CREATE'); setInputFarmId(''); setInputPin(''); setConnectError(null); }}
+                                className="bg-white p-6 rounded-xl border-2 border-slate-200 hover:border-green-500 hover:bg-green-50 transition-all text-left group"
+                            >
+                                <div className="flex items-center mb-2 text-green-600 group-hover:text-green-700">
+                                    <Plus size={24} className="mr-3"/>
+                                    <h3 className="font-bold text-lg">Hof erstellen</h3>
+                                </div>
+                                <p className="text-sm text-slate-500">
+                                    Du bist der Bewirtschafter? Lege deinen Hof neu in der Cloud an.
+                                </p>
+                            </button>
+                        </div>
+                    )}
+
+                    {/* JOIN MODE UI */}
+                    {authState && connectMode === 'JOIN' && (
                         <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-                            <h3 className="font-bold text-slate-800 mb-4 flex items-center">
-                                <Settings size={18} className="mr-2 text-slate-500"/> Hof Verbindung
-                            </h3>
-                            
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold text-slate-800 flex items-center">
+                                    <UserPlus size={18} className="mr-2 text-blue-600"/> Hof beitreten
+                                </h3>
+                                <button onClick={() => setConnectMode('VIEW')} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                            </div>
+
                             <div className="space-y-4">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Betriebsnummer (Farm ID)</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Betriebsnummer (LFBIS)</label>
                                     <div className="flex space-x-2">
                                         <input 
                                             type="text" 
-                                            // Dummy fields to confuse autofill
-                                            name="agri_farm_id_field_random"
-                                            id="agri_farm_id_field_random"
-                                            autoComplete="off"
-                                            data-lpignore="true"
-                                            value={settings.farmId || ''} 
+                                            value={inputFarmId}
                                             onChange={(e) => {
-                                                // Aggressive cleaning: Numbers only or simple alphanumeric, no spaces
-                                                const val = e.target.value.replace(/[^0-9a-zA-Z]/g, ''); 
-                                                setSettings({...settings, farmId: val});
-                                                setConnectionStatus('idle');
+                                                const val = e.target.value.replace(/[^0-9a-zA-Z]/g, '');
+                                                setInputFarmId(val);
+                                                setSearchStatus('IDLE');
+                                                setConnectError(null);
                                             }}
-                                            className="flex-1 p-3 border border-slate-300 rounded-lg font-mono text-lg font-bold tracking-wider"
+                                            className="flex-1 p-3 border border-slate-300 rounded-lg font-bold"
                                             placeholder="z.B. 1234567"
                                         />
-                                        {settings.farmId && (
-                                            <button 
-                                                onClick={() => setSettings({...settings, farmId: '', farmPin: ''})}
-                                                className="p-3 bg-red-50 text-red-600 rounded-lg border border-red-100 hover:bg-red-100"
-                                                title="Reset"
-                                            >
-                                                <Trash2 size={20}/>
-                                            </button>
-                                        )}
+                                        <button 
+                                            onClick={handleSearchFarm}
+                                            disabled={!inputFarmId || searchStatus === 'SEARCHING'}
+                                            className="px-4 bg-slate-100 font-bold text-slate-600 rounded-lg hover:bg-slate-200 disabled:opacity-50"
+                                        >
+                                            {searchStatus === 'SEARCHING' ? <RefreshCw className="animate-spin"/> : 'Suchen'}
+                                        </button>
                                     </div>
-                                    {/* X-Ray Debug View */}
-                                    {settings.farmId && (
-                                        <div className="text-[10px] text-slate-400 mt-1 font-mono">
-                                            Gespeichert: '{settings.farmId}' (Länge: {settings.farmId.length})
+                                </div>
+
+                                {searchStatus === 'NOT_FOUND' && (
+                                    <div className="p-3 bg-red-50 text-red-700 rounded-lg text-sm border border-red-100 flex items-start">
+                                        <AlertTriangle size={16} className="mr-2 shrink-0 mt-0.5"/>
+                                        <div>
+                                            <strong>Hof nicht gefunden.</strong><br/>
+                                            Bitte überprüfe die Nummer. Falls du den Hof neu anlegen willst, gehe zurück und wähle "Hof erstellen".
                                         </div>
-                                    )}
-                                </div>
-
-                                <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hof-Passwort (PIN)</label>
-                                    <input 
-                                        type="password" 
-                                        name="agri_pin_field_random"
-                                        id="agri_pin_field_random"
-                                        autoComplete="new-password"
-                                        data-lpignore="true"
-                                        value={settings.farmPin || ''} 
-                                        onChange={(e) => setSettings({...settings, farmPin: e.target.value})}
-                                        className={`w-full p-3 border rounded-lg font-bold tracking-widest ${connectionStatus === 'pin_required' ? 'border-red-500 bg-red-50' : 'border-slate-300'}`}
-                                        placeholder="••••"
-                                    />
-                                    {connectionStatus === 'pin_required' && <div className="text-xs text-red-500 mt-1 font-bold">PIN erforderlich!</div>}
-                                </div>
-
-                                {checkResult && (
-                                    <div className={`p-3 rounded-lg text-sm font-bold ${connectionStatus === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-                                        {checkResult}
                                     </div>
                                 )}
 
-                                <div className="flex space-x-2 pt-2">
-                                    <button 
-                                        onClick={handleCheckConnection}
-                                        disabled={!settings.farmId}
-                                        className="flex-1 py-2 bg-slate-100 text-slate-700 font-bold rounded-lg hover:bg-slate-200 disabled:opacity-50 flex items-center justify-center"
-                                    >
-                                        <LinkIcon size={16} className="mr-2"/> Prüfen
-                                    </button>
+                                {searchStatus === 'FOUND' && (
+                                    <div className="animate-in slide-in-from-top-2 space-y-4">
+                                        <div className="p-3 bg-green-50 text-green-800 rounded-lg text-sm border border-green-100">
+                                            <div className="font-bold flex items-center mb-1"><CheckCircle size={14} className="mr-1"/> Hof gefunden!</div>
+                                            Besitzer: <span className="font-mono bg-white/50 px-1 rounded">{foundOwnerEmail}</span>
+                                        </div>
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hof-PIN eingeben</label>
+                                            <div className="relative">
+                                                <input 
+                                                    type={showPin ? "text" : "password"}
+                                                    value={inputPin}
+                                                    onChange={(e) => setInputPin(e.target.value)}
+                                                    className="w-full p-3 border border-slate-300 rounded-lg font-bold tracking-widest"
+                                                    placeholder="••••"
+                                                />
+                                                <button onClick={() => setShowPin(!showPin)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                                    {showPin ? <EyeOff size={18}/> : <Eye size={18}/>}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {connectError && <div className="text-red-600 text-sm font-bold">{connectError}</div>}
+
+                                        <button 
+                                            onClick={handleJoinFarm}
+                                            className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700"
+                                        >
+                                            Jetzt Verbinden
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </div>
+                    )}
+
+                    {/* CREATE MODE UI */}
+                    {authState && connectMode === 'CREATE' && (
+                        <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                            <div className="flex justify-between items-center mb-4">
+                                <h3 className="font-bold text-slate-800 flex items-center">
+                                    <Plus size={18} className="mr-2 text-green-600"/> Hof erstellen
+                                </h3>
+                                <button onClick={() => setConnectMode('VIEW')} className="text-slate-400 hover:text-slate-600"><X size={20}/></button>
+                            </div>
+
+                            <div className="space-y-4">
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Neue Betriebsnummer</label>
+                                    <input 
+                                        type="text" 
+                                        value={inputFarmId}
+                                        onChange={(e) => {
+                                            const val = e.target.value.replace(/[^0-9a-zA-Z]/g, '');
+                                            setInputFarmId(val);
+                                            setConnectError(null);
+                                        }}
+                                        className="w-full p-3 border border-slate-300 rounded-lg font-bold"
+                                        placeholder="z.B. 2421..."
+                                    />
                                 </div>
+
+                                <div>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Neuen PIN festlegen</label>
+                                    <div className="relative">
+                                        <input 
+                                            type={showPin ? "text" : "password"}
+                                            value={inputPin}
+                                            onChange={(e) => setInputPin(e.target.value)}
+                                            className="w-full p-3 border border-slate-300 rounded-lg font-bold tracking-widest"
+                                            placeholder="••••"
+                                        />
+                                        <button onClick={() => setShowPin(!showPin)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                                            {showPin ? <EyeOff size={18}/> : <Eye size={18}/>}
+                                        </button>
+                                    </div>
+                                    <p className="text-[10px] text-slate-400 mt-1">Diesen PIN benötigen Ihre Mitarbeiter zum Beitreten.</p>
+                                </div>
+
+                                {connectError && <div className="text-red-600 text-sm font-bold">{connectError}</div>}
+
+                                <button 
+                                    onClick={handleCreateFarm}
+                                    className="w-full py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700"
+                                >
+                                    Hof Anlegen
+                                </button>
+                            </div>
+                        </div>
+                    )}
+
+                    {/* EXISTING CONNECTION UI (Reset/Info) */}
+                    {authState && settings.farmId && (
+                        <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+                            <h3 className="font-bold text-slate-800 mb-4 flex items-center">
+                                <LinkIcon size={18} className="mr-2 text-green-600"/> Verbindung aktiv
+                            </h3>
+                            <div className="space-y-3">
+                                <div className="flex justify-between items-center text-sm border-b border-slate-100 pb-2">
+                                    <span className="text-slate-500">Farm ID</span>
+                                    <span className="font-bold font-mono">{settings.farmId}</span>
+                                </div>
+                                <div className="flex justify-between items-center text-sm border-b border-slate-100 pb-2">
+                                    <span className="text-slate-500">Status</span>
+                                    <span className="text-green-600 font-bold flex items-center"><CheckCircle size={14} className="mr-1"/> Online</span>
+                                </div>
+                                
+                                <button 
+                                    onClick={() => {
+                                        if(confirm("Verbindung wirklich trennen?")) {
+                                            setSettings({...settings, farmId: '', farmPin: ''});
+                                            handleSaveAll(); // Save empty
+                                            setConnectMode('VIEW');
+                                        }
+                                    }}
+                                    className="w-full mt-2 py-2 border border-red-200 text-red-600 rounded-lg text-sm font-bold hover:bg-red-50"
+                                >
+                                    Verbindung trennen / Abmelden
+                                </button>
                             </div>
                         </div>
                     )}
@@ -637,7 +788,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                     </div>
 
                     {/* Tools Section */}
-                    {authState && (
+                    {authState && settings.farmId && (
                         <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
                             <h3 className="font-bold text-slate-800 mb-2">Erweiterungen & Werkzeuge</h3>
                             
@@ -693,16 +844,18 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
         </div>
 
         {/* Global Floating Save Button (Small) */}
-        <div className="absolute bottom-24 right-4 z-30">
-             <button 
-                onClick={handleSaveAll}
-                disabled={isSaving}
-                className="bg-slate-900 text-white px-5 py-3 rounded-full shadow-2xl font-bold flex items-center hover:bg-slate-800 disabled:opacity-50 transition-all hover:scale-105"
-             >
-                 {isSaving ? <RefreshCw className="animate-spin w-5 h-5"/> : <Save className="w-5 h-5 mr-2"/>}
-                 Speichern
-             </button>
-        </div>
+        {activeTab !== 'sync' && (
+            <div className="absolute bottom-24 right-4 z-30">
+                <button 
+                    onClick={handleSaveAll}
+                    disabled={isSaving}
+                    className="bg-slate-900 text-white px-5 py-3 rounded-full shadow-2xl font-bold flex items-center hover:bg-slate-800 disabled:opacity-50 transition-all hover:scale-105"
+                >
+                    {isSaving ? <RefreshCw className="animate-spin w-5 h-5"/> : <Save className="w-5 h-5 mr-2"/>}
+                    Speichern
+                </button>
+            </div>
+        )}
 
         {/* --- MODALS --- */}
 
@@ -972,4 +1125,3 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
     </div>
   );
 };
-

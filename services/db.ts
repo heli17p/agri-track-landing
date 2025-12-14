@@ -153,7 +153,7 @@ export const dbService = {
   
   // --- FARM MANAGEMENT (NEW) ---
 
-  // Verify PIN before connecting
+  // Verify PIN before connecting - NOW RETURNS OWNER EMAIL
   verifyFarmPin: async (farmId: string, pinCandidate: string) => {
       if (!isCloudConfigured() || !farmId) return { valid: false, reason: "Offline" };
       const db = getDb();
@@ -161,7 +161,6 @@ export const dbService = {
 
       try {
           // Check if ANY settings document exists with this farmId (Dual Check)
-          // We check String first as it is the preferred format
           const qStr = query(collection(db, 'settings'), where("farmId", "==", String(farmId)));
           let snapshot = await getDocs(qStr);
           
@@ -176,21 +175,35 @@ export const dbService = {
 
           if (snapshot.empty) {
               // Farm doesn't exist yet -> PIN is valid (creating new farm)
-              return { valid: true, reason: "New Farm" };
+              return { valid: true, reason: "New Farm", isNew: true };
           }
 
           // Farm exists. Check PIN on the first found config (Owner).
+          // We assume the first doc found is the owner or a valid config source.
           const config = snapshot.docs[0].data();
           const masterPin = config.farmPin;
+          
+          // Get Owner Email for Handshake
+          let ownerEmail = "Unbekannt";
+          // Try to fetch the user record if possible, or store email in settings (which we should do now)
+          // Since we can't easily get auth email from uid without cloud function, 
+          // we rely on the client having saved the email in the settings document.
+          // Fallback: If the document ID is the UID, we just return that for debugging.
+          if (config.ownerEmail) {
+              ownerEmail = config.ownerEmail;
+          } else {
+              // Legacy fallback or privacy
+              ownerEmail = "Benutzer " + snapshot.docs[0].id.substring(0, 5) + "...";
+          }
 
           if (!masterPin) {
-              return { valid: true, reason: "No PIN set" };
+              return { valid: true, reason: "No PIN set", ownerEmail };
           }
 
           if (masterPin === pinCandidate) {
-              return { valid: true, reason: "Match" };
+              return { valid: true, reason: "Match", ownerEmail };
           } else {
-              return { valid: false, reason: "Wrong PIN" };
+              return { valid: false, reason: "Wrong PIN", ownerEmail };
           }
 
       } catch (e: any) {
@@ -314,7 +327,7 @@ export const dbService = {
       report("Scanne Cloud-Datenbank (Turbo-Modus)...");
 
       // Collections to wipe
-      const collections = ['activities', 'fields', 'storages', 'profiles'];
+      const collections = ['activities', 'fields', 'storages', 'profiles', 'settings'];
       
       // Dual ID check
       const idsToCheck = [String(farmId)];
@@ -735,10 +748,16 @@ export const dbService = {
     return loadSettingsFromStorage();
   },
   saveSettings: async (settings: AppSettings) => {
-    await saveSettingsToStorage(settings);
+    // Capture the current user's email as 'ownerEmail' if not already set or if creating a new farm
+    const currentSettings = { ...settings };
+    if (auth?.currentUser?.email) {
+        currentSettings.ownerEmail = auth.currentUser.email;
+    }
+    
+    await saveSettingsToStorage(currentSettings);
     // NEW: Register member if farmId is set
-    if (settings.farmId && auth?.currentUser?.email) {
-        await dbService.joinFarm(settings.farmId, auth.currentUser.email);
+    if (currentSettings.farmId && auth?.currentUser?.email) {
+        await dbService.joinFarm(currentSettings.farmId, auth.currentUser.email);
     }
     notify('change');
   },
