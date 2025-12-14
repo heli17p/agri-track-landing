@@ -163,12 +163,15 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       if (initialTab) setActiveTab(initialTab);
   }, [initialTab]);
 
-  // Specific effect to reload cloud stats when farmId changes or becomes available
-  // AND when the user switches to the sync tab
+  // Force Cloud Reload when switching to Sync Tab or when ID changes
   useEffect(() => {
-      if (isCloudConfigured() && settings.farmId) {
-          if (activeTab === 'sync') {
+      if (activeTab === 'sync' && isCloudConfigured()) {
+          // If we have a farm ID, load it.
+          if (settings.farmId) {
               loadCloudData(settings.farmId);
+          } else {
+              // Reload local stats at least
+              dbService.getLocalStats().then(setLocalStats);
           }
       }
   }, [settings.farmId, activeTab]);
@@ -184,17 +187,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       setStorages(st);
       
       setLoading(false); 
-
-      // Only load cloud data if we are already on sync tab or just starting up
-      if (isCloudConfigured() && s.farmId && activeTab === 'sync') {
-          loadCloudData(s.farmId);
-      }
   };
 
   const loadCloudData = async (farmId: string) => {
       setIsLoadingCloud(true);
       try {
         const local = await dbService.getLocalStats();
+        // Fire both requests
         const membersPromise = dbService.getFarmMembers(farmId);
         const statsPromise = dbService.getCloudStats(farmId);
         
@@ -212,31 +211,39 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
   const handleSaveAll = async () => {
       setSaving(true);
-      try {
-          // 1. Save Settings & Profile
-          await dbService.saveSettings(settings);
-          await dbService.saveFarmProfile(profile);
-          
-          // Hinweis: Lager und Felder werden sofort beim Bearbeiten gespeichert.
-          // Hier triggern wir aber einen Sync, damit Änderungen übertragen werden.
-          
-          if (isCloudConfigured()) {
-              try {
-                  await syncData();
-              } catch(e) {
-                  console.error("Auto-sync after save failed:", e);
-                  // Kein Alert hier, da wir im Hintergrund syncen
-              }
+      
+      // Safety Timer: Stop spinner after 5s even if network hangs
+      const safetyTimer = setTimeout(() => {
+          if (saving) {
+              setSaving(false);
+              setShowSaveSuccess(true); // Assume local save worked
+              setTimeout(() => setShowSaveSuccess(false), 2000);
           }
+      }, 5000);
+
+      try {
+          // 1. Save Local & Cloud (Parallel)
+          // Note: dbService.saveSettings internally handles Cloud Sync but we don't want to block UI forever
+          await Promise.all([
+              dbService.saveSettings(settings),
+              dbService.saveFarmProfile(profile)
+          ]);
           
+          clearTimeout(safetyTimer); // Clear timeout if successful
+
           setShowSaveSuccess(true);
-          // Wait briefly then hide checkmark
-          await new Promise(resolve => setTimeout(resolve, 2000));
-          setShowSaveSuccess(false);
+          setTimeout(() => setShowSaveSuccess(false), 2000);
+          
+          // 2. Trigger Sync in Background (Do NOT await to keep UI responsive)
+          if (isCloudConfigured()) {
+              syncData().catch(e => console.warn("Background sync warning:", e));
+              // Refresh stats if we are on that tab
+              if(settings.farmId) loadCloudData(settings.farmId);
+          }
       } catch (e: any) {
+          clearTimeout(safetyTimer);
           alert("Fehler beim Speichern: " + e.message);
       } finally {
-          // Critical: Always stop the spinner, even on error
           setSaving(false);
       }
   };
@@ -276,8 +283,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       setUploadStatusText('Vorbereitung...');
       
       try {
-          // CRITICAL FIX: Do NOT await cloud save here. It blocks if offline/slow.
-          // Just ensure local storage has the ID so upload knows where to send.
+          // Force save settings locally first so upload has the ID
           localStorage.setItem('agritrack_settings_full', JSON.stringify(settings));
 
           await dbService.forceUploadToFarm((msg, percent) => {
@@ -570,6 +576,17 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                           </button>
                       )}
                   </div>
+
+                  {/* Warning if no Farm ID */}
+                  {isCloudConfigured() && !settings.farmId && (
+                      <div className="bg-red-50 border border-red-200 text-red-800 p-4 rounded-xl flex items-start animate-pulse">
+                          <AlertTriangle className="mr-3 shrink-0" size={20}/>
+                          <div className="text-sm font-bold">
+                              Achtung: Keine Betriebsnummer gespeichert.<br/>
+                              Bitte unten eingeben und "Speichern" drücken, um Daten zu laden.
+                          </div>
+                      </div>
+                  )}
 
                   {/* Connection Settings */}
                   {isCloudConfigured() && (
