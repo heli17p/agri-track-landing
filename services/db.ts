@@ -200,6 +200,7 @@ export const dbService = {
       if (!db) return { total: 0 };
 
       try {
+          addLog(`Prüfe Cloud Status für ID: ${farmId}`);
           // Parallel count of ALL collections
           const [actSnap, fieldSnap, storeSnap, profSnap] = await Promise.all([
               getDocs(query(collection(db, 'activities'), where("farmId", "==", farmId))),

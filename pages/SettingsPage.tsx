@@ -4,7 +4,7 @@ import {
   MapPin, Truck, AlertTriangle, Info, Share2, UploadCloud, 
   Smartphone, CheckCircle2, X, Shield, Lock, Users, LogOut,
   ChevronRight, RefreshCw, Copy, WifiOff, FileText, Search, Map,
-  Signal, Activity, ArrowRightLeft, Upload, DownloadCloud
+  Signal, Activity, ArrowRightLeft, Upload, DownloadCloud, Link
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
@@ -190,12 +190,14 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   };
 
   const loadCloudData = async (farmId: string) => {
+      if (!farmId) return;
+      const cleanId = farmId.trim();
       setIsLoadingCloud(true);
       try {
         const local = await dbService.getLocalStats();
         // Fire both requests
-        const membersPromise = dbService.getFarmMembers(farmId);
-        const statsPromise = dbService.getCloudStats(farmId);
+        const membersPromise = dbService.getFarmMembers(cleanId);
+        const statsPromise = dbService.getCloudStats(cleanId);
         
         const [members, stats] = await Promise.all([membersPromise, statsPromise]);
         
@@ -212,39 +214,57 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const handleSaveAll = async () => {
       setSaving(true);
       
-      // Safety Timer: Stop spinner after 5s even if network hangs
-      const safetyTimer = setTimeout(() => {
-          if (saving) {
-              setSaving(false);
-              setShowSaveSuccess(true); // Assume local save worked
-              setTimeout(() => setShowSaveSuccess(false), 2000);
-          }
-      }, 5000);
+      // AUTO-TRIM INPUTS
+      const cleanSettings = { ...settings, farmId: settings.farmId ? settings.farmId.trim() : '' };
+      const cleanProfile = { ...profile, farmId: profile.farmId ? profile.farmId.trim() : '' };
+      
+      setSettings(cleanSettings);
+      setProfile(cleanProfile);
 
-      try {
-          // 1. Save Local & Cloud (Parallel)
-          // Note: dbService.saveSettings internally handles Cloud Sync but we don't want to block UI forever
-          await Promise.all([
-              dbService.saveSettings(settings),
-              dbService.saveFarmProfile(profile)
-          ]);
-          
-          clearTimeout(safetyTimer); // Clear timeout if successful
-
+      // Force UI cleanup after 2 seconds regardless of async result
+      const cleanupTimer = setTimeout(() => {
+          setSaving(false);
           setShowSaveSuccess(true);
           setTimeout(() => setShowSaveSuccess(false), 2000);
-          
-          // 2. Trigger Sync in Background (Do NOT await to keep UI responsive)
+      }, 500); // Super fast feedback
+
+      try {
+          // 1. Save Locally (Very Fast)
+          localStorage.setItem('agritrack_settings_full', JSON.stringify(cleanSettings));
+          localStorage.setItem('agritrack_profile', JSON.stringify(cleanProfile));
+
+          // 2. Trigger Cloud Save (Background - Fire & Forget)
+          // We don't await this to prevent UI freezing if internet is slow
           if (isCloudConfigured()) {
-              syncData().catch(e => console.warn("Background sync warning:", e));
-              // Refresh stats if we are on that tab
-              if(settings.farmId) loadCloudData(settings.farmId);
+              Promise.all([
+                  dbService.saveSettings(cleanSettings),
+                  dbService.saveFarmProfile(cleanProfile)
+              ]).then(() => {
+                  // After save, try to refresh stats if we have an ID
+                  if (cleanSettings.farmId) loadCloudData(cleanSettings.farmId);
+              }).catch(err => console.error("Background save failed:", err));
           }
       } catch (e: any) {
-          clearTimeout(safetyTimer);
           alert("Fehler beim Speichern: " + e.message);
-      } finally {
-          setSaving(false);
+      }
+      // Note: finally is handled by the timer to ensure "Saving..." disappears
+  };
+
+  const handleCheckConnection = async () => {
+      if (!settings.farmId) {
+          alert("Bitte erst eine Betriebsnummer eingeben.");
+          return;
+      }
+      setIsLoadingCloud(true);
+      const cleanId = settings.farmId.trim();
+      const stats = await dbService.getCloudStats(cleanId);
+      setIsLoadingCloud(false);
+      
+      if (stats.total >= 0) {
+          alert(`Erfolg! Verbindung zu Hof '${cleanId}' hergestellt.\n\n${stats.total} Einträge gefunden.`);
+          loadCloudData(cleanId);
+      } else {
+          alert(`Verbindung fehlgeschlagen.\nIst die Betriebsnummer '${cleanId}' korrekt?\nSind Sie online?`);
       }
   };
 
@@ -603,13 +623,22 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                               <div>
                                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Betriebsnummer (Farm ID)</label>
-                                  <input 
-                                      type="text" 
-                                      value={settings.farmId || ''}
-                                      onChange={(e) => setSettings({...settings, farmId: e.target.value})}
-                                      className="w-full p-3 border border-slate-300 rounded-xl font-mono font-bold bg-slate-50"
-                                      placeholder="LFBIS Nummer"
-                                  />
+                                  <div className="flex space-x-2">
+                                      <input 
+                                          type="text" 
+                                          value={settings.farmId || ''}
+                                          onChange={(e) => setSettings({...settings, farmId: e.target.value})}
+                                          className="flex-1 p-3 border border-slate-300 rounded-xl font-mono font-bold bg-slate-50"
+                                          placeholder="LFBIS Nummer"
+                                      />
+                                      <button 
+                                        onClick={handleCheckConnection}
+                                        className="p-3 bg-slate-100 rounded-xl text-slate-600 hover:bg-slate-200 font-bold text-sm"
+                                        title="Verbindung prüfen"
+                                      >
+                                          <Link size={18}/>
+                                      </button>
+                                  </div>
                               </div>
                               <div>
                                   <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Hof-Passwort (PIN)</label>
