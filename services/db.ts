@@ -139,6 +139,46 @@ export const dbService = {
   
   // --- FARM MANAGEMENT (NEW) ---
 
+  // Verify PIN before connecting
+  verifyFarmPin: async (farmId: string, pinCandidate: string) => {
+      if (!isCloudConfigured() || !farmId) return { valid: false, reason: "Offline" };
+      const db = getDb();
+      if (!db) return { valid: false, reason: "DB Error" };
+
+      try {
+          // Check if ANY settings document exists with this farmId
+          const q = query(collection(db, 'settings'), where("farmId", "==", farmId));
+          const snapshot = await getDocs(q);
+
+          if (snapshot.empty) {
+              // Farm doesn't exist yet -> PIN is valid (creating new farm)
+              return { valid: true, reason: "New Farm" };
+          }
+
+          // Farm exists. Check PIN on the first found config (Owner).
+          // We assume the first config found is authoritative enough for the PIN check.
+          const config = snapshot.docs[0].data();
+          const masterPin = config.farmPin;
+
+          if (!masterPin) {
+              // No PIN set on master -> Open access
+              return { valid: true, reason: "No PIN set" };
+          }
+
+          if (masterPin === pinCandidate) {
+              return { valid: true, reason: "Match" };
+          } else {
+              return { valid: false, reason: "Wrong PIN" };
+          }
+
+      } catch (e: any) {
+          console.error("PIN Check failed:", e);
+          // If offline, we can't verify, so we might have to allow locally or block.
+          // For security, blocking is better, but UX wise... let's return valid false.
+          return { valid: false, reason: "Check Failed" };
+      }
+  },
+
   // Join a farm (Register user as member)
   joinFarm: async (farmId: string, email: string) => {
       if (!isCloudConfigured() || !farmId) return;

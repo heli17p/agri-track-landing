@@ -126,6 +126,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
   const [isLoadingCloud, setIsLoadingCloud] = useState(false);
   const [showPin, setShowPin] = useState(false);
+  const [pinError, setPinError] = useState(false); // Visual Error for PIN
   
   // Debug / Log State
   const [showDebugModal, setShowDebugModal] = useState(false);
@@ -219,12 +220,27 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
   const handleSaveAll = async () => {
       setSaving(true);
+      setPinError(false);
       
       // AUTO-CLEAN INPUTS (Remove ALL whitespace)
       const cleanId = cleanFarmId(settings.farmId);
-      const cleanSettings = { ...settings, farmId: cleanId };
+      const cleanPin = settings.farmPin || '';
+      
+      const cleanSettings = { ...settings, farmId: cleanId, farmPin: cleanPin };
       const cleanProfile = { ...profile, farmId: cleanId };
       
+      // 1. PIN CHECK: If cloud configured, we MUST verify the PIN if the farm exists
+      if (isCloudConfigured() && cleanId) {
+          const verification = await dbService.verifyFarmPin(cleanId, cleanPin);
+          if (!verification.valid) {
+              // PIN Check Failed!
+              setSaving(false);
+              setPinError(true);
+              alert("Fehler: Das Hof-Passwort (PIN) ist falsch!\nZugriff verweigert.");
+              return;
+          }
+      }
+
       setSettings(cleanSettings);
       setProfile(cleanProfile);
 
@@ -263,9 +279,20 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           return;
       }
       setIsLoadingCloud(true);
+      setPinError(false);
       
       // Use aggressive cleaning for check
       const cleanId = cleanFarmId(settings.farmId);
+      const cleanPin = settings.farmPin || '';
+      
+      // Check credentials strictly
+      const verification = await dbService.verifyFarmPin(cleanId, cleanPin);
+      if (!verification.valid) {
+          setIsLoadingCloud(false);
+          setPinError(true);
+          alert(`PIN FEHLER: Zugriff auf Hof '${cleanId}' verweigert.\nDas eingegebene Passwort stimmt nicht mit dem Server überein.`);
+          return;
+      }
       
       // Update state to reflect cleaned version
       setSettings(prev => ({ ...prev, farmId: cleanId }));
@@ -657,7 +684,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                           autoComplete="off"
                                           value={settings.farmId || ''}
                                           onChange={(e) => setSettings({...settings, farmId: cleanFarmId(e.target.value)})}
-                                          className="flex-1 p-3 border border-slate-300 rounded-xl font-mono font-bold bg-slate-50"
+                                          className={`flex-1 p-3 border rounded-xl font-mono font-bold bg-slate-50 ${pinError ? 'border-red-500 ring-2 ring-red-200' : 'border-slate-300'}`}
                                           placeholder="LFBIS Nummer"
                                       />
                                       <button 
@@ -680,7 +707,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                           autoComplete="new-password" /* Strongest signal to browser not to fill */
                                           value={settings.farmPin || ''}
                                           onChange={(e) => setSettings({...settings, farmPin: e.target.value})}
-                                          className="w-full p-3 border border-slate-300 rounded-xl font-mono font-bold bg-slate-50"
+                                          className={`w-full p-3 border rounded-xl font-mono font-bold bg-slate-50 ${pinError ? 'border-red-500 ring-2 ring-red-200' : 'border-slate-300'}`}
                                           placeholder="Geheim!"
                                       />
                                       <button 
@@ -691,6 +718,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                           {showPin ? <Lock size={16}/> : <Shield size={16}/>}
                                       </button>
                                   </div>
+                                  {pinError && <p className="text-xs text-red-500 mt-1 font-bold">Passwort falsch!</p>}
                               </div>
                           </form>
                       </div>
