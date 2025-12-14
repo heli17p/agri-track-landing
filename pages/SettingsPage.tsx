@@ -256,11 +256,17 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       if(!confirm("Sind Sie absolut sicher? Dies kann nicht rückgängig gemacht werden!")) return;
 
       setIsUploading(true);
-      setUploadProgress({ status: 'Lösche...', percent: 100 });
+      setUploadProgress({ status: 'Starte Löschvorgang...', percent: 5 }); // Nicht 100% sofort
       
       try {
-          const deleted = await dbService.deleteEntireFarm(settings.farmId!, pin);
+          // Pass callback to show progress in UI
+          const deleted = await dbService.deleteEntireFarm(settings.farmId!, pin, (msg) => {
+              setUploadProgress({ status: msg, percent: 50 });
+          });
+          
+          setUploadProgress({ status: 'Fertig!', percent: 100 });
           alert(`Hof gelöscht. ${deleted} Datensätze entfernt.`);
+          
           setSettings({ ...settings, farmId: '', farmPin: '' });
           await handleSaveAll();
       } catch(e: any) {

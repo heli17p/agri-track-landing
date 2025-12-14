@@ -297,16 +297,22 @@ export const dbService = {
   },
 
   // --- DELETE ENTIRE FARM (DESTRUCTIVE) ---
-  deleteEntireFarm: async (farmId: string, pin: string) => {
+  deleteEntireFarm: async (farmId: string, pin: string, onProgress?: (msg: string) => void) => {
       if (!isCloudConfigured()) throw new Error("Keine Verbindung");
       const db = getDb();
       if (!db) throw new Error("DB Error");
 
+      const report = (msg: string) => {
+          addLog(msg);
+          if (onProgress) onProgress(msg);
+      };
+
+      report("Verifiziere PIN...");
       // 1. Verify credentials one last time
       const verify = await dbService.verifyFarmPin(farmId, pin);
       if (!verify.valid) throw new Error("Falsche PIN. Löschen verweigert.");
 
-      addLog(`LÖSCHE HOF '${farmId}' KOMPLETT...`);
+      report(`LÖSCHE HOF '${farmId}' KOMPLETT...`);
 
       // 2. Prepare deletion of ALL collections
       const collections = ['activities', 'fields', 'storages', 'profiles', 'farms'];
@@ -319,36 +325,41 @@ export const dbService = {
       let totalDeleted = 0;
 
       for (const col of collections) {
+          report(`Prüfe Sammlung: ${col}...`);
+          
           for (const idVariant of idsToCheck) {
               // Note: 'farms' collection uses document ID as farmId, others use field 'farmId'
               if (col === 'farms') {
                   try {
                       await deleteDoc(doc(db, 'farms', String(idVariant)));
-                      addLog(`- Gelöscht: Farm Mitgliedschaft (${idVariant})`);
+                      report(`- Gelöscht: Farm Mitgliedschaft (${idVariant})`);
                   } catch(e) {}
                   continue;
               }
 
               // Standard Collections
-              const q = query(collection(db, col), where("farmId", "==", idVariant));
-              const snap = await getDocs(q);
-              
-              if (!snap.empty) {
-                  const batch = writeBatch(db);
-                  snap.docs.forEach(d => {
-                      batch.delete(d.ref);
-                      totalDeleted++;
-                  });
-                  await batch.commit();
-                  addLog(`- Gelöscht: ${snap.size} Dokumente aus '${col}' (ID: ${typeof idVariant})`);
+              try {
+                  const q = query(collection(db, col), where("farmId", "==", idVariant));
+                  const snap = await getDocs(q);
+                  
+                  if (!snap.empty) {
+                      report(`Lösche ${snap.size} Einträge aus '${col}'...`);
+                      // Batch delete (max 500)
+                      const batch = writeBatch(db);
+                      snap.docs.forEach(d => {
+                          batch.delete(d.ref);
+                          totalDeleted++;
+                      });
+                      await batch.commit();
+                      report(`- OK: ${col} bereinigt.`);
+                  }
+              } catch (e: any) {
+                  report(`Fehler bei ${col}: ${e.message}`);
               }
           }
       }
 
-      // 3. Clear settings for users who had this farmId (Optional/Harder, currently we just assume the data is gone)
-      // We can't easily query ALL users settings due to security rules usually, but the data is the important part.
-      
-      addLog(`Löschen erfolgreich abgeschlossen. ${totalDeleted} Objekte entfernt.`);
+      report(`Löschen erfolgreich abgeschlossen. ${totalDeleted} Objekte entfernt.`);
       return totalDeleted;
   },
 
