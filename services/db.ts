@@ -376,47 +376,60 @@ export const dbService = {
       return uniqueRefs.length;
   },
 
-  // --- FORCE UPLOAD (FIXED ASYNC VERSION WITH RELAXED TIMEOUT) ---
+  // --- FORCE UPLOAD (INTELLIGENT DYNAMIC BATCHING) ---
   forceUploadToFarm: async (onProgress?: (status: string, percent: number) => void) => {
       if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
-      
+      const db = getDb();
+      if (!db) throw new Error("DB Error");
+
       const report = (msg: string, pct: number) => {
           addLog(`[Upload] ${msg}`);
           if (onProgress) onProgress(msg, pct);
       };
 
-      // 1. Give UI time to render loading state
-      await new Promise(resolve => setTimeout(resolve, 100));
-      report("Initialisiere...", 1);
+      // 1. Connection Check (Write Test)
+      report("Prüfe Cloud-Verbindung...", 1);
+      try {
+          const testRef = doc(db, 'diagnostics', 'ping_' + auth.currentUser?.uid);
+          await setDoc(testRef, { lastPing: Timestamp.now() });
+      } catch (e: any) {
+          throw new Error("Keine Schreibrechte oder Offline. " + e.message);
+      }
 
-      // 2. Load data carefully with delays to prevent UI blocking
-      const queue: { type: string, data: any }[] = [];
+      // 2. Load data
+      report("Analysiere lokale Daten...", 5);
+      const queue: { type: string, data: any, sizeKB: number }[] = [];
       
       try {
-          // Load Profile
-          const profiles = await dbService.getFarmProfile() || [];
-          profiles.forEach(p => queue.push({ type: 'profile', data: p }));
-          await new Promise(r => setTimeout(r, 50)); // Breath
+          const loadAndMeasure = (type: 'activity' | 'field' | 'storage' | 'profile') => {
+              let items = loadLocalData(type) as any[];
+              if (type === 'profile') {
+                  const p = items ? [items] : [];
+                  // @ts-ignore
+                  items = p.flat();
+              }
+              if (!items) return;
 
-          // Load Settings (Important for Farm ID)
+              items.forEach(item => {
+                  const json = JSON.stringify(item);
+                  const sizeBytes = new TextEncoder().encode(json).length;
+                  queue.push({ 
+                      type, 
+                      data: item, 
+                      sizeKB: Math.round(sizeBytes / 1024 * 10) / 10 
+                  });
+              });
+          };
+
+          loadAndMeasure('profile');
+          loadAndMeasure('storage');
+          loadAndMeasure('field');
+          loadAndMeasure('activity');
+
+          // Ensure Farm ID
           const settings = await loadSettingsFromStorage();
-          // We don't push settings to queue usually as they are saved separately, 
-          // but ensure we are targeting the right farm
-          if (!settings.farmId) throw new Error("Keine Farm-ID in den Einstellungen gefunden.");
+          if (!settings.farmId) throw new Error("Keine Farm-ID in den Einstellungen.");
 
-          // Load Storages
-          const storages = loadLocalData('storage') as any[] || [];
-          storages.forEach(s => queue.push({ type: 'storage', data: s }));
-          await new Promise(r => setTimeout(r, 50));
-
-          // Load Fields
-          const fields = loadLocalData('field') as any[] || [];
-          fields.forEach(f => queue.push({ type: 'field', data: f }));
-          await new Promise(r => setTimeout(r, 50));
-
-          // Load Activities
-          const activities = loadLocalData('activity') as any[] || [];
-          activities.forEach(a => queue.push({ type: 'activity', data: a }));
       } catch (e: any) {
           report("Fehler beim Lesen der Daten: " + e.message, 0);
           throw e;
@@ -427,25 +440,43 @@ export const dbService = {
           return;
       }
 
-      report(`${queue.length} Objekte bereit. Starte Upload...`, 5);
-      await new Promise(r => setTimeout(r, 500)); // Visual pause
-
-      // 3. Process in VERY small batches with RELAXED timeout for stability
-      const BATCH_SIZE = 2; // Small batch size
-      const UPLOAD_TIMEOUT = 45000; // 45 seconds per batch (relaxed)
-      
+      // 3. Process Upload with Dynamic Sizing
       let processed = 0;
       let errors = 0;
+      let i = 0;
 
-      for (let i = 0; i < queue.length; i += BATCH_SIZE) {
-          const chunk = queue.slice(i, i + BATCH_SIZE);
+      while (i < queue.length) {
+          const item = queue[i];
           
-          // Execute batch
-          const promises = chunk.map(item => {
-              // Timeout wrapper for individual item
-              const uploadPromise = saveData(item.type as any, item.data);
+          // Determine Batch Strategy
+          // If item is large (>50KB), send alone. Else, try to batch up to 5 items or 100KB total.
+          const currentBatch = [item];
+          let currentBatchSize = item.sizeKB;
+          
+          let j = i + 1;
+          if (item.sizeKB < 50) {
+              while (j < queue.length && currentBatch.length < 5 && (currentBatchSize + queue[j].sizeKB) < 100) {
+                  currentBatch.push(queue[j]);
+                  currentBatchSize += queue[j].sizeKB;
+                  j++;
+              }
+          }
+          
+          // Determine Timeout based on size (Minimum 10s + 1s per 10KB)
+          // 500KB -> 10 + 50 = 60s
+          const timeoutMs = 15000 + (currentBatchSize * 1000 * 0.5); // very generous
+          const timeoutSec = Math.round(timeoutMs / 1000);
+
+          // Report details for large items
+          if (currentBatchSize > 50) {
+              report(`Sende großes Paket (${currentBatchSize.toFixed(1)} KB, Timeout: ${timeoutSec}s)...`, Math.round((i / queue.length) * 100));
+          }
+
+          // Execute Batch
+          const promises = currentBatch.map(batchItem => {
+              const uploadPromise = saveData(batchItem.type as any, batchItem.data);
               const timeoutPromise = new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error(`Timeout (${UPLOAD_TIMEOUT/1000}s)`)), UPLOAD_TIMEOUT)
+                  setTimeout(() => reject(new Error(`Timeout (${timeoutSec}s)`)), timeoutMs)
               );
               return Promise.race([uploadPromise, timeoutPromise]);
           });
@@ -457,22 +488,24 @@ export const dbService = {
                   processed++;
               } else {
                   errors++;
-                  addLog(`[Upload] Fehler bei Item: ${res.reason}`);
+                  addLog(`[Upload] Fehler: ${res.reason}`);
               }
           });
 
-          const percent = Math.round(((i + chunk.length) / queue.length) * 100);
-          report(`Sende ${processed}/${queue.length}... (${percent}%)`, percent);
+          // Update Progress
+          i = j;
+          const percent = Math.round((i / queue.length) * 100);
+          report(`Upload Fortschritt: ${percent}% (${processed}/${queue.length})`, percent);
           
-          // Force a small pause between batches to keep UI responsive and network breathing
+          // Cool-down for network
           await new Promise(r => setTimeout(r, 200));
       }
 
       if (errors > 0) {
-          report(`Fertig. ${processed} gesendet, ${errors} fehlgeschlagen. Bitte erneut versuchen.`, 100);
-          throw new Error(`${errors} Dateien konnten nicht gesendet werden (Timeout).`);
+          report(`Fertig. ${processed} gesendet, ${errors} fehlgeschlagen.`, 100);
+          // Don't throw error to allow UI to show partial success
       } else {
-          report(`Upload erfolgreich (${processed} Objekte).`, 100);
+          report(`Upload erfolgreich (${processed} Objekte, ${queue.reduce((acc, i) => acc + i.sizeKB, 0).toFixed(1)} KB).`, 100);
       }
   },
 
