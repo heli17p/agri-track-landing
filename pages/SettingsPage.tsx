@@ -4,7 +4,7 @@ import {
   Save, User, Database, Settings, Cloud, MapPin, Plus, Trash2, 
   AlertTriangle, RefreshCw, CheckCircle, Smartphone, 
   Terminal, ShieldCheck, CloudOff, Info, DownloadCloud,
-  X, Layers, Link as LinkIcon, Lock
+  X, Layers, Link as LinkIcon, Lock, Calendar, FileText
 } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { authService } from '../services/auth';
@@ -72,6 +72,10 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   // Modals
   const [editingStorage, setEditingStorage] = useState<StorageLocation | null>(null);
   const [showDiagnose, setShowDiagnose] = useState(false);
+  const [activeDiagTab, setActiveDiagTab] = useState<'logs' | 'inspector'>('logs');
+  const [inspectorData, setInspectorData] = useState<any>(null);
+  const [inspectorLoading, setInspectorLoading] = useState(false);
+
   const [showMapPicker, setShowMapPicker] = useState<'profile' | 'storage' | null>(null);
   const [showDangerZone, setShowDangerZone] = useState(false);
 
@@ -275,6 +279,26 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           setIsUploading(false);
           setShowDangerZone(false);
       }
+  };
+
+  const runInspector = async () => {
+        if (!settings.farmId) {
+            alert("Keine Farm ID.");
+            return;
+        }
+        setInspectorLoading(true);
+        try {
+            const data = await dbService.inspectCloudData(settings.farmId);
+            if(data.error) {
+                alert("Fehler: " + data.error);
+            } else {
+                setInspectorData(data);
+            }
+        } catch (e: any) {
+            alert("Inspektor Fehler: " + e.message);
+        } finally {
+            setInspectorLoading(false);
+        }
   };
 
   return (
@@ -788,20 +812,121 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
             </div>
         )}
 
-        {/* Diagnose Modal */}
+        {/* Diagnose Modal with Tabs and Inspector */}
         {showDiagnose && (
             <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm">
-                <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl h-[80vh] flex flex-col">
-                    <div className="p-4 border-b flex justify-between items-center bg-slate-50">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl h-[85vh] flex flex-col overflow-hidden">
+                    <div className="p-4 border-b flex justify-between items-center bg-slate-50 shrink-0">
                         <h3 className="font-bold text-lg flex items-center"><Terminal size={20} className="mr-2"/> System Diagnose</h3>
                         <button onClick={() => setShowDiagnose(false)}><X/></button>
                     </div>
-                    <div className="flex-1 overflow-y-auto p-4 font-mono text-xs bg-slate-900 text-green-400 space-y-2">
-                        {dbService.getLogs().map((log, i) => (
-                            <div key={i} className="border-b border-green-900/30 pb-1">{log}</div>
-                        ))}
+                    
+                    {/* TABS */}
+                    <div className="flex border-b border-slate-200 bg-white shrink-0">
+                        <button onClick={() => setActiveDiagTab('logs')} className={`flex-1 py-3 text-xs font-bold transition-colors ${activeDiagTab === 'logs' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:bg-slate-50'}`}>Protokoll</button>
+                        <button onClick={() => setActiveDiagTab('inspector')} className={`flex-1 py-3 text-xs font-bold transition-colors ${activeDiagTab === 'inspector' ? 'text-blue-600 border-b-2 border-blue-600' : 'text-slate-400 hover:bg-slate-50'}`}>Cloud Inhalt</button>
                     </div>
-                    <div className="p-4 border-t bg-slate-800 text-slate-400 text-[10px] font-mono">
+
+                    <div className="flex-1 overflow-y-auto bg-slate-50">
+                        {activeDiagTab === 'logs' ? (
+                            // LOG VIEW
+                            <div className="p-4 font-mono text-xs bg-slate-900 text-green-400 min-h-full space-y-2">
+                                {dbService.getLogs().map((log, i) => (
+                                    <div key={i} className="border-b border-green-900/30 pb-1 break-words">{log}</div>
+                                ))}
+                            </div>
+                        ) : (
+                            // INSPECTOR VIEW
+                            <div className="p-4 space-y-6">
+                                <div className="flex justify-between items-center mb-2">
+                                    <h4 className="font-bold text-slate-700 text-sm">Gespeicherte Daten für '{settings.farmId}'</h4>
+                                    <button onClick={runInspector} className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded text-xs font-bold flex items-center hover:bg-blue-200 transition-colors shadow-sm">
+                                        {inspectorLoading ? <RefreshCw className="animate-spin mr-1" size={14}/> : <RefreshCw size={14} className="mr-1"/>} Inhalt laden
+                                    </button>
+                                </div>
+
+                                {!inspectorData ? (
+                                    <div className="text-center py-12 border-2 border-dashed border-slate-300 rounded-xl">
+                                        <Cloud size={32} className="mx-auto text-slate-300 mb-2"/>
+                                        <p className="text-sm text-slate-500">Klicke auf "Inhalt laden", um die Cloud abzufragen.</p>
+                                    </div>
+                                ) : (
+                                    <div className="space-y-6">
+                                        {/* Stats Summary */}
+                                        <div className="grid grid-cols-4 gap-2 text-center">
+                                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                                                <div className="font-bold text-lg text-slate-800">{inspectorData.activities?.length || 0}</div>
+                                                <div className="text-[10px] text-slate-500 uppercase font-bold">Aktivitäten</div>
+                                            </div>
+                                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                                                <div className="font-bold text-lg text-slate-800">{inspectorData.fields?.length || 0}</div>
+                                                <div className="text-[10px] text-slate-500 uppercase font-bold">Felder</div>
+                                            </div>
+                                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                                                <div className="font-bold text-lg text-slate-800">{inspectorData.storages?.length || 0}</div>
+                                                <div className="text-[10px] text-slate-500 uppercase font-bold">Lager</div>
+                                            </div>
+                                            <div className="bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                                                <div className="font-bold text-lg text-slate-800">{inspectorData.profiles?.length || 0}</div>
+                                                <div className="text-[10px] text-slate-500 uppercase font-bold">Profil</div>
+                                            </div>
+                                        </div>
+
+                                        {/* Activities List */}
+                                        {inspectorData.activities?.length > 0 && (
+                                            <div>
+                                                <h5 className="text-xs font-bold text-slate-500 uppercase mb-2">Letzte Aktivitäten</h5>
+                                                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                                                    {inspectorData.activities.map((a: any, i: number) => (
+                                                        <div key={i} className="p-3 text-xs flex justify-between items-center hover:bg-slate-50">
+                                                            <div>
+                                                                <span className="font-bold block text-slate-700">{new Date(a.date).toLocaleDateString()}</span>
+                                                                <span className="text-slate-500">{a.type}</span>
+                                                            </div>
+                                                            <span className="bg-slate-100 px-2 py-1 rounded text-slate-600">{a.device}</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+
+                                        {/* Fields List */}
+                                        {inspectorData.fields?.length > 0 && (
+                                            <div>
+                                                <h5 className="text-xs font-bold text-slate-500 uppercase mb-2">Felder</h5>
+                                                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100 max-h-48 overflow-y-auto">
+                                                    {inspectorData.fields.map((f: any, i: number) => (
+                                                        <div key={i} className="p-3 text-xs flex justify-between items-center hover:bg-slate-50">
+                                                            <span className="font-bold text-slate-700">{f.name}</span>
+                                                            <span className="text-slate-500">{f.area?.toFixed(2)} ha</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                        
+                                        {/* Storages List */}
+                                        {inspectorData.storages?.length > 0 && (
+                                            <div>
+                                                <h5 className="text-xs font-bold text-slate-500 uppercase mb-2">Lager</h5>
+                                                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden divide-y divide-slate-100">
+                                                    {inspectorData.storages.map((s: any, i: number) => (
+                                                        <div key={i} className="p-3 text-xs flex justify-between items-center hover:bg-slate-50">
+                                                            <span className="font-bold text-slate-700">{s.name}</span>
+                                                            <span className="text-slate-500">{s.capacity} m³ ({s.type})</span>
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            </div>
+                                        )}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                    </div>
+
+                    {/* Footer Info */}
+                    <div className="p-4 border-t bg-slate-800 text-slate-400 text-[10px] font-mono shrink-0">
                         {settings.farmId && (
                             <div>
                                 Farm ID: ['{settings.farmId}'] (Länge: {settings.farmId.length})<br/>
@@ -809,21 +934,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                             </div>
                         )}
                     </div>
-                    <div className="p-4 border-t bg-slate-100 flex justify-between items-center">
+                    
+                    <div className="p-4 border-t bg-slate-100 flex justify-between items-center shrink-0">
                         <button 
-                            onClick={async () => {
-                                const id = settings.farmId;
-                                if (!id) return alert("Keine Farm ID.");
-                                const data = await dbService.inspectCloudData(id);
-                                console.log(data);
-                                alert("Check Konsole für Details.\n" + JSON.stringify(data, null, 2).substring(0, 500) + "...");
-                            }}
-                            className="text-blue-600 font-bold text-xs"
+                            onClick={handleClearCache} 
+                            className="bg-red-100 text-red-600 px-4 py-2 rounded text-xs font-bold hover:bg-red-200 transition-colors"
                         >
-                            Cloud Inspektor starten
-                        </button>
-                        <button onClick={handleClearCache} className="bg-red-600 text-white px-4 py-2 rounded text-xs font-bold hover:bg-red-700">
-                            Cache leeren / Reset
+                            App Reset / Cache leeren
                         </button>
                     </div>
                 </div>
