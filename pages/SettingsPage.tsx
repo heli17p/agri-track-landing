@@ -218,11 +218,11 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           
           alert("Upload erfolgreich abgeschlossen!");
           loadCloudData(settings.farmId);
+          setIsUploading(false); // Only clear on success here, catch handles failure
       } catch (e: any) {
           alert(`Upload fehlgeschlagen: ${e.message}`);
-      } finally {
           setIsUploading(false);
-      }
+      } 
   };
 
   const handleManualDownload = async () => {
@@ -836,9 +836,18 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                 <Cloud size={48} className="animate-bounce mb-4 text-blue-400"/>
                 <h3 className="text-xl font-bold mb-2">{uploadProgress.status}</h3>
                 <div className="w-64 h-3 bg-slate-700 rounded-full overflow-hidden">
-                    <div className="h-full bg-blue-500 transition-all duration-300" style={{width: `${uploadProgress.percent}%`}}></div>
+                    <div 
+                        className={`h-full transition-all duration-300 ${uploadProgress.status.includes('fehlgeschlagen') ? 'bg-red-500' : 'bg-blue-500'}`} 
+                        style={{width: `${uploadProgress.percent}%`}}
+                    ></div>
                 </div>
                 <div className="mt-2 font-mono">{uploadProgress.percent}%</div>
+                
+                {uploadProgress.status.includes('fehlgeschlagen') && (
+                    <button onClick={() => setIsUploading(false)} className="mt-6 px-6 py-2 bg-white text-slate-900 rounded-full font-bold hover:bg-slate-200">
+                        Schließen
+                    </button>
+                )}
             </div>
         )}
 

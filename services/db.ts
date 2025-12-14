@@ -387,13 +387,19 @@ export const dbService = {
           if (onProgress) onProgress(msg, pct);
       };
 
-      // 1. Connection Check (Write Test)
+      // 1. Connection Check (Write Test) WITH TIMEOUT
       report("Prüfe Cloud-Verbindung...", 1);
       try {
           const testRef = doc(db, 'diagnostics', 'ping_' + auth.currentUser?.uid);
-          await setDoc(testRef, { lastPing: Timestamp.now() });
+          // Add 7s timeout for the ping to prevent hanging
+          const pingPromise = setDoc(testRef, { lastPing: Timestamp.now() });
+          const timeoutPromise = new Promise((_, reject) => 
+              setTimeout(() => reject(new Error("Zeitüberschreitung (7s)")), 7000)
+          );
+          
+          await Promise.race([pingPromise, timeoutPromise]);
       } catch (e: any) {
-          throw new Error("Keine Schreibrechte oder Offline. " + e.message);
+          addLog(`[Upload] Warnung: Verbindungstest langsam oder fehlgeschlagen (${e.message}). Versuche trotzdem Upload...`);
       }
 
       // 2. Load data
@@ -462,9 +468,8 @@ export const dbService = {
               }
           }
           
-          // Determine Timeout based on size (Minimum 10s + 1s per 10KB)
-          // 500KB -> 10 + 50 = 60s
-          const timeoutMs = 15000 + (currentBatchSize * 1000 * 0.5); // very generous
+          // Determine Timeout based on size (Minimum 15s + 1s per 2KB)
+          const timeoutMs = 15000 + (currentBatchSize * 1000 * 0.5); 
           const timeoutSec = Math.round(timeoutMs / 1000);
 
           // Report details for large items
