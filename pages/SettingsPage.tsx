@@ -1,10 +1,11 @@
+
 import React, { useState, useEffect } from 'react';
 import { 
   Save, User, Database, Settings, Cloud, MapPin, Plus, Trash2, 
   AlertTriangle, RefreshCw, CheckCircle, Smartphone, 
   Terminal, ShieldCheck, CloudOff, Info, DownloadCloud,
   X, Layers, Link as LinkIcon, Lock, Calendar, FileText, UserPlus, Eye, EyeOff, Wrench, Wifi, Activity, Server,
-  Split
+  Split, Search
 } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { authService } from '../services/auth';
@@ -87,6 +88,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   // Conflicts Tool State
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [conflictsLoading, setConflictsLoading] = useState(false);
+  const [conflictSearchId, setConflictSearchId] = useState('');
 
   // Upload State
   const [isUploading, setIsUploading] = useState(false);
@@ -122,6 +124,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       if (activeTab === 'sync' && settings.farmId) {
           loadCloudData(settings.farmId);
           setConnectMode('VIEW');
+          setConflictSearchId(settings.farmId);
       } else if (activeTab === 'sync' && !settings.farmId) {
           setConnectMode('VIEW'); // Or allow user to choose
       }
@@ -143,6 +146,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const loadAll = async () => {
       const s = await dbService.getSettings();
       setSettings(s);
+      setConflictSearchId(s.farmId || '');
       
       const p = await dbService.getFarmProfile();
       if(p.length > 0) setProfile(p[0]);
@@ -397,11 +401,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       }
   };
 
-  const loadConflicts = async () => {
-      if (!settings.farmId) return;
+  const loadConflicts = async (manualId?: string) => {
+      const targetId = manualId || conflictSearchId;
+      if (!targetId) return;
+      
       setConflictsLoading(true);
       try {
-          const list = await dbService.findFarmConflicts(settings.farmId);
+          const list = await dbService.findFarmConflicts(targetId);
           setConflicts(list);
       } finally {
           setConflictsLoading(false);
@@ -420,6 +426,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           setConflictsLoading(false);
       }
   };
+
+  const handleEmergencyConflictSolve = () => {
+      setConflictSearchId(inputFarmId);
+      setShowDiagnose(true);
+      setActiveDiagTab('conflicts');
+      loadConflicts(inputFarmId);
+  }
 
   return (
     <div className="h-full flex flex-col bg-slate-100 relative">
@@ -739,7 +752,18 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                             </div>
                                         </div>
 
-                                        {connectError && <div className="text-red-600 text-sm font-bold">{connectError}</div>}
+                                        {connectError && (
+                                            <div className="text-red-600 text-sm font-bold bg-red-50 p-3 rounded-lg border border-red-100">
+                                                {connectError}
+                                                {/* Emergency Conflict Button */}
+                                                <button 
+                                                    onClick={handleEmergencyConflictSolve}
+                                                    className="block mt-2 w-full text-center text-xs bg-white border border-red-200 text-red-600 py-2 rounded font-bold hover:bg-red-50"
+                                                >
+                                                    🛠 Probleme mit diesem Hof beheben
+                                                </button>
+                                            </div>
+                                        )}
 
                                         <button 
                                             onClick={handleJoinFarm}
@@ -1145,10 +1169,26 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                     Löschen Sie hier verwaiste oder doppelte Hof-Einträge. Lassen Sie nur den Eintrag stehen, der Ihre E-Mail und PIN hat.
                                 </div>
 
+                                <div className="bg-white p-3 rounded border flex items-center space-x-2">
+                                    <input 
+                                        type="text" 
+                                        value={conflictSearchId}
+                                        onChange={(e) => setConflictSearchId(e.target.value)}
+                                        placeholder="Farm ID..."
+                                        className="flex-1 p-2 border rounded font-bold"
+                                    />
+                                    <button 
+                                        onClick={() => loadConflicts()}
+                                        className="p-2 bg-blue-50 text-blue-600 rounded border border-blue-200"
+                                    >
+                                        <Search size={16}/>
+                                    </button>
+                                </div>
+
                                 {conflictsLoading && <div className="text-center p-4">Lade Einträge...</div>}
 
                                 {!conflictsLoading && conflicts.length === 0 && (
-                                    <div className="text-center p-4">Keine Konflikte gefunden.</div>
+                                    <div className="text-center p-4">Keine Konflikte gefunden für '{conflictSearchId}'.</div>
                                 )}
 
                                 {!conflictsLoading && conflicts.map((c, i) => (
@@ -1178,7 +1218,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                 ))}
                                 
                                 <button 
-                                    onClick={loadConflicts}
+                                    onClick={() => loadConflicts()}
                                     className="w-full bg-slate-100 text-slate-600 py-2 rounded font-bold hover:bg-slate-200"
                                 >
                                     Liste aktualisieren
@@ -1333,3 +1373,4 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
     </div>
   );
 };
+
