@@ -4,7 +4,7 @@ import {
   MapPin, Truck, AlertTriangle, Info, Share2, UploadCloud, 
   Smartphone, CheckCircle2, X, Shield, Lock, Users, LogOut,
   ChevronRight, RefreshCw, Copy, WifiOff, FileText, Search, Map,
-  Signal, Activity, ArrowRightLeft, Upload, DownloadCloud, Link
+  Signal, Activity, ArrowRightLeft, Upload, DownloadCloud, Link, RotateCcw
 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
@@ -271,6 +271,16 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           alert("Fehler beim Speichern: " + e.message);
       }
       // Note: finally is handled by the timer to ensure "Saving..." disappears
+  };
+
+  const handleResetConnection = () => {
+      if (window.confirm("Möchten Sie die gespeicherte Hof-Verbindung wirklich löschen? (Lokale Daten bleiben erhalten)")) {
+          setSettings(prev => ({ ...prev, farmId: '', farmPin: '' }));
+          const resetSettings = { ...settings, farmId: '', farmPin: '' };
+          localStorage.setItem('agritrack_settings_full', JSON.stringify(resetSettings));
+          setCloudStats({ total: -1, activities: 0, fields: 0, storages: 0, profiles: 0 });
+          alert("Verbindung getrennt. Bitte Nummer neu eingeben.");
+      }
   };
 
   const handleCheckConnection = async () => {
@@ -543,7 +553,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
               </div>
           )}
 
-          {/* GENERAL TAB (UPDATED) */}
+          {/* GENERAL TAB */}
           {activeTab === 'general' && (
               <div className="p-4 space-y-6 max-w-2xl mx-auto">
                   <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 space-y-5">
@@ -679,7 +689,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                   <div className="flex space-x-2">
                                       <input 
                                           type="text" 
-                                          name="agri_farm_id_custom_field" /* Unique name to avoid standard 'username' detection */
+                                          name="agri_farm_id_custom_field" 
                                           id="agri_farm_id_input"
                                           autoComplete="off"
                                           value={settings.farmId || ''}
@@ -687,14 +697,27 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                           className={`flex-1 p-3 border rounded-xl font-mono font-bold bg-slate-50 ${pinError ? 'border-red-500 ring-2 ring-red-200' : 'border-slate-300'}`}
                                           placeholder="LFBIS Nummer"
                                       />
+                                      {/* Reset Button to clear field if corrupt */}
                                       <button 
-                                        type="button" /* Prevent form submit */
+                                        type="button" 
+                                        onClick={handleResetConnection}
+                                        className="p-3 bg-red-50 text-red-600 border border-red-100 rounded-xl hover:bg-red-100"
+                                        title="Eingabe löschen & Reset"
+                                      >
+                                          <Trash2 size={18} />
+                                      </button>
+                                      <button 
+                                        type="button" 
                                         onClick={handleCheckConnection}
-                                        className="p-3 bg-slate-100 rounded-xl text-slate-600 hover:bg-slate-200 font-bold text-sm"
+                                        className="p-3 bg-slate-100 rounded-xl text-slate-600 hover:bg-slate-200 font-bold text-sm border border-slate-200"
                                         title="Verbindung prüfen"
                                       >
                                           <Link size={18}/>
                                       </button>
+                                  </div>
+                                  {/* DEBUG DISPLAY: Show EXACT value including whitespace */}
+                                  <div className="mt-1 text-[10px] text-slate-400 font-mono">
+                                      Gespeichert: '{settings.farmId}'
                                   </div>
                               </div>
                               <div>
@@ -702,9 +725,9 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                   <div className="relative">
                                       <input 
                                           type={showPin ? "text" : "password"}
-                                          name="agri_farm_pin_custom_field" /* Unique name to avoid standard 'password' detection */
+                                          name="agri_farm_pin_custom_field" 
                                           id="agri_farm_pin_input"
-                                          autoComplete="new-password" /* Strongest signal to browser not to fill */
+                                          autoComplete="new-password" 
                                           value={settings.farmPin || ''}
                                           onChange={(e) => setSettings({...settings, farmPin: e.target.value})}
                                           className={`w-full p-3 border rounded-xl font-mono font-bold bg-slate-50 ${pinError ? 'border-red-500 ring-2 ring-red-200' : 'border-slate-300'}`}
@@ -733,7 +756,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                           
                           <div className="grid grid-cols-1 gap-3">
                               
-                              {/* --- DATA SYNC & COMPARISON (NEW) --- */}
+                              {/* --- DATA SYNC & COMPARISON --- */}
                               <div className="bg-slate-50 rounded-xl border border-slate-100 overflow-hidden">
                                   <div className="p-3 bg-slate-100 border-b border-slate-200 flex justify-between items-center">
                                       <span className="text-xs font-bold text-slate-500 uppercase flex items-center">
@@ -763,7 +786,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                   )}
 
                                   <div className="p-3 space-y-4">
-                                      {/* DOWNLOAD BUTTON (New Feature) */}
+                                      {/* DOWNLOAD BUTTON */}
                                       <div className="flex items-center justify-between">
                                           <div className="flex items-center">
                                               <div className="p-2 bg-blue-100 text-blue-600 rounded-lg mr-3">

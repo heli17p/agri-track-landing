@@ -71,20 +71,24 @@ export const loadSettings = (): AppSettings => {
 
 // Modified saveSettings to sync to Cloud
 export const saveSettings = async (settings: AppSettings) => {
+  // Enforce Clean Farm ID (No spaces)
+  const cleanSettings = { ...settings };
+  if (cleanSettings.farmId) cleanSettings.farmId = cleanSettings.farmId.trim();
+
   // 1. Local Save
-  localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+  localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(cleanSettings));
 
   // 2. Cloud Save (if logged in)
   if (isCloudConfigured()) {
       try {
           const userId = auth.currentUser.uid;
           // IMPORTANT: If farmId is empty, we don't sync this properly or it goes to 'undefined'
-          if (!settings.farmId) {
+          if (!cleanSettings.farmId) {
              dbService.logEvent("Warnung: Keine Farm-ID beim Speichern gesetzt.");
           }
 
           await setDoc(doc(db, "settings", userId), {
-              ...settings,
+              ...cleanSettings,
               updatedAt: Timestamp.now(),
               userId: userId
           });
