@@ -427,6 +427,22 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       }
   };
 
+  const handleForceDeleteFarm = async () => {
+      if (!conflictSearchId) return;
+      if (!confirm(`WARNUNG: Dies löscht blind ALLE Einstellungs-Dokumente für ID '${conflictSearchId}'. Nutzen Sie dies nur, wenn der Hof blockiert ist. Fortfahren?`)) return;
+      
+      setConflictsLoading(true);
+      try {
+          await dbService.forceDeleteSettings(conflictSearchId);
+          alert("Bereinigung durchgeführt. Bitte versuchen Sie nun, den Hof neu zu erstellen.");
+          loadConflicts();
+      } catch (e: any) {
+          alert("Fehler: " + e.message);
+      } finally {
+          setConflictsLoading(false);
+      }
+  };
+
   const handleEmergencyConflictSolve = () => {
       setConflictSearchId(inputFarmId);
       setShowDiagnose(true);
@@ -1188,7 +1204,27 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                 {conflictsLoading && <div className="text-center p-4">Lade Einträge...</div>}
 
                                 {!conflictsLoading && conflicts.length === 0 && (
-                                    <div className="text-center p-4">Keine Konflikte gefunden für '{conflictSearchId}'.</div>
+                                    <div className="text-center p-4 space-y-4">
+                                        <p>Keine Konflikte gefunden für '{conflictSearchId}'.</p>
+                                        
+                                        {/* Emergency Force Delete if ID is typed but no conflicts shown */}
+                                        {conflictSearchId && (
+                                            <div className="bg-red-50 border border-red-200 p-4 rounded-lg">
+                                                <h4 className="font-bold text-red-700 mb-2 flex items-center justify-center">
+                                                    <AlertTriangle size={16} className="mr-2"/> Notfall: Blockade entfernen
+                                                </h4>
+                                                <p className="text-[10px] text-red-600 mb-3">
+                                                    Wenn der Hof trotzdem blockiert ist, klicken Sie hier, um ALLE Einstellungen für diese ID blind zu löschen.
+                                                </p>
+                                                <button 
+                                                    onClick={handleForceDeleteFarm}
+                                                    className="w-full bg-red-600 text-white py-2 rounded font-bold text-xs hover:bg-red-700"
+                                                >
+                                                    Alle Einstellungen für '{conflictSearchId}' blind löschen
+                                                </button>
+                                            </div>
+                                        )}
+                                    </div>
                                 )}
 
                                 {!conflictsLoading && conflicts.map((c, i) => (

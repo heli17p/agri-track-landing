@@ -1,3 +1,4 @@
+
 import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, DEFAULT_SETTINGS, FeedbackTicket } from '../types';
 import { saveData, loadLocalData, saveSettings as saveSettingsToStorage, loadSettings as loadSettingsFromStorage, fetchCloudData, fetchCloudSettings, isCloudConfigured, auth, hardReset } from './storage';
 import { collection, doc, setDoc, getDoc, getDocs, query, where, updateDoc, arrayUnion, Timestamp, deleteDoc, writeBatch, getDocsFromServer } from 'firebase/firestore';
@@ -214,6 +215,35 @@ export const dbService = {
       if (!db) throw new Error("DB Error");
       await deleteDoc(doc(db, 'settings', docId));
       addLog(`Konflikt gelöst: Settings Dokument ${docId} gelöscht.`);
+  },
+
+  forceDeleteSettings: async (farmId: string) => {
+      if (!isCloudConfigured()) throw new Error("Offline");
+      const db = getDb();
+      if (!db) throw new Error("DB Error");
+
+      const idsToCheck = [String(farmId)];
+      const numId = Number(farmId);
+      if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
+
+      const batch = writeBatch(db);
+      let count = 0;
+
+      for(const id of idsToCheck) {
+          const q = query(collection(db, 'settings'), where("farmId", "==", id));
+          const snap = await getDocsFromServer(q);
+          snap.docs.forEach(d => {
+              batch.delete(d.ref);
+              count++;
+          });
+      }
+
+      if(count > 0) {
+          await batch.commit();
+          addLog(`Notfall-Bereinigung: ${count} Settings-Dokumente für ID '${farmId}' gelöscht.`);
+      } else {
+          addLog(`Notfall-Bereinigung: Keine Dokumente gefunden für ID '${farmId}' (vielleicht schon gelöscht?).`);
+      }
   },
 
   // --- DATA TYPE REPAIR TOOL ---
@@ -942,3 +972,4 @@ export const dbService = {
     return () => { listeners.change = listeners.change.filter(l => l !== cb); };
   }
 };
+
