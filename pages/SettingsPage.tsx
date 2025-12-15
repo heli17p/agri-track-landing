@@ -51,6 +51,26 @@ const LocationPickerMap = ({ position, onPick, icon }: { position: { lat: number
     return position ? <Marker position={position} icon={icon || farmIcon} /> : null;
 };
 
+// --- ERROR TRANSLATION HELPER ---
+const translateError = (e: any): string => {
+    const msg = e?.message || String(e);
+    
+    if (msg.includes("Failed to get documents from server")) {
+        return "Verbindungsfehler: Der Server konnte nicht erreicht werden. Bitte prüfen Sie Ihre Internetverbindung.";
+    }
+    if (msg.includes("offline")) {
+        return "Sie sind offline. Diese Aktion erfordert eine Internetverbindung.";
+    }
+    if (msg.includes("permission")) {
+        return "Zugriff verweigert. Keine Berechtigung.";
+    }
+    if (msg.includes("deadline-exceeded")) {
+        return "Zeitüberschreitung. Die Verbindung ist zu langsam.";
+    }
+    
+    return msg; // Fallback to original
+};
+
 // --- MAIN COMPONENT ---
 interface Props {
     initialTab?: 'profile' | 'storage' | 'general' | 'sync';
@@ -190,7 +210,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
       } catch (e) {
           console.error(e);
-          alert("Fehler beim Speichern.");
+          alert("Fehler beim Speichern: " + translateError(e));
       } finally {
           setIsSaving(false);
       }
@@ -289,7 +309,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           loadCloudData(settings.farmId);
           setIsUploading(false);
       } catch (e: any) {
-          alert(`Upload fehlgeschlagen: ${e.message}`);
+          alert(`Upload fehlgeschlagen: ${translateError(e)}`);
           setIsUploading(false);
       } 
   };
@@ -302,7 +322,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           await loadAll();
           alert("Daten erfolgreich heruntergeladen.");
       } catch (e) {
-          alert("Download Fehler (Offline?).");
+          alert("Download Fehler: " + translateError(e));
       } finally {
           setIsUploading(false);
       }
@@ -316,7 +336,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           setUploadProgress({ status: res.message, percent: 100 });
           alert(res.message);
       } catch (e: any) {
-          alert("Fehler: " + e.message);
+          alert("Fehler: " + translateError(e));
       } finally {
           setIsUploading(false);
       }
@@ -347,7 +367,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           setSettings({ ...settings, farmId: '', farmPin: '' });
           await handleSaveAll();
       } catch(e: any) {
-          alert("Fehler: " + e.message);
+          alert("Fehler: " + translateError(e));
       } finally {
           setIsUploading(false);
           setShowDangerZone(false);
@@ -363,12 +383,12 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
         try {
             const data = await dbService.inspectCloudData(settings.farmId);
             if(data.error) {
-                alert("Fehler: " + data.error);
+                alert("Fehler: " + translateError(data.error));
             } else {
                 setInspectorData(data);
             }
         } catch (e: any) {
-            alert("Inspektor Fehler: " + e.message);
+            alert("Inspektor Fehler: " + translateError(e));
         } finally {
             setInspectorLoading(false);
         }
@@ -395,7 +415,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           analyzeRepair(); // Refresh
           loadCloudData(settings.farmId); // Update Main Stats
       } catch (e: any) {
-          alert("Fehler: " + e.message);
+          alert("Fehler: " + translateError(e));
       } finally {
           setRepairLoading(false);
       }
@@ -409,6 +429,9 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       try {
           const list = await dbService.findFarmConflicts(targetId);
           setConflicts(list);
+      } catch (e) {
+          // Silent catch or simple log as this runs often
+          console.warn("Load conflicts failed:", e);
       } finally {
           setConflictsLoading(false);
       }
@@ -421,7 +444,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           await dbService.deleteSettingsDoc(docId);
           await loadConflicts(); // Refresh
       } catch(e) {
-          alert("Fehler beim Löschen");
+          alert("Fehler beim Löschen: " + translateError(e));
       } finally {
           setConflictsLoading(false);
       }
@@ -434,10 +457,11 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
       setConflictsLoading(true);
       try {
           await dbService.forceDeleteSettings(conflictSearchId);
-          alert("Bereinigung durchgeführt. Bitte versuchen Sie nun, den Hof neu zu erstellen.");
-          loadConflicts();
+          alert("Bereinigung erfolgreich durchgeführt. Bitte versuchen Sie nun, den Hof neu zu erstellen.");
+          // Try to refresh list, but don't error if it fails (because we just deleted it)
+          loadConflicts().catch(() => setConflicts([]));
       } catch (e: any) {
-          alert("Fehler: " + e.message);
+          alert("Fehler: " + translateError(e));
       } finally {
           setConflictsLoading(false);
       }
