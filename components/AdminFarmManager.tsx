@@ -1,7 +1,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/db';
-import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon, Terminal } from 'lucide-react';
+import { authService } from '../services/auth'; // Import Auth
+import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon, Terminal, LogIn } from 'lucide-react';
 
 const getErrorMessage = (e: any): string => {
     const msg = e?.message || String(e);
@@ -24,9 +25,13 @@ export const AdminFarmManager: React.FC = () => {
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
     const [searchMode, setSearchMode] = useState(false);
+    const [currentUser, setCurrentUser] = useState<any>(null);
 
-    // Initial load disabled to prevent immediate error
-    // useEffect(() => { loadFarms(); }, []);
+    useEffect(() => { 
+        // Track auth state to show user status
+        const unsub = authService.onAuthStateChanged((u) => setCurrentUser(u));
+        return () => unsub();
+    }, []);
 
     const loadAllFarms = async () => {
         setLoading(true);
@@ -104,7 +109,24 @@ export const AdminFarmManager: React.FC = () => {
                     </p>
                 </div>
                 
-                <div className="flex space-x-2 w-full md:w-auto">
+                {/* Auth Status Banner */}
+                <div className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center ${currentUser ? 'bg-green-900/30 text-green-400 border border-green-800' : 'bg-red-900/30 text-red-400 border border-red-800'}`}>
+                    {currentUser ? (
+                        <>
+                            <User size={14} className="mr-2"/>
+                            Angemeldet: {currentUser.email}
+                        </>
+                    ) : (
+                        <>
+                            <LogIn size={14} className="mr-2"/>
+                            Nicht eingeloggt (Nur lokale Ansicht)
+                        </>
+                    )}
+                </div>
+            </div>
+
+            <div className="mb-4">
+                 <div className="flex space-x-2 w-full md:w-auto">
                     <button 
                         onClick={loadAllFarms} 
                         disabled={loading}

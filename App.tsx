@@ -7,7 +7,7 @@ import { AgriTrackApp } from './components/AgriTrackApp';
 import { AppShowcase } from './components/AppShowcase';
 import { AuthPage } from './pages/AuthPage';
 import { Tab } from './types';
-import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight, LogOut, CloudOff, Database, Mail } from 'lucide-react';
+import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight, LogOut, CloudOff, Database, Mail, UserPlus } from 'lucide-react';
 import { authService } from './services/auth';
 import { dbService } from './services/db';
 import { syncData } from './services/sync';
@@ -19,6 +19,7 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
     const [cloudPass, setCloudPass] = useState('');
     const [error, setError] = useState(false);
     const [isCloudAdmin, setIsCloudAdmin] = useState(false);
+    const [isRegistering, setIsRegistering] = useState(false);
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
@@ -29,7 +30,11 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
         // Option 1: Real Cloud Auth
         if (isCloudAdmin && email && cloudPass) {
             try {
-                await authService.login(email, cloudPass);
+                if (isRegistering) {
+                    await authService.register(email, cloudPass);
+                } else {
+                    await authService.login(email, cloudPass);
+                }
                 onLogin(); // Success
             } catch (e) {
                 setError(true);
@@ -69,7 +74,7 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
                             <input 
                                 type="checkbox" 
                                 checked={isCloudAdmin} 
-                                onChange={(e) => setIsCloudAdmin(e.target.checked)}
+                                onChange={(e) => { setIsCloudAdmin(e.target.checked); setIsRegistering(false); }}
                                 className="sr-only peer"
                             />
                             <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
@@ -94,11 +99,21 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
                                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
                                 <input 
                                     type="password" 
-                                    placeholder="Admin Passwort"
+                                    placeholder="Passwort"
                                     className="w-full border border-slate-300 pl-10 p-3 rounded-lg outline-none focus:ring-2 focus:ring-red-500"
                                     value={cloudPass}
                                     onChange={e => setCloudPass(e.target.value)}
                                 />
+                            </div>
+                            
+                            <div className="flex justify-center text-xs">
+                                <button 
+                                    type="button"
+                                    onClick={() => setIsRegistering(!isRegistering)}
+                                    className={`font-bold hover:underline ${isRegistering ? 'text-blue-600' : 'text-slate-500'}`}
+                                >
+                                    {isRegistering ? 'Zurück zum Login' : 'Noch kein Konto? Hier Registrieren'}
+                                </button>
                             </div>
                         </>
                     ) : (
@@ -114,10 +129,10 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
                         </div>
                     )}
 
-                    {error && <p className="text-xs text-red-500 mt-1 font-bold">Anmeldung fehlgeschlagen.</p>}
+                    {error && <p className="text-xs text-red-500 mt-1 font-bold">Anmeldung/Registrierung fehlgeschlagen.</p>}
                     
-                    <button disabled={loading} className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold flex items-center justify-center hover:bg-slate-800 disabled:opacity-50">
-                        {loading ? 'Prüfe...' : 'Anmelden'} <ArrowRight size={16} className="ml-2"/>
+                    <button disabled={loading} className={`w-full text-white py-3 rounded-lg font-bold flex items-center justify-center disabled:opacity-50 ${isRegistering ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-900 hover:bg-slate-800'}`}>
+                        {loading ? 'Lade...' : (isRegistering ? 'Konto erstellen' : 'Anmelden')} <ArrowRight size={16} className="ml-2"/>
                     </button>
                 </form>
             </div>
