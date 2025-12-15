@@ -105,12 +105,12 @@ export const AdminFarmManager: React.FC = () => {
         try {
             const result = await dbService.forceDeleteSettings(searchTerm);
             
-            if (result.permissionErrors > 0 && result.count === 0) {
-                alert(`Fehler: Der Server hat den Zugriff auf ${result.permissionErrors} Einträge verweigert. Sie können diese als App-Admin nicht löschen. Bitte nutzen Sie die Firebase Console.`);
-            } else if (result.count > 0) {
+            if (result.count > 0) {
                 alert(`Erfolg: ${result.count} Einträge gelöscht.`);
+            } else if (result.permissionErrors > 0) {
+                alert(`FEHLER: Der Server hat den Zugriff auf ${result.permissionErrors} Einträge verweigert.\n\nDas bedeutet, der Hof existiert, gehört aber einem anderen Nutzer. Da Sie in der App kein "Super-Admin" sind, können Sie ihn nicht löschen. Bitte nutzen Sie die Firebase Console.`);
             } else {
-                alert("Keine löschbaren Einträge gefunden.");
+                alert(`Keine Einträge gefunden.\n\nACHTUNG: Wenn die App sagt, der Hof existiert, aber hier "0" steht, dann ist er durch Sicherheitsregeln für Sie UNSICHTBAR. Bitte nutzen Sie die Firebase Console.`);
             }
             
             handleServerSearch();

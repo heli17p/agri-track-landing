@@ -1,4 +1,3 @@
-
 import { 
     getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, 
     deleteDoc, updateDoc, Timestamp, writeBatch, getDocsFromServer 
@@ -562,9 +561,9 @@ export const dbService = {
 
         for(const id of idsToCheck) {
             try {
-                // Use getDocs instead of getDocsFromServer to be less aggressive on permissions
+                // IMPORTANT: Use getDocsFromServer to ensure we are not checking an empty cache
                 const q = query(collection(db, 'settings'), where("farmId", "==", id));
-                const snap = await getDocs(q);
+                const snap = await getDocsFromServer(q);
                 
                 snap.docs.forEach(d => {
                     try {
@@ -576,6 +575,7 @@ export const dbService = {
                 });
             } catch (e: any) {
                 console.warn(`Löschen für ID-Variante '${id}' fehlgeschlagen:`, e);
+                // Catch permission denied explicitly
                 if (e.message?.includes('permission') || e.code === 'permission-denied' || e.message?.includes('Failed to get documents')) {
                     permissionErrors++;
                 }
@@ -587,7 +587,7 @@ export const dbService = {
             addLog(`Notfall-Bereinigung: ${count} Settings-Dokumente für ID '${farmId}' gelöscht.`);
             return { success: true, count, permissionErrors };
         } else {
-            addLog(`Notfall-Bereinigung: Keine Dokumente gefunden für ID '${farmId}' (vielleicht schon gelöscht?).`);
+            addLog(`Notfall-Bereinigung: Keine Dokumente gefunden für ID '${farmId}' (Permission Errors: ${permissionErrors}).`);
             return { success: true, count: 0, permissionErrors };
         }
     },
@@ -611,4 +611,3 @@ export const dbService = {
         });
     }
 };
-
