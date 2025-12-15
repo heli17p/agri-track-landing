@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth'; // Import Auth
-import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon, Terminal, LogIn, Eraser } from 'lucide-react';
+import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon, Terminal, LogIn, Eraser, ExternalLink } from 'lucide-react';
 
 const getErrorMessage = (e: any): string => {
     const msg = e?.message || String(e);
@@ -13,7 +13,7 @@ const getErrorMessage = (e: any): string => {
     
     // Catch the specific SDK error regarding cache/server mismatch
     if (msg.includes("Failed to get documents from server") || msg.includes("documents may exist in the local cache")) {
-        return "Zugriff verweigert: Der Server blockiert die Anfrage. (Ihnen fehlen wahrscheinlich die Admin-Rechte in den Firestore-Regeln, um fremde Daten zu lesen/löschen).";
+        return "Zugriff verweigert: Der Server blockiert die Anfrage. (Der Hof gehört einem anderen User).";
     }
     
     return msg;
@@ -26,6 +26,7 @@ export const AdminFarmManager: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [searchMode, setSearchMode] = useState(false);
     const [currentUser, setCurrentUser] = useState<any>(null);
+    const [showConsoleLink, setShowConsoleLink] = useState(false);
 
     useEffect(() => { 
         // Track auth state to show user status
@@ -37,6 +38,7 @@ export const AdminFarmManager: React.FC = () => {
         setLoading(true);
         setError(null);
         setSearchMode(false);
+        setShowConsoleLink(false);
         try {
             const list = await dbService.adminGetAllFarms();
             setFarms(list);
@@ -57,6 +59,7 @@ export const AdminFarmManager: React.FC = () => {
         
         setLoading(true);
         setError(null);
+        setShowConsoleLink(false);
         setSearchMode(true);
         try {
             // Use findFarmConflicts which performs a query by ID (allowed by rules usually)
@@ -102,15 +105,18 @@ export const AdminFarmManager: React.FC = () => {
         if (!confirm(`NOTFALL: Möchten Sie BLIND versuchen, alle Einträge mit Farm-ID '${searchTerm}' zu löschen? Nutzen Sie dies nur, wenn der Hof blockiert ist.`)) return;
 
         setLoading(true);
+        setShowConsoleLink(false);
         try {
             const result = await dbService.forceDeleteSettings(searchTerm);
             
             if (result.count > 0) {
                 alert(`Erfolg: ${result.count} Einträge gelöscht.`);
             } else if (result.permissionErrors > 0) {
-                alert(`FEHLER: Der Server hat den Zugriff auf ${result.permissionErrors} Einträge verweigert.\n\nDas bedeutet, der Hof existiert, gehört aber einem anderen Nutzer. Da Sie in der App kein "Super-Admin" sind, können Sie ihn nicht löschen. Bitte nutzen Sie die Firebase Console.`);
+                // Trigger Console Link
+                setShowConsoleLink(true);
             } else {
-                alert(`Keine Einträge gefunden.\n\nACHTUNG: Wenn die App sagt, der Hof existiert, aber hier "0" steht, dann ist er durch Sicherheitsregeln für Sie UNSICHTBAR. Bitte nutzen Sie die Firebase Console.`);
+                // If nothing found but we know it exists, it's hidden by rules
+                setShowConsoleLink(true);
             }
             
             handleServerSearch();
@@ -193,7 +199,7 @@ export const AdminFarmManager: React.FC = () => {
             </div>
 
             {/* Error Banner */}
-            {error && (
+            {error && !showConsoleLink && (
                 <div className={`border p-4 rounded-xl mb-4 flex items-start ${error.includes("Keine sichtbaren") ? 'bg-slate-800 border-slate-600 text-slate-300' : 'bg-red-900/30 border-red-500/50 text-red-200'}`}>
                     {error.includes("Keine sichtbaren") ? <Search className="shrink-0 mr-3 mt-0.5"/> : <AlertOctagon className="shrink-0 mr-3 mt-0.5" />}
                     <div>
@@ -203,8 +209,32 @@ export const AdminFarmManager: React.FC = () => {
                 </div>
             )}
 
+            {/* DIRECT LINK TO FIREBASE CONSOLE (Visible on Permission Error) */}
+            {showConsoleLink && (
+                <div className="bg-amber-900/20 border border-amber-600/50 p-4 rounded-xl mb-6 animate-in slide-in-from-top-2">
+                    <h4 className="text-amber-500 font-bold mb-2 flex items-center">
+                        <AlertTriangle size={18} className="mr-2"/> Zugriff verweigert (Sicherheitsregeln)
+                    </h4>
+                    <p className="text-slate-300 text-sm mb-4">
+                        Der Hof existiert, gehört aber einem anderen Nutzerkonto (oder "Gast"). 
+                        Die App darf diese Daten aus Sicherheitsgründen nicht löschen.
+                        <br/><br/>
+                        <strong>Lösung:</strong> Sie müssen den Eintrag "Settings" mit der ID <code>{searchTerm}</code> manuell in der Datenbank-Konsole löschen.
+                    </p>
+                    <a 
+                        href="https://console.firebase.google.com/project/agritrack-austria/firestore/data/~2Fsettings" 
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-bold w-full md:w-auto shadow-lg flex items-center justify-center transition-colors"
+                    >
+                        <ExternalLink size={18} className="mr-2"/>
+                        Firebase Console öffnen (Settings)
+                    </a>
+                </div>
+            )}
+
             {/* EMERGENCY DELETE BUTTON (Visible when search finds nothing but term exists) */}
-            {farms.length === 0 && searchTerm && !loading && (
+            {farms.length === 0 && searchTerm && !loading && !showConsoleLink && (
                 <div className="bg-red-900/20 border border-red-800 p-4 rounded-xl mb-6 animate-in slide-in-from-top-2">
                     <h4 className="text-red-400 font-bold mb-2 flex items-center">
                         <AlertTriangle size={18} className="mr-2"/> Notfall: Geister-Eintrag löschen?
@@ -282,15 +312,6 @@ export const AdminFarmManager: React.FC = () => {
                                         </td>
                                         <td className="p-4 text-right">
                                             <div className="flex justify-end space-x-2">
-                                                {isMe && (
-                                                    <button 
-                                                        onClick={() => handleDelete(farm.docId, farm.farmId)}
-                                                        className="bg-blue-900/20 hover:bg-blue-600 text-blue-400 hover:text-white p-2 rounded-lg transition-colors border border-blue-900/50 hover:border-blue-500 shadow-sm"
-                                                        title="Mein Profil zurücksetzen"
-                                                    >
-                                                        <Eraser size={16} />
-                                                    </button>
-                                                )}
                                                 <button 
                                                     onClick={() => handleDelete(farm.docId, farm.farmId)}
                                                     className="bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white p-2 rounded-lg transition-colors border border-red-900/50 hover:border-red-500 shadow-sm"
