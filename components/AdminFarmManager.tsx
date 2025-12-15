@@ -5,10 +5,17 @@ import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctag
 
 const getErrorMessage = (e: any): string => {
     const msg = e?.message || String(e);
-    if (msg.includes("permission")) return "Zugriff verweigert (Firebase Rules). Du bist kein Admin in der Datenbank.";
+    if (msg.includes("permission") || msg.includes("Missing or insufficient permissions")) {
+        return "Zugriff verweigert (Permission Denied). Ihr Google-Konto hat keine Admin-Rechte in den Firestore-Regeln.";
+    }
     if (msg.includes("offline")) return "Offline. Bitte Internetverbindung prüfen.";
     if (msg.includes("deadline")) return "Zeitüberschreitung. Verbindung zu langsam.";
-    if (msg.includes("Failed to get documents from server")) return "Verbindungsfehler: Der Server konnte nicht erreicht werden. Bitte Internetverbindung prüfen.";
+    
+    // Dieser Fehler kommt oft, wenn Rules den Zugriff blockieren, aber der Client einen Server-Fetch erzwingt
+    if (msg.includes("Failed to get documents from server")) {
+        return "Zugriff blockiert oder Netzwerkfehler. Höchstwahrscheinlich fehlen Ihrem Konto die Leserechte für die gesamte 'settings'-Collection in der Firebase Console.";
+    }
+    
     return msg;
 };
 
@@ -29,7 +36,7 @@ export const AdminFarmManager: React.FC = () => {
             const list = await dbService.adminGetAllFarms();
             setFarms(list);
         } catch (e: any) {
-            console.error(e);
+            console.error("Admin Load Error:", e);
             setError(getErrorMessage(e));
             // Don't clear farms, maybe we want to keep old data visible? No, consistency first.
             setFarms([]);
@@ -99,6 +106,7 @@ export const AdminFarmManager: React.FC = () => {
                     <div>
                         <h4 className="font-bold">Laden fehlgeschlagen</h4>
                         <p className="text-sm">{error}</p>
+                        <p className="text-xs text-red-300 mt-2">Tipp: Falls Sie der Entwickler sind, prüfen Sie die "Firestore Rules" in der Firebase Console. Erlauben Sie <code>list</code> auf <code>settings</code> für Ihre UID.</p>
                     </div>
                 </div>
             )}

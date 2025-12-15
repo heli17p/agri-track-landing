@@ -253,8 +253,10 @@ export const dbService = {
       if (!db) throw new Error("Datenbank nicht initialisiert.");
 
       // Fetch ALL documents in 'settings' collection
-      // We do NOT try-catch here, we let the component handle the error to display it
-      const snap = await getDocsFromServer(collection(db, 'settings'));
+      // USING STANDARD getDocs() instead of getDocsFromServer() to avoid 
+      // the aggressive "Failed to get documents from server" error when permissions deny the request.
+      // Standard getDocs returns a clearer "Missing or insufficient permissions" error.
+      const snap = await getDocs(collection(db, 'settings'));
       
       return snap.docs.map(d => {
           const data = d.data();
