@@ -249,24 +249,32 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           setConnectError("Bitte PIN eingeben.");
           return;
       }
+      setIsSaving(true);
+      setConnectError(null);
       
-      const cleanId = inputFarmId.trim();
-      const result = await dbService.verifyFarmPin(cleanId, inputPin);
+      try {
+          const cleanId = inputFarmId.trim();
+          const result = await dbService.verifyFarmPin(cleanId, inputPin);
 
-      if (result.valid) {
-          // Success! Save settings and switch mode
-          const newSettings = { ...settings, farmId: cleanId, farmPin: inputPin };
-          setSettings(newSettings);
-          await dbService.saveSettings(newSettings); // This triggers joinFarm in DB service
-          
-          // Trigger download
-          await syncData();
-          
-          setConnectMode('VIEW');
-          loadCloudData(cleanId);
-          alert(`Erfolg! Verbindung zu Hof ${cleanId} hergestellt.`);
-      } else {
-          setConnectError("PIN ist falsch.");
+          if (result.valid) {
+              // Success! Save settings and switch mode
+              const newSettings = { ...settings, farmId: cleanId, farmPin: inputPin };
+              setSettings(newSettings);
+              await dbService.saveSettings(newSettings); // This triggers joinFarm in DB service
+              
+              // Trigger download
+              await syncData();
+              
+              setConnectMode('VIEW');
+              loadCloudData(cleanId);
+              alert(`Erfolg! Verbindung zu Hof ${cleanId} hergestellt.`);
+          } else {
+              setConnectError("PIN ist falsch.");
+          }
+      } catch (e) {
+          setConnectError(translateError(e));
+      } finally {
+          setIsSaving(false);
       }
   };
 
@@ -275,23 +283,32 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           setConnectError("Bitte ID und PIN wählen.");
           return;
       }
+      setIsSaving(true);
+      setConnectError(null);
       
-      const cleanId = inputFarmId.trim();
-      
-      // Double check it doesn't exist
-      const check = await dbService.verifyFarmPin(cleanId, '');
-      if (!check.isNew) {
-          setConnectError("Dieser Hof existiert bereits! Bitte 'Hof beitreten' nutzen.");
-          return;
-      }
+      try {
+          const cleanId = inputFarmId.trim();
+          
+          // Double check it doesn't exist
+          const check = await dbService.verifyFarmPin(cleanId, '');
+          if (!check.isNew) {
+              setConnectError("Dieser Hof existiert bereits! Bitte 'Hof beitreten' nutzen.");
+              setIsSaving(false);
+              return;
+          }
 
-      const newSettings = { ...settings, farmId: cleanId, farmPin: inputPin };
-      setSettings(newSettings);
-      await dbService.saveSettings(newSettings); // Will create new entry with owner email
-      
-      setConnectMode('VIEW');
-      loadCloudData(cleanId);
-      alert(`Hof ${cleanId} erfolgreich erstellt!`);
+          const newSettings = { ...settings, farmId: cleanId, farmPin: inputPin };
+          setSettings(newSettings);
+          await dbService.saveSettings(newSettings); // Will create new entry with owner email
+          
+          setConnectMode('VIEW');
+          loadCloudData(cleanId);
+          alert(`Hof ${cleanId} erfolgreich erstellt!`);
+      } catch (e: any) {
+          setConnectError(`Fehler beim Erstellen: ${translateError(e)}`);
+      } finally {
+          setIsSaving(false);
+      }
   };
 
   const handleForceUpload = async () => {
@@ -800,9 +817,10 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
                                         <button 
                                             onClick={handleJoinFarm}
-                                            className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700"
+                                            disabled={isSaving}
+                                            className="w-full py-3 bg-blue-600 text-white font-bold rounded-xl shadow-lg hover:bg-blue-700 disabled:opacity-50 flex items-center justify-center"
                                         >
-                                            Jetzt Verbinden
+                                            {isSaving ? <RefreshCw className="animate-spin mr-2"/> : 'Jetzt Verbinden'}
                                         </button>
                                     </div>
                                 )}
@@ -853,13 +871,14 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                     <p className="text-[10px] text-slate-400 mt-1">Diesen PIN benötigen Ihre Mitarbeiter zum Beitreten.</p>
                                 </div>
 
-                                {connectError && <div className="text-red-600 text-sm font-bold">{connectError}</div>}
+                                {connectError && <div className="text-red-600 text-sm font-bold bg-red-50 p-2 rounded">{connectError}</div>}
 
                                 <button 
                                     onClick={handleCreateFarm}
-                                    className="w-full py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700"
+                                    disabled={isSaving}
+                                    className="w-full py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg hover:bg-green-700 disabled:opacity-50 flex items-center justify-center"
                                 >
-                                    Hof Anlegen
+                                    {isSaving ? <RefreshCw className="animate-spin mr-2"/> : 'Hof Anlegen'}
                                 </button>
                             </div>
                         </div>

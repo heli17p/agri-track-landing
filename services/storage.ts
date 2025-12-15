@@ -119,6 +119,7 @@ export const saveSettings = async (settings: AppSettings) => {
       } catch (e: any) {
           dbService.logEvent(`[Cloud] Fehler beim Speichern der Einstellungen: ${e.message}`);
           console.error("[AgriCloud] Failed to sync settings:", e);
+          throw e; // Rethrow to let UI know!
       }
   }
 };
