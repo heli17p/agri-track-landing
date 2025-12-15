@@ -5,7 +5,7 @@ import {
   AlertTriangle, RefreshCw, CheckCircle, Smartphone, 
   Terminal, ShieldCheck, CloudOff, Info, DownloadCloud,
   X, Layers, Link as LinkIcon, Lock, Calendar, FileText, UserPlus, Eye, EyeOff, Wrench, Wifi, Activity, Server,
-  Split, Search
+  Split, Search, ExternalLink, Copy
 } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { authService } from '../services/auth';
@@ -62,7 +62,7 @@ const translateError = (e: any): string => {
         return "Sie sind offline. Diese Aktion erfordert eine Internetverbindung.";
     }
     if (msg.includes("permission")) {
-        return "Zugriff verweigert. Keine Berechtigung.";
+        return "Zugriff verweigert. Die Datenbank ist gesperrt.";
     }
     if (msg.includes("deadline-exceeded")) {
         return "Zeitüberschreitung. Die Verbindung ist zu langsam.";
@@ -123,6 +123,9 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [searchStatus, setSearchStatus] = useState<'IDLE' | 'SEARCHING' | 'FOUND' | 'NOT_FOUND'>('IDLE');
   const [foundOwnerEmail, setFoundOwnerEmail] = useState<string | null>(null);
   const [connectError, setConnectError] = useState<string | null>(null);
+  
+  // NEW: Rules Help State
+  const [showRulesHelp, setShowRulesHelp] = useState(false);
 
   useEffect(() => {
       loadAll();
@@ -305,7 +308,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           loadCloudData(cleanId);
           alert(`Hof ${cleanId} erfolgreich erstellt!`);
       } catch (e: any) {
-          setConnectError(`Fehler beim Erstellen: ${translateError(e)}`);
+          const msg = translateError(e);
+          setConnectError(`Fehler beim Erstellen: ${msg}`);
+          
+          // Show Help if Permission Error
+          if (msg.includes("Zugriff verweigert") || e.message?.includes("permission")) {
+              setShowRulesHelp(true);
+          }
       } finally {
           setIsSaving(false);
       }
@@ -1023,6 +1032,66 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
         )}
 
         {/* --- MODALS --- */}
+
+        {/* Rules Help Modal (Triggered by Permission Error) */}
+        {showRulesHelp && (
+            <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-fade-in">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden">
+                    <div className="bg-amber-100 p-4 border-b border-amber-200 flex items-start">
+                        <AlertTriangle className="text-amber-600 shrink-0 mr-3" size={24}/>
+                        <div>
+                            <h3 className="font-bold text-amber-800">Datenbank ist gesperrt!</h3>
+                            <p className="text-sm text-amber-700 mt-1">
+                                Sie haben die Datenbank im "Locked Mode" erstellt. Deshalb wird der Zugriff verweigert.
+                            </p>
+                        </div>
+                    </div>
+                    <div className="p-6 space-y-4">
+                        <p className="text-sm text-slate-600">
+                            Um die App nutzen zu können, müssen Sie die <strong>Sicherheitsregeln</strong> in der Firebase Konsole anpassen.
+                        </p>
+                        
+                        <div className="bg-slate-900 text-slate-300 p-4 rounded-lg font-mono text-xs relative group">
+                            <button 
+                                onClick={() => {
+                                    navigator.clipboard.writeText(`rules_version = '2';\nservice cloud.firestore {\n  match /databases/{database}/documents {\n    match /{document=**} {\n      allow read, write: if request.auth != null;\n    }\n  }\n}`);
+                                    alert("Regeln kopiert!");
+                                }}
+                                className="absolute top-2 right-2 bg-white/10 hover:bg-white/20 p-1 rounded text-white"
+                                title="Code kopieren"
+                            >
+                                <Copy size={14}/>
+                            </button>
+                            <pre>{`rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}`}</pre>
+                        </div>
+
+                        <div className="space-y-2">
+                            <p className="text-xs font-bold text-slate-500 uppercase">Schritte zur Lösung:</p>
+                            <ol className="list-decimal list-inside text-sm text-slate-700 space-y-1">
+                                <li>Öffnen Sie die <a href="https://console.firebase.google.com/" target="_blank" className="text-blue-600 underline">Firebase Konsole</a>.</li>
+                                <li>Gehen Sie zu <strong>Firestore Database</strong> -> Reiter <strong>Regeln</strong> (Rules).</li>
+                                <li>Löschen Sie den alten Code und fügen Sie den Code von oben ein.</li>
+                                <li>Klicken Sie auf <strong>Veröffentlichen</strong>.</li>
+                            </ol>
+                        </div>
+
+                        <button 
+                            onClick={() => setShowRulesHelp(false)}
+                            className="w-full bg-slate-800 text-white py-3 rounded-lg font-bold hover:bg-slate-900"
+                        >
+                            Verstanden, ich habe es erledigt
+                        </button>
+                    </div>
+                </div>
+            </div>
+        )}
 
         {/* Diagnose Modal */}
         {showDiagnose && (
