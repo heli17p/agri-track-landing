@@ -8,6 +8,7 @@ const getErrorMessage = (e: any): string => {
     if (msg.includes("permission")) return "Zugriff verweigert (Firebase Rules). Du bist kein Admin in der Datenbank.";
     if (msg.includes("offline")) return "Offline. Bitte Internetverbindung prüfen.";
     if (msg.includes("deadline")) return "Zeitüberschreitung. Verbindung zu langsam.";
+    if (msg.includes("Failed to get documents from server")) return "Verbindungsfehler: Der Server konnte nicht erreicht werden. Bitte Internetverbindung prüfen.";
     return msg;
 };
 
