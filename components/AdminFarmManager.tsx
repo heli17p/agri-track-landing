@@ -1,11 +1,20 @@
 
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/db';
-import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User } from 'lucide-react';
+import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon } from 'lucide-react';
+
+const getErrorMessage = (e: any): string => {
+    const msg = e?.message || String(e);
+    if (msg.includes("permission")) return "Zugriff verweigert (Firebase Rules). Du bist kein Admin in der Datenbank.";
+    if (msg.includes("offline")) return "Offline. Bitte Internetverbindung prüfen.";
+    if (msg.includes("deadline")) return "Zeitüberschreitung. Verbindung zu langsam.";
+    return msg;
+};
 
 export const AdminFarmManager: React.FC = () => {
     const [farms, setFarms] = useState<any[]>([]);
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
 
     useEffect(() => {
@@ -14,12 +23,15 @@ export const AdminFarmManager: React.FC = () => {
 
     const loadFarms = async () => {
         setLoading(true);
+        setError(null);
         try {
             const list = await dbService.adminGetAllFarms();
             setFarms(list);
-        } catch (e) {
+        } catch (e: any) {
             console.error(e);
-            alert("Fehler beim Laden der Farm-Liste");
+            setError(getErrorMessage(e));
+            // Don't clear farms, maybe we want to keep old data visible? No, consistency first.
+            setFarms([]);
         } finally {
             setLoading(false);
         }
@@ -79,6 +91,17 @@ export const AdminFarmManager: React.FC = () => {
                 />
             </div>
 
+            {/* Error Banner */}
+            {error && (
+                <div className="bg-red-900/50 border border-red-500 text-red-200 p-4 rounded-xl mb-4 flex items-start">
+                    <AlertOctagon className="shrink-0 mr-3 mt-0.5" />
+                    <div>
+                        <h4 className="font-bold">Laden fehlgeschlagen</h4>
+                        <p className="text-sm">{error}</p>
+                    </div>
+                </div>
+            )}
+
             {/* List */}
             <div className="flex-1 overflow-y-auto bg-slate-800 rounded-xl border border-slate-700">
                 <table className="w-full text-left border-collapse">
@@ -96,7 +119,7 @@ export const AdminFarmManager: React.FC = () => {
                         {filteredFarms.length === 0 ? (
                             <tr>
                                 <td colSpan={6} className="p-8 text-center text-slate-500">
-                                    {loading ? 'Lade Daten...' : 'Keine Einträge gefunden.'}
+                                    {loading ? 'Lade Daten...' : error ? 'Keine Daten (Fehler)' : 'Keine Einträge gefunden.'}
                                 </td>
                             </tr>
                         ) : (

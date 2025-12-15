@@ -248,29 +248,25 @@ export const dbService = {
 
   // --- ADMIN TOOL: GET ALL FARMS ---
   adminGetAllFarms: async () => {
-      if (!isCloudConfigured()) return [];
+      if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
       const db = getDb();
-      if (!db) return [];
+      if (!db) throw new Error("Datenbank nicht initialisiert.");
 
-      try {
-          // Fetch ALL documents in 'settings' collection
-          const snap = await getDocsFromServer(collection(db, 'settings'));
-          
-          return snap.docs.map(d => {
-              const data = d.data();
-              return {
-                  docId: d.id, // This is usually the User UID
-                  farmId: data.farmId,
-                  farmIdType: typeof data.farmId,
-                  ownerEmail: data.ownerEmail || 'Unbekannt',
-                  hasPin: !!data.farmPin,
-                  updatedAt: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'Unbekannt'
-              };
-          });
-      } catch (e) {
-          console.error("Admin Fetch Error:", e);
-          return [];
-      }
+      // Fetch ALL documents in 'settings' collection
+      // We do NOT try-catch here, we let the component handle the error to display it
+      const snap = await getDocsFromServer(collection(db, 'settings'));
+      
+      return snap.docs.map(d => {
+          const data = d.data();
+          return {
+              docId: d.id, // This is usually the User UID
+              farmId: data.farmId,
+              farmIdType: typeof data.farmId,
+              ownerEmail: data.ownerEmail || 'Unbekannt',
+              hasPin: !!data.farmPin,
+              updatedAt: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'Unbekannt'
+          };
+      });
   },
 
   // --- DATA TYPE REPAIR TOOL ---
