@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { Hero } from './components/Hero';
 import { FeedbackBoard } from './components/FeedbackBoard';
@@ -6,10 +7,11 @@ import { AgriTrackApp } from './components/AgriTrackApp';
 import { AppShowcase } from './components/AppShowcase';
 import { AuthPage } from './pages/AuthPage';
 import { Tab } from './types';
-import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight, LogOut, CloudOff } from 'lucide-react';
+import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight, LogOut, CloudOff, Database } from 'lucide-react';
 import { authService } from './services/auth';
 import { dbService } from './services/db';
 import { syncData } from './services/sync';
+import { AdminFarmManager } from './components/AdminFarmManager';
 
 const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: () => void }) => {
     const [pass, setPass] = useState('');
@@ -73,6 +75,9 @@ const App: React.FC = () => {
 
   // UI State for Tracking Mode
   const [isFullScreen, setIsFullScreen] = useState(false);
+
+  // Admin View State
+  const [adminView, setAdminView] = useState<'TICKETS' | 'FARMS'>('TICKETS');
 
   useEffect(() => {
       // 1. Check Guest Mode Preference
@@ -288,7 +293,6 @@ const App: React.FC = () => {
       )}
 
       {/* Main Content */}
-      {/* FIX: Simplified structure. Flex-1 ensures it takes all remaining space. */}
       <main className={`flex-1 relative overflow-hidden flex flex-col w-full h-full`}>
         {activeTab === Tab.HOME && !isFullScreen && (
           <div className="h-full overflow-y-auto">
@@ -334,7 +338,6 @@ const App: React.FC = () => {
 
         {/* --- PROTECTED APP TAB --- */}
         {activeTab === Tab.APP && (
-          // FIX: Absolute positioning to ensure full coverage of parent flex item
           <div className="absolute inset-0 bg-gray-100 flex flex-col">
             {isAuthenticated || isGuest ? (
                <AgriTrackApp onFullScreenToggle={setIsFullScreen} />
@@ -346,14 +349,38 @@ const App: React.FC = () => {
           </div>
         )}
 
+        {/* --- ADMIN TAB --- */}
         {activeTab === Tab.ADMIN && isAdmin && !isFullScreen && (
-          <div className="h-full overflow-y-auto">
-            <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-                <div className="mb-8 text-center">
-                <h2 className="text-3xl font-bold text-gray-900">Admin Konsole</h2>
-                </div>
-                <FeedbackBoard isAdmin={true} />
-            </div>
+          <div className="h-full bg-slate-900 flex flex-col">
+              {/* Admin Sub-Nav */}
+              <div className="bg-slate-800 p-2 flex justify-center space-x-4 border-b border-slate-700">
+                  <button 
+                    onClick={() => setAdminView('TICKETS')}
+                    className={`px-4 py-2 rounded-lg font-bold transition-colors ${adminView === 'TICKETS' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
+                  >
+                      <MessageSquarePlus className="inline mr-2 h-4 w-4"/> Tickets & Chat
+                  </button>
+                  <button 
+                    onClick={() => setAdminView('FARMS')}
+                    className={`px-4 py-2 rounded-lg font-bold transition-colors ${adminView === 'FARMS' ? 'bg-green-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
+                  >
+                      <Database className="inline mr-2 h-4 w-4"/> Hof Manager
+                  </button>
+              </div>
+
+              {/* Admin Content */}
+              <div className="flex-1 overflow-y-auto">
+                  {adminView === 'TICKETS' ? (
+                      <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+                        <div className="mb-8 text-center">
+                            <h2 className="text-3xl font-bold text-white">Admin Konsole</h2>
+                        </div>
+                        <FeedbackBoard isAdmin={true} />
+                      </div>
+                  ) : (
+                      <AdminFarmManager />
+                  )}
+              </div>
           </div>
         )}
 
@@ -371,3 +398,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

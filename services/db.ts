@@ -246,6 +246,33 @@ export const dbService = {
       }
   },
 
+  // --- ADMIN TOOL: GET ALL FARMS ---
+  adminGetAllFarms: async () => {
+      if (!isCloudConfigured()) return [];
+      const db = getDb();
+      if (!db) return [];
+
+      try {
+          // Fetch ALL documents in 'settings' collection
+          const snap = await getDocsFromServer(collection(db, 'settings'));
+          
+          return snap.docs.map(d => {
+              const data = d.data();
+              return {
+                  docId: d.id, // This is usually the User UID
+                  farmId: data.farmId,
+                  farmIdType: typeof data.farmId,
+                  ownerEmail: data.ownerEmail || 'Unbekannt',
+                  hasPin: !!data.farmPin,
+                  updatedAt: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'Unbekannt'
+              };
+          });
+      } catch (e) {
+          console.error("Admin Fetch Error:", e);
+          return [];
+      }
+  },
+
   // --- DATA TYPE REPAIR TOOL ---
   analyzeDataTypes: async (farmId: string) => {
       if (!isCloudConfigured()) return null;
