@@ -7,13 +7,13 @@ import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctag
 const getErrorMessage = (e: any): string => {
     const msg = e?.message || String(e);
     if (msg.includes("permission") || msg.includes("Missing or insufficient permissions")) {
-        return "Zugriff verweigert. Die Datenbank erlaubt das Auflisten aller Höfe nicht (Sicherheitsregel). Bitte nutzen Sie die SUCHE unten.";
+        return "Zugriff verweigert. Fehlende Berechtigung für diese Operation.";
     }
     if (msg.includes("offline")) return "Offline. Bitte Internetverbindung prüfen.";
     if (msg.includes("deadline")) return "Zeitüberschreitung. Verbindung zu langsam.";
     
     if (msg.includes("Failed to get documents from server")) {
-        return "Zugriff blockiert oder Netzwerkfehler. Bitte nutzen Sie die SUCHE.";
+        return "Vorgang abgebrochen: Der Server hat den Zugriff verweigert oder ist nicht erreichbar. (Wahrscheinlich fehlen dem Admin-User die Rechte, um fremde Hof-Daten zu löschen).";
     }
     
     return msg;
@@ -93,7 +93,7 @@ export const AdminFarmManager: React.FC = () => {
                 loadAllFarms();
             }
         } catch (e: any) {
-            alert(`Fehler: ${e.message}`);
+            alert(`Fehler: ${getErrorMessage(e)}`);
         }
     };
 
@@ -107,7 +107,7 @@ export const AdminFarmManager: React.FC = () => {
             alert("Löschbefehl gesendet. Bitte prüfen Sie, ob der Hof nun frei ist.");
             handleServerSearch();
         } catch (e: any) {
-            alert(`Fehler: ${e.message}`);
+            alert(`Fehler: ${getErrorMessage(e)}`);
         } finally {
             setLoading(false);
         }
