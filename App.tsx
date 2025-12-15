@@ -17,18 +17,24 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
     const [pass, setPass] = useState('');
     const [email, setEmail] = useState('');
     const [cloudPass, setCloudPass] = useState('');
-    const [error, setError] = useState(false);
+    const [errorMsg, setErrorMsg] = useState<string | null>(null);
     const [isCloudAdmin, setIsCloudAdmin] = useState(false);
     const [isRegistering, setIsRegistering] = useState(false);
     const [loading, setLoading] = useState(false);
 
     const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
-        setError(false);
+        setErrorMsg(null);
         setLoading(true);
 
         // Option 1: Real Cloud Auth
-        if (isCloudAdmin && email && cloudPass) {
+        if (isCloudAdmin) {
+            if (!email || !cloudPass) {
+                setErrorMsg("Bitte E-Mail und Passwort eingeben.");
+                setLoading(false);
+                return;
+            }
+
             try {
                 if (isRegistering) {
                     await authService.register(email, cloudPass);
@@ -36,8 +42,8 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
                     await authService.login(email, cloudPass);
                 }
                 onLogin(); // Success
-            } catch (e) {
-                setError(true);
+            } catch (e: any) {
+                setErrorMsg(e.message || "Authentifizierung fehlgeschlagen.");
             } finally {
                 setLoading(false);
             }
@@ -48,7 +54,7 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
         if (pass === 'admin' || pass === '1234') {
             onLogin();
         } else {
-            setError(true);
+            setErrorMsg("Falsches lokales Passwort.");
         }
         setLoading(false);
     };
@@ -74,7 +80,7 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
                             <input 
                                 type="checkbox" 
                                 checked={isCloudAdmin} 
-                                onChange={(e) => { setIsCloudAdmin(e.target.checked); setIsRegistering(false); }}
+                                onChange={(e) => { setIsCloudAdmin(e.target.checked); setIsRegistering(false); setErrorMsg(null); }}
                                 className="sr-only peer"
                             />
                             <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
@@ -109,7 +115,7 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
                             <div className="flex justify-center text-xs">
                                 <button 
                                     type="button"
-                                    onClick={() => setIsRegistering(!isRegistering)}
+                                    onClick={() => { setIsRegistering(!isRegistering); setErrorMsg(null); }}
                                     className={`font-bold hover:underline ${isRegistering ? 'text-blue-600' : 'text-slate-500'}`}
                                 >
                                     {isRegistering ? 'Zurück zum Login' : 'Noch kein Konto? Hier Registrieren'}
@@ -124,12 +130,16 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
                                 placeholder="Lokales Passwort eingeben"
                                 className="w-full border border-slate-300 p-3 rounded-lg outline-none focus:ring-2 focus:ring-red-500"
                                 value={pass}
-                                onChange={e => { setPass(e.target.value); setError(false); }}
+                                onChange={e => { setPass(e.target.value); setErrorMsg(null); }}
                             />
                         </div>
                     )}
 
-                    {error && <p className="text-xs text-red-500 mt-1 font-bold">Anmeldung/Registrierung fehlgeschlagen.</p>}
+                    {errorMsg && (
+                        <div className="bg-red-50 text-red-600 p-2 rounded text-xs font-bold border border-red-100">
+                            {errorMsg}
+                        </div>
+                    )}
                     
                     <button disabled={loading} className={`w-full text-white py-3 rounded-lg font-bold flex items-center justify-center disabled:opacity-50 ${isRegistering ? 'bg-blue-600 hover:bg-blue-700' : 'bg-slate-900 hover:bg-slate-800'}`}>
                         {loading ? 'Lade...' : (isRegistering ? 'Konto erstellen' : 'Anmelden')} <ArrowRight size={16} className="ml-2"/>
