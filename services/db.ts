@@ -1,1000 +1,614 @@
 
-import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, DEFAULT_SETTINGS, FeedbackTicket } from '../types';
-import { saveData, loadLocalData, saveSettings as saveSettingsToStorage, loadSettings as loadSettingsFromStorage, fetchCloudData, fetchCloudSettings, isCloudConfigured, auth, hardReset } from './storage';
-import { collection, doc, setDoc, getDoc, getDocs, query, where, updateDoc, arrayUnion, Timestamp, deleteDoc, writeBatch, getDocsFromServer } from 'firebase/firestore';
-import { getFirestore } from 'firebase/firestore';
+import { 
+    getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, 
+    deleteDoc, updateDoc, Timestamp, writeBatch, getDocsFromServer 
+} from 'firebase/firestore';
+import { auth, db, isCloudConfigured, saveData, loadLocalData, fetchCloudData, loadSettings, saveSettings as saveStorageSettings, fetchCloudSettings, hardReset as storageHardReset } from './storage';
+import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, FeedbackTicket, DEFAULT_SETTINGS } from '../types';
 
-// Need direct access to db for advanced features
-const getDb = () => {
-    try {
-        return getFirestore();
-    } catch(e) { return null; }
+export const generateId = () => {
+  return Math.random().toString(36).substr(2, 9);
 };
 
+// Internal logs
+let logs: string[] = [];
+export const addLog = (msg: string) => {
+    logs.unshift(`[${new Date().toLocaleTimeString()}] ${msg}`);
+    if (logs.length > 100) logs.pop();
+};
+
+// Event Listeners
 type Listener = () => void;
-const listeners: { [key: string]: Listener[] } = {
-    sync: [],
-    change: []
-};
+const syncListeners: Listener[] = [];
+const dbChangeListeners: Listener[] = [];
 
-const notify = (type: 'sync' | 'change') => {
-    listeners[type].forEach(l => l());
-};
-
-// --- LOGGING SYSTEM ---
-const _logs: string[] = [];
-const MAX_LOGS = 100;
-
-const addLog = (msg: string) => {
-    const timestamp = new Date().toLocaleTimeString();
-    const entry = `[${timestamp}] ${msg}`;
-    _logs.unshift(entry); // Newest first
-    if (_logs.length > MAX_LOGS) _logs.pop();
-    console.log(entry); // Also log to console
-};
-
-export const generateId = () => Math.random().toString(36).substr(2, 9);
+const notifySync = () => syncListeners.forEach(l => l());
+const notifyDbChange = () => dbChangeListeners.forEach(l => l());
 
 export const dbService = {
-  // Expose Logger & Tools
-  logEvent: (msg: string) => addLog(msg),
-  getLogs: () => [..._logs],
-  hardReset: hardReset,
-
-  // --- DIAGNOSTIC TOOLS ---
-  
-  // 1. Get Current User Info
-  getCurrentUserInfo: () => {
-      if (!auth?.currentUser) return { status: 'Nicht eingeloggt' };
-      return {
-          status: 'Eingeloggt',
-          email: auth.currentUser.email,
-          uid: auth.currentUser.uid,
-          isAnonymous: auth.currentUser.isAnonymous
-      };
-  },
-
-  // 2. Real Connection Test (Write/Read)
-  testCloudConnection: async () => {
-      if (!isCloudConfigured()) return { success: false, message: "Firebase nicht initialisiert" };
-      const db = getDb();
-      if (!db || !auth.currentUser) return { success: false, message: "Nicht eingeloggt" };
-
-      const testId = `ping_${auth.currentUser.uid}`;
-      const docRef = doc(db, 'diagnostics', testId);
-      const payload = { timestamp: Date.now(), device: navigator.userAgent };
-
-      try {
-          const start = Date.now();
-          
-          // Write with timeout
-          const writePromise = setDoc(docRef, payload);
-          const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout beim Schreiben (7s)")), 7000));
-          await Promise.race([writePromise, timeoutPromise]);
-
-          // Read back (Force Server to prove connection)
-          const readPromise = getDoc(docRef); // Usually cached, but if we just wrote it...
-          const snap = await readPromise;
-          const end = Date.now();
-          
-          if (snap.exists() && snap.data().timestamp === payload.timestamp) {
-              return { success: true, message: `Erfolg! Ping: ${end - start}ms` };
-          } else {
-              return { success: true, message: "Schreiben OK, Lesen verzögert." };
-          }
-      } catch (e: any) {
-          return { success: false, message: `Verbindungsfehler: ${e.message}` };
-      }
-  },
-
-  // --- DEBUG / INSPECTOR ---
-  inspectCloudData: async (farmId: string) => {
-      addLog(`Inspektor: Starte parallele Analyse für FarmID '${farmId}'...`);
-      if (!isCloudConfigured()) {
-          addLog("Inspektor: Fehler - Nicht verbunden oder Offline.");
-          return { error: "Keine Verbindung" };
-      }
-      const db = getDb();
-      if (!db) return { error: "DB Init Fehler" };
-
-      // Dual Query Setup
-      const idsToCheck = [String(farmId)];
-      const numId = Number(farmId);
-      if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
-
-      try {
-          // Helper to fetch and merge - USING getDocsFromServer TO BYPASS CACHE
-          const fetchAll = async (col: string) => {
-              const promises = idsToCheck.map(id => getDocsFromServer(query(collection(db, col), where("farmId", "==", id))));
-              const snaps = await Promise.all(promises);
-              const merged = new Map();
-              snaps.forEach(s => s.docs.forEach(d => merged.set(d.id, d)));
-              return Array.from(merged.values());
-          };
-
-          const [settingsDocs, actsDocs, fieldsDocs, storageDocs, profileDocs] = await Promise.all([
-              fetchAll('settings'),
-              fetchAll('activities'),
-              fetchAll('fields'),
-              fetchAll('storages'),
-              fetchAll('profiles')
-          ]);
-
-          const settingsFound = settingsDocs.map(d => ({ id: d.id, ...d.data() }));
-          
-          const actsFound = actsDocs.map(d => ({ 
-              id: d.id, 
-              type: d.data().type, 
-              date: d.data().date,
-              user: d.data().userId ? 'User ID vorhanden' : 'Kein User',
-              device: d.data().syncedAt ? 'Via Sync' : 'Manuell',
-              farmIdType: typeof d.data().farmId // Debug: Show type
-          }));
-
-          const fieldsFound = fieldsDocs.map(d => ({
-              id: d.id,
-              name: d.data().name,
-              area: d.data().areaHa,
-              type: d.data().type
-          }));
-
-          const storageFound = storageDocs.map(d => ({
-              id: d.id,
-              name: d.data().name,
-              type: d.data().type,
-              capacity: d.data().capacity
-          }));
-
-          const profileFound = profileDocs.map(d => ({
-              id: d.id,
-              name: d.data().operatorName,
-              address: d.data().address
-          }));
-
-          addLog(`Inspektor: Analyse abgeschlossen. ${actsFound.length} Aktivitäten (Dual-Check, Server-Forced).`);
-
-          return {
-              settings: settingsFound,
-              activities: actsFound,
-              fields: fieldsFound,
-              storages: storageFound,
-              profiles: profileFound,
-              meta: {
-                  checkedFarmId: farmId,
-                  timestamp: new Date().toISOString()
-              }
-          };
-
-      } catch (e: any) {
-          addLog(`Inspektor Fehler: ${e.message}`);
-          return { error: e.message };
-      }
-  },
-
-  // --- CONFLICT RESOLUTION TOOL ---
-  findFarmConflicts: async (farmId: string) => {
-      if (!isCloudConfigured()) return [];
-      const db = getDb();
-      if (!db) return [];
-
-      const idsToCheck = [String(farmId)];
-      const numId = Number(farmId);
-      if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
-
-      try {
-          const promises = idsToCheck.map(id => getDocsFromServer(query(collection(db, 'settings'), where("farmId", "==", id))));
-          const snaps = await Promise.all(promises);
-          
-          const docs: any[] = [];
-          snaps.forEach(snap => {
-              snap.docs.forEach(d => {
-                  // Prevent duplicates if multiple queries return same doc
-                  if (!docs.some(existing => existing.docId === d.id)) {
-                      const data = d.data();
-                      docs.push({
-                          docId: d.id,
-                          farmIdStored: data.farmId,
-                          farmIdType: typeof data.farmId,
-                          email: data.ownerEmail,
-                          hasPin: !!data.farmPin,
-                          updatedAt: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'Unbekannt'
-                      });
-                  }
-              });
-          });
-          return docs;
-      } catch (e) {
-          console.error("Conflict find error", e);
-          return [];
-      }
-  },
-
-  deleteSettingsDoc: async (docId: string) => {
-      if (!isCloudConfigured()) throw new Error("Offline");
-      const db = getDb();
-      if (!db) throw new Error("DB Error");
-      await deleteDoc(doc(db, 'settings', docId));
-      addLog(`Konflikt gelöst: Settings Dokument ${docId} gelöscht.`);
-  },
-
-  forceDeleteSettings: async (farmId: string) => {
-      if (!isCloudConfigured()) throw new Error("Offline");
-      const db = getDb();
-      if (!db) throw new Error("DB Error");
-
-      const idsToCheck = [String(farmId)];
-      const numId = Number(farmId);
-      if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
-
-      const batch = writeBatch(db);
-      let count = 0;
-
-      for(const id of idsToCheck) {
-          const q = query(collection(db, 'settings'), where("farmId", "==", id));
-          const snap = await getDocsFromServer(q);
-          snap.docs.forEach(d => {
-              batch.delete(d.ref);
-              count++;
-          });
-      }
-
-      if(count > 0) {
-          await batch.commit();
-          addLog(`Notfall-Bereinigung: ${count} Settings-Dokumente für ID '${farmId}' gelöscht.`);
-      } else {
-          addLog(`Notfall-Bereinigung: Keine Dokumente gefunden für ID '${farmId}' (vielleicht schon gelöscht?).`);
-      }
-  },
-
-  // --- ADMIN TOOL: GET ALL FARMS ---
-  adminGetAllFarms: async () => {
-      if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
-      const db = getDb();
-      if (!db) throw new Error("Datenbank nicht initialisiert.");
-
-      // Fetch ALL documents in 'settings' collection
-      // USING STANDARD getDocs() instead of getDocsFromServer() to avoid 
-      // the aggressive "Failed to get documents from server" error when permissions deny the request.
-      // Standard getDocs returns a clearer "Missing or insufficient permissions" error.
-      const snap = await getDocs(collection(db, 'settings'));
-      
-      return snap.docs.map(d => {
-          const data = d.data();
-          return {
-              docId: d.id, // This is usually the User UID
-              farmId: data.farmId,
-              farmIdType: typeof data.farmId,
-              ownerEmail: data.ownerEmail || 'Unbekannt',
-              hasPin: !!data.farmPin,
-              updatedAt: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'Unbekannt'
-          };
-      });
-  },
-
-  // --- DATA TYPE REPAIR TOOL ---
-  analyzeDataTypes: async (farmId: string) => {
-      if (!isCloudConfigured()) return null;
-      const db = getDb();
-      if (!db) return null;
-
-      const strId = String(farmId);
-      const numId = Number(farmId);
-      
-      const results = {
-          stringIdCount: 0,
-          numberIdCount: 0,
-          details: [] as string[]
-      };
-
-      const collections = ['activities', 'fields', 'storages', 'profiles'];
-
-      for (const col of collections) {
-          // Count String
-          const qStr = query(collection(db, col), where("farmId", "==", strId));
-          const snapStr = await getDocsFromServer(qStr); // Force Server
-          results.stringIdCount += snapStr.size;
-
-          // Count Number
-          let numCount = 0;
-          if (!isNaN(numId)) {
-              const qNum = query(collection(db, col), where("farmId", "==", numId));
-              const snapNum = await getDocsFromServer(qNum); // Force Server
-              numCount = snapNum.size;
-              results.numberIdCount += numCount;
-          }
-          
-          results.details.push(`${col}: ${snapStr.size} (Text) vs ${numCount} (Zahl)`);
-      }
-      return results;
-  },
-
-  repairDataTypes: async (farmId: string) => {
-      if (!isCloudConfigured()) throw new Error("Offline");
-      const db = getDb();
-      if (!db) throw new Error("DB Error");
-
-      const numId = Number(farmId);
-      const strId = String(farmId);
-
-      if (isNaN(numId)) return "Keine Reparatur nötig (ID ist kein Zahl-Format).";
-
-      addLog(`Reparatur: Suche nach veralteten 'Number' IDs (${numId})...`);
-      
-      const collections = ['activities', 'fields', 'storages', 'profiles', 'settings'];
-      let fixedCount = 0;
-
-      for (const col of collections) {
-          const qNum = query(collection(db, col), where("farmId", "==", numId));
-          const snap = await getDocsFromServer(qNum); // Force Server
-          
-          if (!snap.empty) {
-              const batch = writeBatch(db);
-              snap.docs.forEach(doc => {
-                  batch.update(doc.ref, { farmId: strId }); // Convert to String
-                  fixedCount++;
-              });
-              await batch.commit();
-              addLog(`Reparatur: ${snap.size} Einträge in '${col}' korrigiert.`);
-          }
-      }
-
-      if (fixedCount > 0) {
-          return `Erfolg! ${fixedCount} Datensätze wurden repariert. Bitte jetzt synchronisieren.`;
-      } else {
-          return "Keine fehlerhaften Datensätze gefunden.";
-      }
-  },
-
-  // --- BACKUP & RESTORE ---
-  createFullBackup: async () => {
-      const activities = await dbService.getActivities();
-      const fields = await dbService.getFields();
-      const storages = await dbService.getStorageLocations();
-      const profile = await dbService.getFarmProfile();
-      const settings = await dbService.getSettings();
-
-      return {
-          meta: { version: '1.0', timestamp: new Date().toISOString() },
-          data: { activities, fields, storages, profile, settings }
-      };
-  },
-
-  restoreFullBackup: async (jsonContent: any) => {
-      try {
-          if (!jsonContent || !jsonContent.data) throw new Error("Ungültiges Backup");
-          const { activities, fields, storages, profile, settings } = jsonContent.data;
-          if (activities) localStorage.setItem('agritrack_activities', JSON.stringify(activities));
-          if (fields) localStorage.setItem('agritrack_fields', JSON.stringify(fields));
-          if (storages) localStorage.setItem('agritrack_storage', JSON.stringify(storages));
-          if (profile) localStorage.setItem('agritrack_profile', JSON.stringify(profile));
-          if (settings) localStorage.setItem('agritrack_settings_full', JSON.stringify(settings));
-          notify('change');
-          return true;
-      } catch (e) { throw e; }
-  },
-  
-  // --- FARM MANAGEMENT (NEW) ---
-
-  // Verify PIN before connecting - RETURNS OWNER EMAIL
-  verifyFarmPin: async (farmId: string, pinCandidate: string) => {
-      if (!isCloudConfigured() || !farmId) return { valid: false, reason: "Offline" };
-      const db = getDb();
-      if (!db) return { valid: false, reason: "DB Error" };
-
-      try {
-          // 1. Fetch ALL settings documents that match this Farm ID (Strings AND Numbers)
-          // We look for both to catch legacy issues and ghost farms
-          const qStr = query(collection(db, 'settings'), where("farmId", "==", String(farmId)));
-          const qNum = !isNaN(Number(farmId)) ? query(collection(db, 'settings'), where("farmId", "==", Number(farmId))) : null;
-
-          const [snapStr, snapNum] = await Promise.all([
-              getDocsFromServer(qStr),
-              qNum ? getDocsFromServer(qNum) : { empty: true, docs: [] }
-          ]);
-
-          const allDocs = [...snapStr.docs, ...(snapNum as any).docs];
-
-          if (allDocs.length === 0) {
-              return { valid: true, reason: "New Farm", isNew: true };
-          }
-
-          // 2. Sort documents by "Quality" to find the Real Farm vs Ghost Farms
-          // Priority: 
-          // 1. Has PIN & Email (Best)
-          // 2. Has PIN
-          // 3. Has Email
-          // 4. Nothing
-          const sortedDocs = allDocs.map(d => d.data()).sort((a, b) => {
-              const scoreA = (a.farmPin ? 2 : 0) + (a.ownerEmail ? 1 : 0);
-              const scoreB = (b.farmPin ? 2 : 0) + (b.ownerEmail ? 1 : 0);
-              return scoreB - scoreA; // Descending
-          });
-
-          // The best candidate for display/verification
-          const bestDoc = sortedDocs[0];
-          const ownerEmail = bestDoc.ownerEmail || "Besitzer Unbekannt (Altdaten)";
-          
-          // 3. IF CHECKING PIN: Look for ANY document that matches the PIN
-          if (pinCandidate) {
-              const match = sortedDocs.find(d => d.farmPin === pinCandidate);
-              if (match) {
-                  return { valid: true, reason: "Match", ownerEmail: match.ownerEmail || ownerEmail };
-              } else {
-                  return { valid: false, reason: "Wrong PIN", ownerEmail };
-              }
-          }
-
-          // 4. IF JUST SEARCHING: Return info from best doc
-          // If the best doc has NO PIN, we might treat it as a new farm or a ghost farm.
-          if (!bestDoc.farmPin) {
-               return { valid: true, reason: "No PIN set", ownerEmail };
-          }
-
-          return { valid: false, reason: "Exists", ownerEmail, isNew: false };
-
-      } catch (e: any) {
-          console.error("PIN Check failed:", e);
-          return { valid: false, reason: "Check Failed" };
-      }
-  },
-
-  // Join a farm (Register user as member)
-  joinFarm: async (farmId: string, email: string) => {
-      if (!isCloudConfigured() || !farmId) return;
-      const db = getDb();
-      if (!db || !auth?.currentUser) return;
-
-      try {
-          // Farm Membership doc ID should use string ID
-          const farmRef = doc(db, 'farms', String(farmId));
-          await setDoc(farmRef, {
-              lastActive: Timestamp.now(),
-              members: arrayUnion({
-                  uid: auth.currentUser.uid,
-                  email: email || 'Unbekannt',
-                  joinedAt: new Date().toISOString()
-              })
-          }, { merge: true });
-          addLog(`Cloud: Farm '${farmId}' beigetreten.`);
-      } catch (e) {
-          console.error("Join Farm failed:", e);
-      }
-  },
-
-  getFarmMembers: async (farmId: string) => {
-      if (!isCloudConfigured() || !farmId) return [];
-      const db = getDb();
-      if (!db) return [];
-
-      try {
-          const docRef = doc(db, 'farms', String(farmId));
-          const snap = await getDoc(docRef);
-          if (snap.exists()) {
-              return snap.data().members || [];
-          }
-      } catch (e: any) { 
-          if (e.code !== 'unavailable' && !e.message?.includes('offline')) {
-             console.error("Fetch members error:", e); 
-          }
-      }
-      return [];
-  },
-
-  getLocalStats: async () => {
-      const activities = loadLocalData('activity') as any[] || [];
-      const fields = loadLocalData('field') as any[] || [];
-      const storages = loadLocalData('storage') as any[] || [];
-      const profiles = await dbService.getFarmProfile() || [];
-      
-      return { 
-          total: activities.length + fields.length + storages.length + profiles.length 
-      };
-  },
-
-  getCloudStats: async (farmId: string) => {
-      if (!isCloudConfigured() || !farmId) return { total: 0, activities: 0, fields: 0, storages: 0, profiles: 0 };
-      const db = getDb();
-      if (!db) return { total: 0, activities: 0, fields: 0, storages: 0, profiles: 0 };
-
-      try {
-          // Setup Dual IDs
-          const idsToCheck = [String(farmId)];
-          const numId = Number(farmId);
-          if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
-
-          addLog(`Prüfe Cloud Status für ID: '${farmId}' (Dual Check)`);
-          
-          const countCol = async (col: string) => {
-              const promises = idsToCheck.map(id => getDocsFromServer(query(collection(db, col), where("farmId", "==", id))));
-              const snaps = await Promise.all(promises);
-              // Sum up UNIQUE docs (in case overlap, though unlikely)
-              const ids = new Set();
-              snaps.forEach(s => s.docs.forEach(d => ids.add(d.id)));
-              return ids.size;
-          };
-
-          const [actSize, fieldSize, storeSize, profSize] = await Promise.all([
-              countCol('activities'),
-              countCol('fields'),
-              countCol('storages'),
-              countCol('profiles')
-          ]);
-
-          return { 
-              total: actSize + fieldSize + storeSize + profSize,
-              activities: actSize,
-              fields: fieldSize,
-              storages: storeSize,
-              profiles: profSize
-          };
-      } catch (e: any) { 
-          if (e.code !== 'unavailable' && !e.message?.includes('offline')) {
-             console.error("Cloud Stats Error:", e);
-          }
-          return { total: -1, activities: 0, fields: 0, storages: 0, profiles: 0 }; 
-      }
-  },
-
-  // --- DELETE ENTIRE FARM (OPTIMIZED PARALLEL BATCHING) ---
-  deleteEntireFarm: async (farmId: string, pin: string, onProgress?: (msg: string) => void) => {
-      if (!isCloudConfigured()) throw new Error("Keine Verbindung");
-      const db = getDb();
-      if (!db) throw new Error("DB Error");
-
-      const report = (msg: string) => {
-          addLog(msg);
-          if (onProgress) onProgress(msg);
-      };
-
-      report("Verifiziere PIN...");
-      const verify = await dbService.verifyFarmPin(farmId, pin);
-      if (!verify.valid) throw new Error("Falsche PIN. Löschen verweigert.");
-
-      report("Scanne Cloud-Datenbank (Turbo-Modus)...");
-
-      // Collections to wipe
-      const collections = ['activities', 'fields', 'storages', 'profiles', 'settings'];
-      
-      // Dual ID check
-      const idsToCheck = [String(farmId)];
-      const numId = Number(farmId);
-      if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
-
-      let allRefs: any[] = [];
-
-      // 1. GATHER ALL REFS IN PARALLEL (Super fast) - Using Server Fetch
-      const fetchPromises: Promise<void>[] = [];
-
-      for (const col of collections) {
-          for (const idVariant of idsToCheck) {
-              fetchPromises.push(
-                  getDocsFromServer(query(collection(db, col), where("farmId", "==", idVariant)))
-                  .then(snap => {
-                      snap.docs.forEach(d => allRefs.push(d.ref));
-                  })
-              );
-          }
-      }
-      
-      // Also fetch the 'farms' membership document separately (by Doc ID)
-      for (const idVariant of idsToCheck) {
-          allRefs.push(doc(db, 'farms', String(idVariant)));
-      }
-
-      await Promise.all(fetchPromises);
-
-      // Remove duplicates (if any)
-      const uniqueRefs = Array.from(new Set(allRefs.map(r => r.path))).map(path => {
-          return allRefs.find(r => r.path === path);
-      });
-
-      if (uniqueRefs.length === 0) {
-          report("Keine Daten gefunden. Hof ist bereits leer.");
-          return 0;
-      }
-
-      report(`${uniqueRefs.length} Objekte zum Löschen gefunden.`);
-
-      // 2. BATCH DELETE (Chunking)
-      const CHUNK_SIZE = 450; // Safety margin under 500 limit
-      const batches = [];
-      
-      for (let i = 0; i < uniqueRefs.length; i += CHUNK_SIZE) {
-          const chunk = uniqueRefs.slice(i, i + CHUNK_SIZE);
-          const batch = writeBatch(db);
-          chunk.forEach(ref => batch.delete(ref));
-          batches.push(batch.commit());
-      }
-
-      report(`Führe ${batches.length} Batch-Operationen aus...`);
-      
-      // Execute all batches in parallel
-      await Promise.all(batches);
-
-      report(`Erfolg! ${uniqueRefs.length} Objekte wurden unwiderruflich gelöscht.`);
-      return uniqueRefs.length;
-  },
-
-  // --- FORCE UPLOAD (INTELLIGENT DYNAMIC BATCHING) ---
-  forceUploadToFarm: async (onProgress?: (status: string, percent: number) => void) => {
-      if (!isCloudConfigured()) throw new Error("Nicht eingeloggt oder Offline.");
-      const db = getDb();
-      if (!db) throw new Error("DB Error");
-
-      const report = (msg: string, pct: number) => {
-          addLog(`[Upload] ${msg}`);
-          if (onProgress) onProgress(msg, pct);
-      };
-
-      // 1. Connection Check (Write Test) WITH TIMEOUT
-      report("Prüfe Cloud-Verbindung...", 1);
-      try {
-          const testRef = doc(db, 'diagnostics', 'ping_' + auth.currentUser?.uid);
-          // Add 7s timeout for the ping to prevent hanging
-          const pingPromise = setDoc(testRef, { lastPing: Timestamp.now() });
-          const timeoutPromise = new Promise((_, reject) => 
-              setTimeout(() => reject(new Error("Zeitüberschreitung (7s)")), 7000)
-          );
-          
-          await Promise.race([pingPromise, timeoutPromise]);
-      } catch (e: any) {
-          addLog(`[Upload] Warnung: Verbindungstest langsam oder fehlgeschlagen (${e.message}). Versuche trotzdem Upload...`);
-      }
-
-      // 2. Load data
-      report("Analysiere lokale Daten...", 5);
-      const queue: { type: string, data: any, sizeKB: number }[] = [];
-      
-      try {
-          const loadAndMeasure = (type: 'activity' | 'field' | 'storage' | 'profile') => {
-              let items = loadLocalData(type) as any[];
-              if (type === 'profile') {
-                  const p = items ? [items] : [];
-                  // @ts-ignore
-                  items = p.flat();
-              }
-              if (!items) return;
-
-              items.forEach(item => {
-                  const json = JSON.stringify(item);
-                  const sizeBytes = new TextEncoder().encode(json).length;
-                  queue.push({ 
-                      type, 
-                      data: item, 
-                      sizeKB: Math.round(sizeBytes / 1024 * 10) / 10 
-                  });
-              });
-          };
-
-          loadAndMeasure('profile');
-          loadAndMeasure('storage');
-          loadAndMeasure('field');
-          loadAndMeasure('activity');
-
-          // Ensure Farm ID
-          const settings = await loadSettingsFromStorage();
-          if (!settings.farmId) throw new Error("Keine Farm-ID in den Einstellungen.");
-
-      } catch (e: any) {
-          report("Fehler beim Lesen der Daten: " + e.message, 0);
-          throw e;
-      }
-
-      if (queue.length === 0) {
-          report("Keine lokalen Daten gefunden.", 100);
-          return;
-      }
-
-      // 3. Process Upload with Dynamic Sizing
-      let processed = 0;
-      let errors = 0;
-      let i = 0;
-
-      while (i < queue.length) {
-          const item = queue[i];
-          
-          // Determine Batch Strategy
-          // If item is large (>50KB), send alone. Else, try to batch up to 5 items or 100KB total.
-          const currentBatch = [item];
-          let currentBatchSize = item.sizeKB;
-          
-          let j = i + 1;
-          if (item.sizeKB < 50) {
-              while (j < queue.length && currentBatch.length < 5 && (currentBatchSize + queue[j].sizeKB) < 100) {
-                  currentBatch.push(queue[j]);
-                  currentBatchSize += queue[j].sizeKB;
-                  j++;
-              }
-          }
-          
-          // Determine Timeout based on size (Minimum 45s + 1s per 2KB)
-          const timeoutMs = 45000 + (currentBatchSize * 1000 * 0.5); 
-          const timeoutSec = Math.round(timeoutMs / 1000);
-
-          // Report details for large items
-          if (currentBatchSize > 50) {
-              report(`Sende großes Paket (${currentBatchSize.toFixed(1)} KB, Timeout: ${timeoutSec}s)...`, Math.round((i / queue.length) * 100));
-          }
-
-          // Execute Batch
-          const promises = currentBatch.map(batchItem => {
-              const uploadPromise = saveData(batchItem.type as any, batchItem.data);
-              const timeoutPromise = new Promise((_, reject) => 
-                  setTimeout(() => reject(new Error(`Timeout (${timeoutSec}s)`)), timeoutMs)
-              );
-              return Promise.race([uploadPromise, timeoutPromise]);
-          });
-
-          const results = await Promise.allSettled(promises);
-          
-          results.forEach(res => {
-              if (res.status === 'fulfilled') {
-                  processed++;
-              } else {
-                  errors++;
-                  addLog(`[Upload] Fehler: ${res.reason}`);
-              }
-          });
-
-          // Update Progress
-          i = j;
-          const percent = Math.round((i / queue.length) * 100);
-          report(`Upload Fortschritt: ${percent}% (${processed}/${queue.length})`, percent);
-          
-          // Cool-down for network
-          await new Promise(r => setTimeout(r, 200));
-      }
-
-      if (errors > 0) {
-          report(`Fertig. ${processed} gesendet, ${errors} fehlgeschlagen. Bitte erneut versuchen.`, 100);
-      } else {
-          report(`Upload erfolgreich (${processed} Objekte, ${queue.reduce((acc, i) => acc + i.sizeKB, 0).toFixed(1)} KB).`, 100);
-      }
-  },
-
-  // --- MIGRATION (GUEST -> CLOUD) ---
-  migrateGuestDataToCloud: async () => {
-      if (!isCloudConfigured()) return;
-      addLog("[Migration] Prüfe lokale Gast-Daten für Upload...");
-      
-      const localActivities = loadLocalData('activity') as ActivityRecord[];
-      for (const act of localActivities) {
-          await saveData('activity', act);
-      }
-
-      const localFields = loadLocalData('field') as Field[];
-      for (const f of localFields) {
-          await saveData('field', f);
-      }
-
-      const localSettings = loadSettingsFromStorage();
-      await saveSettingsToStorage(localSettings);
-  },
-
-  // --- Feedback (Existing) ---
-  getFeedback: async (): Promise<FeedbackTicket[]> => {
-      const s = localStorage.getItem('agritrack_feedback');
-      return s ? JSON.parse(s) : [];
-  },
-  saveFeedback: async (ticket: FeedbackTicket) => {
-      const all = await dbService.getFeedback();
-      const index = all.findIndex(t => t.id === ticket.id);
-      let newList = index >= 0 ? [...all] : [ticket, ...all];
-      if(index >= 0) newList[index] = ticket;
-      localStorage.setItem('agritrack_feedback', JSON.stringify(newList));
-      notify('change');
-  },
-  deleteFeedback: async (id: string) => {
-      const all = await dbService.getFeedback();
-      const filtered = all.filter(t => t.id !== id);
-      localStorage.setItem('agritrack_feedback', JSON.stringify(filtered));
-      notify('change');
-  },
-
-  // --- Activities (Existing) ---
-  getActivities: async (): Promise<ActivityRecord[]> => {
-    const local = loadLocalData('activity') as ActivityRecord[];
-    return local || [];
-  },
-  
-  syncActivities: async () => {
-      if (!isCloudConfigured()) {
-          addLog("[Sync] Abbruch: Nicht eingeloggt.");
-          return;
-      }
-      
-      addLog("[Sync] Starte Download (Force Server Mode)...");
-      
-      // 1. Sync Settings
-      const cloudSettings = await fetchCloudSettings();
-      if (cloudSettings) {
-          addLog("[Sync] Cloud-Einstellungen empfangen.");
-          const localSettings = loadSettingsFromStorage();
-          const merged = { ...localSettings, ...cloudSettings };
-          saveSettingsToStorage(merged);
-      } else {
-          addLog("[Sync] Keine Cloud-Einstellungen gefunden (oder Offline).");
-      }
-
-      // 2. Sync Activities
-      addLog("[Sync] Lade Aktivitäten herunter...");
-      const cloudData = await fetchCloudData('activity', true) as ActivityRecord[]; // Force Server
-      const localData = loadLocalData('activity') as ActivityRecord[];
-      const localIds = new Set(localData.map(a => a.id));
-      let newActs = 0;
-      
-      cloudData.forEach(cloudItem => {
-          if ((cloudItem as any).type === 'TICKET_SYNC') return; 
-          if (!localIds.has(cloudItem.id)) {
-              localData.push(cloudItem);
-              newActs++;
-          }
-      });
-      if (newActs > 0) {
-          localStorage.setItem('agritrack_activities', JSON.stringify(localData));
-          addLog(`[Sync] ${newActs} neue Aktivitäten empfangen.`);
-      }
-
-      // 3. Sync Fields
-      addLog("[Sync] Lade Felder herunter...");
-      const cloudFields = await fetchCloudData('field', true) as Field[]; // Force Server
-      const localFields = loadLocalData('field') as Field[];
-      const localFieldIds = new Set(localFields.map(f => f.id));
-      let newFields = 0;
-
-      cloudFields.forEach(cloudItem => {
-          if (!localFieldIds.has(cloudItem.id)) {
-              localFields.push(cloudItem);
-              newFields++;
-          }
-      });
-      if (newFields > 0) {
-          localStorage.setItem('agritrack_fields', JSON.stringify(localFields));
-          addLog(`[Sync] ${newFields} neue Felder empfangen.`);
-      }
-
-      // 4. Sync Storages
-      addLog("[Sync] Lade Lagerorte herunter...");
-      const cloudStorages = await fetchCloudData('storage', true) as StorageLocation[]; // Force Server
-      const localStorages = loadLocalData('storage') as StorageLocation[];
-      // Simple merge: Cloud wins if ID matches, else add
-      const localStorageIds = new Set(localStorages.map(s => s.id));
-      let newStorages = 0;
-      let updatedStorages = 0;
-      
-      cloudStorages.forEach(cloudItem => {
-          if (!localStorageIds.has(cloudItem.id)) {
-              localStorages.push(cloudItem);
-              newStorages++;
-          } else {
-              // Update existing? For now, we prefer cloud data if we assume it's master
-              const idx = localStorages.findIndex(s => s.id === cloudItem.id);
-              if (idx >= 0) {
-                  localStorages[idx] = cloudItem;
-                  updatedStorages++;
-              }
-          }
-      });
-      if (newStorages > 0 || updatedStorages > 0) {
-          localStorage.setItem('agritrack_storage', JSON.stringify(localStorages));
-          addLog(`[Sync] Lagerorte: ${newStorages} neu, ${updatedStorages} aktualisiert.`);
-      }
-
-      // 5. Sync Profile
-      addLog("[Sync] Lade Profil...");
-      const cloudProfiles = await fetchCloudData('profile', true) as FarmProfile[]; // Force Server
-      if (cloudProfiles.length > 0) {
-          localStorage.setItem('agritrack_profile', JSON.stringify(cloudProfiles[0]));
-          addLog(`[Sync] Betriebsprofil aktualisiert.`);
-      }
-
-      if (newActs > 0 || newFields > 0 || newStorages > 0 || updatedStorages > 0) {
-          notify('change');
-          addLog("[Sync] Daten erfolgreich aktualisiert.");
-      } else {
-          addLog("[Sync] Lokale Daten sind bereits aktuell.");
-      }
-      notify('sync');
-  },
-  
-  getActivitiesForField: async (fieldId: string): Promise<ActivityRecord[]> => {
-    const all = await dbService.getActivities();
-    return all.filter(a => a.fieldIds && a.fieldIds.includes(fieldId));
-  },
-  saveActivity: async (record: ActivityRecord) => {
-    if (!record.id) record.id = generateId();
-    await saveData('activity', record); 
-    notify('change');
-  },
-  deleteActivity: async (id: string) => {
-    const all = await dbService.getActivities();
-    const filtered = all.filter(a => a.id !== id);
-    localStorage.setItem('agritrack_activities', JSON.stringify(filtered));
-    notify('change');
-  },
-
-  // --- Fields (Existing) ---
-  getFields: async (): Promise<Field[]> => {
-    const s = localStorage.getItem('agritrack_fields');
-    return s ? JSON.parse(s) : [];
-  },
-  saveField: async (field: Field) => {
-    if (!field.id) field.id = generateId();
-    await saveData('field', field); 
-    notify('change');
-  },
-  deleteField: async (id: string) => {
-    const all = await dbService.getFields();
-    const filtered = all.filter(f => f.id !== id);
-    localStorage.setItem('agritrack_fields', JSON.stringify(filtered));
-    notify('change');
-  },
-
-  // --- Storage (Existing) ---
-  getStorageLocations: async (): Promise<StorageLocation[]> => {
-    const s = localStorage.getItem('agritrack_storage');
-    if (!s) return [];
-    return JSON.parse(s);
-  },
-  saveStorageLocation: async (storage: StorageLocation) => {
-    // 1. Save Local (Via saveData helper which does local+cloud)
-    if (!storage.id) storage.id = generateId();
-    await saveData('storage', storage);
-    notify('change');
-  },
-  deleteStorage: async (id: string) => {
-    const all = await dbService.getStorageLocations();
-    const filtered = all.filter(s => s.id !== id);
-    localStorage.setItem('agritrack_storage', JSON.stringify(filtered));
-    notify('change');
-  },
-  processStorageGrowth: async () => {
-      const storages = await dbService.getStorageLocations();
-      const updated = storages.map(s => {
-          return { ...s, currentLevel: Math.min(s.capacity, s.currentLevel + (s.dailyGrowth / 10)) };
-      });
-      // Bulk update locally
-      localStorage.setItem('agritrack_storage', JSON.stringify(updated));
-      // Cloud update? This runs often (tracking loop). 
-      // Maybe only sync at end of session? For now, we keep it local until a manual save or sync happens.
-      notify('change');
-  },
-
-  // --- Profile & Settings (Existing) ---
-  getFarmProfile: async (): Promise<FarmProfile[]> => {
-    const s = localStorage.getItem('agritrack_profile');
-    return s ? [JSON.parse(s)] : [];
-  },
-  saveFarmProfile: async (profile: FarmProfile) => {
-    await saveData('profile', profile);
-    notify('change');
-  },
-  getSettings: async (): Promise<AppSettings> => {
-    return loadSettingsFromStorage();
-  },
-  saveSettings: async (settings: AppSettings) => {
-    // Force capture the current user's email as 'ownerEmail' ALWAYS if logged in
-    const currentSettings = { ...settings };
-    if (auth?.currentUser?.email) {
-        currentSettings.ownerEmail = auth.currentUser.email;
-    }
+    getLogs: () => logs,
+    logEvent: addLog,
     
-    await saveSettingsToStorage(currentSettings);
-    // NEW: Register member if farmId is set
-    if (currentSettings.farmId && auth?.currentUser?.email) {
-        await dbService.joinFarm(currentSettings.farmId, auth.currentUser.email);
-    }
-    notify('change');
-  },
+    onSyncComplete: (cb: Listener) => {
+        syncListeners.push(cb);
+        return () => { const i = syncListeners.indexOf(cb); if(i >= 0) syncListeners.splice(i, 1); };
+    },
+    
+    onDatabaseChange: (cb: Listener) => {
+        dbChangeListeners.push(cb);
+        return () => { const i = dbChangeListeners.indexOf(cb); if(i >= 0) dbChangeListeners.splice(i, 1); };
+    },
 
-  // --- Events ---
-  onSyncComplete: (cb: Listener) => {
-    listeners.sync.push(cb);
-    return () => { listeners.sync = listeners.sync.filter(l => l !== cb); };
-  },
-  onDatabaseChange: (cb: Listener) => {
-    listeners.change.push(cb);
-    return () => { listeners.change = listeners.change.filter(l => l !== cb); };
-  }
+    // --- Activities ---
+    getActivities: async (): Promise<ActivityRecord[]> => {
+        const local = loadLocalData('activity');
+        return local;
+    },
+    
+    saveActivity: async (activity: ActivityRecord) => {
+        await saveData('activity', activity);
+        notifyDbChange();
+    },
+
+    deleteActivity: async (id: string) => {
+        let activities = loadLocalData('activity');
+        activities = activities.filter((a: any) => a.id !== id);
+        localStorage.setItem('agritrack_activities', JSON.stringify(activities));
+        
+        if (isCloudConfigured()) {
+            try {
+                await deleteDoc(doc(db, "activities", id));
+            } catch (e) {
+                console.error("Cloud delete failed", e);
+            }
+        }
+        notifyDbChange();
+    },
+
+    getActivitiesForField: async (fieldId: string) => {
+        const acts = loadLocalData('activity');
+        return acts.filter((a: any) => a.fieldIds && a.fieldIds.includes(fieldId));
+    },
+
+    // --- Fields ---
+    getFields: async (): Promise<Field[]> => {
+        return loadLocalData('field');
+    },
+
+    saveField: async (field: Field) => {
+        await saveData('field', field);
+        notifyDbChange();
+    },
+
+    deleteField: async (id: string) => {
+        let fields = loadLocalData('field');
+        fields = fields.filter((f: any) => f.id !== id);
+        localStorage.setItem('agritrack_fields', JSON.stringify(fields));
+        
+        if (isCloudConfigured()) {
+            try { await deleteDoc(doc(db, "fields", id)); } catch(e) {}
+        }
+        notifyDbChange();
+    },
+
+    // --- Storage ---
+    getStorageLocations: async (): Promise<StorageLocation[]> => {
+        return loadLocalData('storage');
+    },
+
+    saveStorageLocation: async (storage: StorageLocation) => {
+        await saveData('storage', storage);
+        notifyDbChange();
+    },
+
+    deleteStorage: async (id: string) => {
+        let items = loadLocalData('storage');
+        items = items.filter((s: any) => s.id !== id);
+        localStorage.setItem('agritrack_storage', JSON.stringify(items));
+        
+        if(isCloudConfigured()) {
+            try { await deleteDoc(doc(db, "storages", id)); } catch(e) {}
+        }
+        notifyDbChange();
+    },
+
+    processStorageGrowth: async () => {
+        const storages = loadLocalData('storage');
+        const lastCheck = localStorage.getItem('last_storage_growth_check');
+        const now = Date.now();
+        
+        if (lastCheck) {
+            const hours = (now - parseInt(lastCheck)) / (1000 * 60 * 60);
+            if (hours > 1) {
+                let changed = false;
+                storages.forEach((s: any) => {
+                    if (s.dailyGrowth > 0) {
+                        const growth = (s.dailyGrowth / 24) * hours;
+                        if(s.currentLevel < s.capacity) {
+                            s.currentLevel = Math.min(s.capacity, s.currentLevel + growth);
+                            changed = true;
+                        }
+                    }
+                });
+                if (changed) {
+                    localStorage.setItem('agritrack_storage', JSON.stringify(storages));
+                    if(isCloudConfigured()) {
+                        for(const s of storages) {
+                            await saveData('storage', s);
+                        }
+                    }
+                }
+            }
+        }
+        localStorage.setItem('last_storage_growth_check', now.toString());
+    },
+
+    // --- Profile ---
+    getFarmProfile: async (): Promise<FarmProfile[]> => {
+        const p = loadLocalData('profile');
+        return p ? [p] : [];
+    },
+
+    saveFarmProfile: async (profile: FarmProfile) => {
+        await saveData('profile', profile);
+        notifyDbChange();
+    },
+
+    // --- Settings ---
+    getSettings: async (): Promise<AppSettings> => {
+        return loadSettings();
+    },
+
+    saveSettings: async (settings: AppSettings) => {
+        // Beim Speichern der Einstellungen (z.B. beim Erstellen eines Hofes)
+        // fügen wir automatisch die Email des aktuellen Users als "Owner" hinzu,
+        // falls noch kein Owner eingetragen ist.
+        const currentUser = auth?.currentUser;
+        if (currentUser && !settings.ownerEmail && settings.farmId) {
+             settings.ownerEmail = currentUser.email || 'Unbekannt';
+        }
+        await saveStorageSettings(settings);
+    },
+
+    // --- Feedback ---
+    getFeedback: async (): Promise<FeedbackTicket[]> => {
+        if (!isCloudConfigured()) return [];
+        try {
+            const q = query(collection(db, "feedback"));
+            const snapshot = await getDocs(q);
+            return snapshot.docs.map(d => d.data() as FeedbackTicket);
+        } catch (e) {
+            console.error("Feedback fetch error", e);
+            return [];
+        }
+    },
+
+    saveFeedback: async (ticket: FeedbackTicket) => {
+        if (!isCloudConfigured()) return;
+        await setDoc(doc(db, "feedback", ticket.id), ticket);
+    },
+
+    deleteFeedback: async (id: string) => {
+        if (!isCloudConfigured()) return;
+        await deleteDoc(doc(db, "feedback", id));
+    },
+
+    // --- Sync & Cloud Utils ---
+    syncActivities: async () => {
+        if (!isCloudConfigured()) return;
+        
+        const cloudActivities = await fetchCloudData('activity', true); 
+        const cloudFields = await fetchCloudData('field', true);
+        const cloudStorages = await fetchCloudData('storage', true);
+        const cloudProfiles = await fetchCloudData('profile', true);
+        
+        if (cloudActivities.length > 0) localStorage.setItem('agritrack_activities', JSON.stringify(cloudActivities));
+        if (cloudFields.length > 0) localStorage.setItem('agritrack_fields', JSON.stringify(cloudFields));
+        if (cloudStorages.length > 0) localStorage.setItem('agritrack_storage', JSON.stringify(cloudStorages));
+        if (cloudProfiles.length > 0) localStorage.setItem('agritrack_profile', JSON.stringify(cloudProfiles[0]));
+
+        notifySync();
+    },
+
+    migrateGuestDataToCloud: async () => {
+        if (!isCloudConfigured()) return;
+        // Non-blocking upload trigger
+        dbService.forceUploadToFarm(() => {}).catch(console.error);
+    },
+
+    verifyFarmPin: async (farmId: string, pin: string) => {
+        if (!isCloudConfigured()) throw new Error("Offline");
+        
+        // Suche nach BEIDEN ID-Typen (String und Number)
+        const idsToCheck = [String(farmId)];
+        const numId = Number(farmId);
+        if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
+
+        let allMatches: any[] = [];
+
+        for (const id of idsToCheck) {
+            const q = query(collection(db, "settings"), where("farmId", "==", id));
+            const snap = await getDocs(q);
+            snap.docs.forEach(d => allMatches.push(d.data()));
+        }
+        
+        if (allMatches.length === 0) {
+            return { isNew: true, valid: false };
+        }
+        
+        // Priorisiere den "echten" Hof (der mit PIN und Owner)
+        // Sort: Has PIN & Email > Has PIN > Has Email > Empty
+        allMatches.sort((a, b) => {
+            const scoreA = (a.farmPin ? 2 : 0) + (a.ownerEmail ? 1 : 0);
+            const scoreB = (b.farmPin ? 2 : 0) + (b.ownerEmail ? 1 : 0);
+            return scoreB - scoreA; // Descending
+        });
+
+        const bestMatch = allMatches[0];
+        
+        // Wenn kein PIN übergeben wurde (reiner Check)
+        if (!pin) {
+             return { 
+                 isNew: false, 
+                 valid: false, // Valid is false because we didn't check PIN
+                 ownerEmail: bestMatch.ownerEmail || bestMatch.userId 
+             };
+        }
+
+        // Check PIN against ALL matches that have a PIN (in case of duplicates)
+        const validMatch = allMatches.find(d => d.farmPin === pin);
+        return { 
+            isNew: false, 
+            valid: !!validMatch, 
+            ownerEmail: bestMatch.ownerEmail || bestMatch.userId 
+        };
+    },
+
+    forceUploadToFarm: async (progressCb: (status: string, percent: number) => void) => {
+        if (!isCloudConfigured()) throw new Error("Offline");
+        
+        // Verbindungs-Test vorab (Schneller Check)
+        try {
+            progressCb('Prüfe Cloud-Verbindung...', 5);
+            // Timeout für Ping (7s)
+            const pingPromise = dbService.testCloudConnection();
+            const timeoutPromise = new Promise((_, reject) => setTimeout(() => reject(new Error("Timeout")), 7000));
+            await Promise.race([pingPromise, timeoutPromise]);
+        } catch (e) {
+            console.warn("Ping failed, trying upload anyway...", e);
+        }
+
+        const acts = loadLocalData('activity') || [];
+        const fields = loadLocalData('field') || [];
+        const storages = loadLocalData('storage') || [];
+        const profile = loadLocalData('profile');
+        
+        const allItems = [
+            ...acts.map((i: any) => ({ type: 'activity', data: i })),
+            ...fields.map((i: any) => ({ type: 'field', data: i })),
+            ...storages.map((i: any) => ({ type: 'storage', data: i })),
+        ];
+        if (profile) allItems.push({ type: 'profile', data: profile });
+
+        const total = allItems.length;
+        if (total === 0) {
+            progressCb('0 lokale Daten gefunden.', 100);
+            return;
+        }
+
+        let sent = 0;
+        let failed = 0;
+
+        // Einzel-Upload für große Datenmengen (stabiler)
+        for (const item of allItems) {
+            const jsonSize = JSON.stringify(item.data).length;
+            const sizeKB = (jsonSize / 1024).toFixed(1);
+            
+            // Dynamisches Timeout basierend auf Größe (min 45s, +1s pro KB)
+            const timeoutMs = 45000 + (jsonSize / 1024) * 1000;
+            
+            progressCb(`Sende ${item.type} (${sizeKB} KB)...`, Math.round((sent / total) * 100));
+
+            try {
+                // Wrap save in timeout promise
+                const savePromise = saveData(item.type as any, item.data);
+                const timePromise = new Promise((_, reject) => setTimeout(() => reject(new Error(`Timeout (${Math.round(timeoutMs/1000)}s)`)), timeoutMs));
+                
+                await Promise.race([savePromise, timePromise]);
+                sent++;
+            } catch (e: any) {
+                console.error(`Upload failed for ${item.type}:`, e);
+                failed++;
+                addLog(`[Upload] Fehler bei Item: ${e.message}`);
+            }
+        }
+
+        const finalMsg = failed > 0 
+            ? `Fertig. ${sent} gesendet, ${failed} fehlgeschlagen. Bitte erneut versuchen.` 
+            : `Upload erfolgreich! ${sent} Objekte gesichert.`;
+            
+        progressCb(finalMsg, 100);
+    },
+
+    testCloudConnection: async () => {
+        if (!isCloudConfigured()) throw new Error("Nicht eingeloggt.");
+        const ref = doc(collection(db, "_ping_"));
+        await setDoc(ref, { time: Date.now() });
+        await deleteDoc(ref);
+        return { message: "Verbindung OK (Write/Delete)" };
+    },
+
+    hardReset: storageHardReset,
+
+    deleteEntireFarm: async (farmId: string, pin: string, progressCb: (msg: string) => void) => {
+        if (!isCloudConfigured()) throw new Error("Offline");
+        
+        // Parallel Delete Strategy
+        const collections = ['activities', 'fields', 'storages', 'profiles', 'settings'];
+        let deletedCount = 0;
+
+        // Try both String and Number ID variants to be clean
+        const idsToCheck = [String(farmId)];
+        const numId = Number(farmId);
+        if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
+
+        for (const col of collections) {
+            progressCb(`Lösche ${col}...`);
+            
+            for (const id of idsToCheck) {
+                const q = query(collection(db, col), where("farmId", "==", id));
+                const snap = await getDocs(q); // Use getDocs (cached/server) not forced server to avoid perm errors blocking
+                
+                const batch = writeBatch(db);
+                let i = 0;
+                
+                for (const d of snap.docs) {
+                    // Security check (if PIN is stored on doc)
+                    const data = d.data();
+                    if (data.farmPin && data.farmPin !== pin) continue;
+
+                    batch.delete(d.ref);
+                    i++;
+                    deletedCount++;
+                    if (i >= 400) { await batch.commit(); i=0; }
+                }
+                if (i > 0) await batch.commit();
+            }
+        }
+        return deletedCount;
+    },
+
+    inspectCloudData: async (farmId: string) => {
+        if (!isCloudConfigured()) return { error: "Offline" };
+        try {
+            // Check both ID types
+            const idsToCheck = [String(farmId)];
+            const numId = Number(farmId);
+            if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
+
+            const res: any = { activities: [], fields: [], storages: [], profiles: [] };
+            
+            // Execute parallel queries for speed
+            await Promise.all(idsToCheck.map(async (id) => {
+                const [a, f, s, p] = await Promise.all([
+                    getDocs(query(collection(db, "activities"), where("farmId", "==", id))),
+                    getDocs(query(collection(db, "fields"), where("farmId", "==", id))),
+                    getDocs(query(collection(db, "storages"), where("farmId", "==", id))),
+                    getDocs(query(collection(db, "profiles"), where("farmId", "==", id)))
+                ]);
+
+                a.docs.forEach(d => res.activities.push({id: d.id, ...d.data(), farmIdType: typeof d.data().farmId}));
+                f.docs.forEach(d => res.fields.push({id: d.id, ...d.data()}));
+                s.docs.forEach(d => res.storages.push({id: d.id, ...d.data()}));
+                p.docs.forEach(d => res.profiles.push({id: d.id, ...d.data()}));
+            }));
+
+            return res;
+        } catch (e) {
+            return { error: e };
+        }
+    },
+
+    getLocalStats: async () => {
+        const acts = (loadLocalData('activity') || []).length;
+        const fields = (loadLocalData('field') || []).length;
+        const storages = (loadLocalData('storage') || []).length;
+        return { total: acts + fields + storages };
+    },
+
+    getCloudStats: async (farmId: string) => {
+        if (!isCloudConfigured()) return { total: -1, activities: 0, fields: 0, storages: 0, profiles: 0 };
+        
+        const idsToCheck = [String(farmId)];
+        const numId = Number(farmId);
+        if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
+
+        try {
+            let aCount = 0, fCount = 0, sCount = 0, pCount = 0;
+
+            await Promise.all(idsToCheck.map(async (id) => {
+                const [a, f, s, p] = await Promise.all([
+                    getDocs(query(collection(db, "activities"), where("farmId", "==", id))),
+                    getDocs(query(collection(db, "fields"), where("farmId", "==", id))),
+                    getDocs(query(collection(db, "storages"), where("farmId", "==", id))),
+                    getDocs(query(collection(db, "profiles"), where("farmId", "==", id)))
+                ]);
+                aCount += a.size;
+                fCount += f.size;
+                sCount += s.size;
+                pCount += p.size;
+            }));
+
+            return { 
+                total: aCount + fCount + sCount + pCount, 
+                activities: aCount, 
+                fields: fCount, 
+                storages: sCount,
+                profiles: pCount
+            };
+        } catch (e) {
+            console.error("Stats Error", e);
+            // Return -1 to indicate error/offline
+            return { total: -1, activities: 0, fields: 0, storages: 0, profiles: 0 };
+        }
+    },
+
+    getCurrentUserInfo: () => {
+        if (!auth?.currentUser) return { status: 'Offline' };
+        return {
+            status: 'Eingeloggt',
+            email: auth.currentUser.email,
+            uid: auth.currentUser.uid
+        };
+    },
+
+    analyzeDataTypes: async (farmId: string) => {
+        if (!isCloudConfigured()) throw new Error("Offline");
+        
+        const results = { stringIdCount: 0, numberIdCount: 0, details: [] as string[] };
+        
+        // Check String
+        const qStr = query(collection(db, "activities"), where("farmId", "==", String(farmId)));
+        const snapStr = await getDocs(qStr);
+        results.stringIdCount = snapStr.size;
+        
+        // Check Number
+        const numId = Number(farmId);
+        if (!isNaN(numId)) {
+            const qNum = query(collection(db, "activities"), where("farmId", "==", numId));
+            const snapNum = await getDocs(qNum);
+            results.numberIdCount = snapNum.size;
+        }
+        
+        results.details.push(`Gefunden: ${results.stringIdCount} als Text, ${results.numberIdCount} als Zahl.`);
+        return results;
+    },
+
+    repairDataTypes: async (farmId: string) => {
+        if (!isCloudConfigured()) throw new Error("Offline");
+        const numId = Number(farmId);
+        if (isNaN(numId)) return "Farm ID ist keine Zahl, keine Reparatur nötig.";
+
+        const collections = ['activities', 'fields', 'storages', 'settings']; // Settings too!
+        let totalFixed = 0;
+
+        for (const col of collections) {
+            const qNum = query(collection(db, col), where("farmId", "==", numId));
+            const snap = await getDocs(qNum);
+            
+            if (!snap.empty) {
+                const batch = writeBatch(db);
+                snap.docs.forEach(d => {
+                    batch.update(d.ref, { farmId: String(farmId) });
+                    totalFixed++;
+                });
+                await batch.commit();
+            }
+        }
+        
+        return `Reparatur fertig: ${totalFixed} Dokumente auf Text-ID aktualisiert.`;
+    },
+
+    // --- ADMIN / CONFLICT RESOLUTION ---
+
+    findFarmConflicts: async (farmId: string) => {
+        if (!isCloudConfigured()) return [];
+        
+        const idsToCheck = [String(farmId)];
+        const numId = Number(farmId);
+        if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
+
+        let allDocs: any[] = [];
+        
+        for (const id of idsToCheck) {
+            // We use try-catch here because accessing settings of others might be restricted
+            // But usually settings collection is readable if knowing the ID
+            try {
+                const q = query(collection(db, "settings"), where("farmId", "==", id));
+                const snap = await getDocs(q);
+                snap.docs.forEach(d => {
+                    const data = d.data();
+                    allDocs.push({
+                        docId: d.id,
+                        farmIdStored: data.farmId,
+                        farmIdType: typeof data.farmId,
+                        email: data.userId || data.ownerEmail, 
+                        hasPin: !!data.farmPin,
+                        updatedAt: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'N/A'
+                    });
+                });
+            } catch (e) {
+                console.warn(`Zugriff auf Settings für ID ${id} verweigert oder leer.`);
+            }
+        }
+        return allDocs;
+    },
+
+    deleteSettingsDoc: async (docId: string) => {
+        if (!isCloudConfigured()) throw new Error("Offline");
+        await deleteDoc(doc(db, "settings", docId));
+    },
+
+    forceDeleteSettings: async (farmId: string) => {
+        if (!isCloudConfigured()) throw new Error("Offline");
+        
+        const idsToCheck = [String(farmId)];
+        const numId = Number(farmId);
+        if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
+
+        const batch = writeBatch(db);
+        let count = 0;
+        let permissionErrors = 0;
+
+        for(const id of idsToCheck) {
+            try {
+                // Use getDocs instead of getDocsFromServer to be less aggressive on permissions
+                const q = query(collection(db, 'settings'), where("farmId", "==", id));
+                const snap = await getDocs(q);
+                
+                snap.docs.forEach(d => {
+                    try {
+                        batch.delete(d.ref);
+                        count++;
+                    } catch(err) {
+                        permissionErrors++;
+                    }
+                });
+            } catch (e: any) {
+                console.warn(`Löschen für ID-Variante '${id}' fehlgeschlagen:`, e);
+                if (e.message?.includes('permission') || e.code === 'permission-denied' || e.message?.includes('Failed to get documents')) {
+                    permissionErrors++;
+                }
+            }
+        }
+
+        if(count > 0) {
+            await batch.commit();
+            addLog(`Notfall-Bereinigung: ${count} Settings-Dokumente für ID '${farmId}' gelöscht.`);
+            return { success: true, count, permissionErrors };
+        } else {
+            addLog(`Notfall-Bereinigung: Keine Dokumente gefunden für ID '${farmId}' (vielleicht schon gelöscht?).`);
+            return { success: true, count: 0, permissionErrors };
+        }
+    },
+
+    adminGetAllFarms: async () => {
+        if (!isCloudConfigured()) return [];
+        // Note: This query usually requires Admin SDK or open rules.
+        // It will likely fail for normal users, which is expected.
+        const q = query(collection(db, "settings"));
+        const snap = await getDocs(q);
+        return snap.docs.map(d => {
+            const data = d.data();
+            return {
+                docId: d.id,
+                farmId: data.farmId,
+                farmIdType: typeof data.farmId,
+                ownerEmail: data.userId || data.ownerEmail, 
+                hasPin: !!data.farmPin,
+                updatedAt: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'N/A'
+            };
+        });
+    }
 };
 

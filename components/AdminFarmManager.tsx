@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth'; // Import Auth
@@ -12,8 +11,9 @@ const getErrorMessage = (e: any): string => {
     if (msg.includes("offline")) return "Offline. Bitte Internetverbindung prüfen.";
     if (msg.includes("deadline")) return "Zeitüberschreitung. Verbindung zu langsam.";
     
-    if (msg.includes("Failed to get documents from server")) {
-        return "Vorgang abgebrochen: Der Server hat den Zugriff verweigert oder ist nicht erreichbar. (Wahrscheinlich fehlen dem Admin-User die Rechte, um fremde Hof-Daten zu löschen).";
+    // Catch the specific SDK error regarding cache/server mismatch
+    if (msg.includes("Failed to get documents from server") || msg.includes("documents may exist in the local cache")) {
+        return "Zugriff verweigert: Der Server blockiert die Anfrage. (Ihnen fehlen wahrscheinlich die Admin-Rechte in den Firestore-Regeln, um fremde Daten zu lesen/löschen).";
     }
     
     return msg;
@@ -103,11 +103,19 @@ export const AdminFarmManager: React.FC = () => {
 
         setLoading(true);
         try {
-            await dbService.forceDeleteSettings(searchTerm);
-            alert("Löschbefehl gesendet. Bitte prüfen Sie, ob der Hof nun frei ist.");
+            const result = await dbService.forceDeleteSettings(searchTerm);
+            
+            if (result.permissionErrors > 0 && result.count === 0) {
+                alert(`Fehler: Der Server hat den Zugriff auf ${result.permissionErrors} Einträge verweigert. Sie können diese als App-Admin nicht löschen. Bitte nutzen Sie die Firebase Console.`);
+            } else if (result.count > 0) {
+                alert(`Erfolg: ${result.count} Einträge gelöscht.`);
+            } else {
+                alert("Keine löschbaren Einträge gefunden.");
+            }
+            
             handleServerSearch();
         } catch (e: any) {
-            alert(`Fehler: ${getErrorMessage(e)}`);
+            alert(`Kritischer Fehler: ${getErrorMessage(e)}`);
         } finally {
             setLoading(false);
         }
@@ -306,4 +314,3 @@ export const AdminFarmManager: React.FC = () => {
         </div>
     );
 };
-
