@@ -1076,7 +1076,7 @@ service cloud.firestore {
                             <p className="text-xs font-bold text-slate-500 uppercase">Schritte zur Lösung:</p>
                             <ol className="list-decimal list-inside text-sm text-slate-700 space-y-1">
                                 <li>Öffnen Sie die <a href="https://console.firebase.google.com/" target="_blank" className="text-blue-600 underline">Firebase Konsole</a>.</li>
-                                <li>Gehen Sie zu <strong>Firestore Database</strong> -> Reiter <strong>Regeln</strong> (Rules).</li>
+                                <li>Gehen Sie zu <strong>Firestore Database</strong> &rarr; Reiter <strong>Regeln</strong> (Rules).</li>
                                 <li>Löschen Sie den alten Code und fügen Sie den Code von oben ein.</li>
                                 <li>Klicken Sie auf <strong>Veröffentlichen</strong>.</li>
                             </ol>
