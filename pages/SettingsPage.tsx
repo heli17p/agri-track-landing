@@ -795,13 +795,6 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                                         {connectError && (
                                             <div className="text-red-600 text-sm font-bold bg-red-50 p-3 rounded-lg border border-red-100">
                                                 {connectError}
-                                                {/* Emergency Conflict Button */}
-                                                <button 
-                                                    onClick={handleEmergencyConflictSolve}
-                                                    className="block mt-2 w-full text-center text-xs bg-white border border-red-200 text-red-600 py-2 rounded font-bold hover:bg-red-50"
-                                                >
-                                                    🛠 Probleme mit diesem Hof beheben
-                                                </button>
                                             </div>
                                         )}
 

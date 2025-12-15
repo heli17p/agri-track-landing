@@ -7,7 +7,7 @@ import { AgriTrackApp } from './components/AgriTrackApp';
 import { AppShowcase } from './components/AppShowcase';
 import { AuthPage } from './pages/AuthPage';
 import { Tab } from './types';
-import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight, LogOut, CloudOff, Database } from 'lucide-react';
+import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight, LogOut, CloudOff, Database, Mail } from 'lucide-react';
 import { authService } from './services/auth';
 import { dbService } from './services/db';
 import { syncData } from './services/sync';
@@ -15,15 +15,37 @@ import { AdminFarmManager } from './components/AdminFarmManager';
 
 const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: () => void }) => {
     const [pass, setPass] = useState('');
+    const [email, setEmail] = useState('');
+    const [cloudPass, setCloudPass] = useState('');
     const [error, setError] = useState(false);
+    const [isCloudAdmin, setIsCloudAdmin] = useState(false);
+    const [loading, setLoading] = useState(false);
 
-    const handleSubmit = (e: React.FormEvent) => {
+    const handleSubmit = async (e: React.FormEvent) => {
         e.preventDefault();
+        setError(false);
+        setLoading(true);
+
+        // Option 1: Real Cloud Auth
+        if (isCloudAdmin && email && cloudPass) {
+            try {
+                await authService.login(email, cloudPass);
+                onLogin(); // Success
+            } catch (e) {
+                setError(true);
+            } finally {
+                setLoading(false);
+            }
+            return;
+        }
+
+        // Option 2: Local Admin (Viewer Mode)
         if (pass === 'admin' || pass === '1234') {
             onLogin();
         } else {
             setError(true);
         }
+        setLoading(false);
     };
 
     return (
@@ -37,22 +59,65 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
                         <Lock size={24}/>
                     </div>
                     <h3 className="text-xl font-bold text-slate-800">Admin Login</h3>
-                    <p className="text-sm text-slate-500">Nur für Systembetreuer</p>
+                    <p className="text-sm text-slate-500">Systembetreuung</p>
                 </div>
+                
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <div>
-                        <input 
-                            type="password" 
-                            autoFocus
-                            placeholder="Passwort eingeben"
-                            className="w-full border border-slate-300 p-3 rounded-lg outline-none focus:ring-2 focus:ring-red-500"
-                            value={pass}
-                            onChange={e => { setPass(e.target.value); setError(false); }}
-                        />
-                        {error && <p className="text-xs text-red-500 mt-1 font-bold">Falsches Passwort.</p>}
+                    {/* Toggle Mode */}
+                    <div className="flex items-center justify-center mb-4">
+                        <label className="flex items-center cursor-pointer">
+                            <input 
+                                type="checkbox" 
+                                checked={isCloudAdmin} 
+                                onChange={(e) => setIsCloudAdmin(e.target.checked)}
+                                className="sr-only peer"
+                            />
+                            <div className="relative w-11 h-6 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full rtl:peer-checked:after:-translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:start-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-red-600"></div>
+                            <span className="ms-3 text-sm font-medium text-gray-700">Cloud-Login (für DB Zugriff)</span>
+                        </label>
                     </div>
-                    <button className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold flex items-center justify-center hover:bg-slate-800">
-                        Anmelden <ArrowRight size={16} className="ml-2"/>
+
+                    {isCloudAdmin ? (
+                        <>
+                            <div className="relative">
+                                <Mail className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                                <input 
+                                    type="email" 
+                                    autoFocus
+                                    placeholder="Admin E-Mail"
+                                    className="w-full border border-slate-300 pl-10 p-3 rounded-lg outline-none focus:ring-2 focus:ring-red-500"
+                                    value={email}
+                                    onChange={e => setEmail(e.target.value)}
+                                />
+                            </div>
+                            <div className="relative">
+                                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16}/>
+                                <input 
+                                    type="password" 
+                                    placeholder="Admin Passwort"
+                                    className="w-full border border-slate-300 pl-10 p-3 rounded-lg outline-none focus:ring-2 focus:ring-red-500"
+                                    value={cloudPass}
+                                    onChange={e => setCloudPass(e.target.value)}
+                                />
+                            </div>
+                        </>
+                    ) : (
+                        <div>
+                            <input 
+                                type="password" 
+                                autoFocus
+                                placeholder="Lokales Passwort eingeben"
+                                className="w-full border border-slate-300 p-3 rounded-lg outline-none focus:ring-2 focus:ring-red-500"
+                                value={pass}
+                                onChange={e => { setPass(e.target.value); setError(false); }}
+                            />
+                        </div>
+                    )}
+
+                    {error && <p className="text-xs text-red-500 mt-1 font-bold">Anmeldung fehlgeschlagen.</p>}
+                    
+                    <button disabled={loading} className="w-full bg-slate-900 text-white py-3 rounded-lg font-bold flex items-center justify-center hover:bg-slate-800 disabled:opacity-50">
+                        {loading ? 'Prüfe...' : 'Anmelden'} <ArrowRight size={16} className="ml-2"/>
                     </button>
                 </form>
             </div>

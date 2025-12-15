@@ -68,7 +68,7 @@ export const AdminFarmManager: React.FC = () => {
             }));
             
             setFarms(mapped);
-            if (mapped.length === 0) setError(`Keine Einträge für ID '${searchTerm}' gefunden.`);
+            if (mapped.length === 0) setError(`Keine Einträge für ID '${searchTerm}' gefunden. Prüfen Sie, ob der Admin-User (Cloud Login) Leserechte für diesen Hof hat.`);
         } catch (e: any) {
             setError(getErrorMessage(e));
         } finally {
