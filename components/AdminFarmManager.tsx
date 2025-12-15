@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth'; // Import Auth
-import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon, Terminal, LogIn } from 'lucide-react';
+import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon, Terminal, LogIn, Eraser } from 'lucide-react';
 
 const getErrorMessage = (e: any): string => {
     const msg = e?.message || String(e);
@@ -73,7 +73,7 @@ export const AdminFarmManager: React.FC = () => {
             }));
             
             setFarms(mapped);
-            if (mapped.length === 0) setError(`Keine Einträge für ID '${searchTerm}' gefunden. Prüfen Sie, ob der Admin-User (Cloud Login) Leserechte für diesen Hof hat.`);
+            if (mapped.length === 0) setError(`Keine sichtbaren Einträge für ID '${searchTerm}'.`);
         } catch (e: any) {
             setError(getErrorMessage(e));
         } finally {
@@ -94,6 +94,22 @@ export const AdminFarmManager: React.FC = () => {
             }
         } catch (e: any) {
             alert(`Fehler: ${e.message}`);
+        }
+    };
+
+    const handleForceDelete = async () => {
+        if (!searchTerm) return;
+        if (!confirm(`NOTFALL: Möchten Sie BLIND versuchen, alle Einträge mit Farm-ID '${searchTerm}' zu löschen? Nutzen Sie dies nur, wenn der Hof blockiert ist.`)) return;
+
+        setLoading(true);
+        try {
+            await dbService.forceDeleteSettings(searchTerm);
+            alert("Löschbefehl gesendet. Bitte prüfen Sie, ob der Hof nun frei ist.");
+            handleServerSearch();
+        } catch (e: any) {
+            alert(`Fehler: ${e.message}`);
+        } finally {
+            setLoading(false);
         }
     };
 
@@ -164,18 +180,39 @@ export const AdminFarmManager: React.FC = () => {
                 </div>
                 <p className="text-[10px] text-slate-500 mt-2 flex items-center">
                     <Terminal size={10} className="mr-1"/>
-                    Tipp: Nutzen Sie die Suche, wenn "Alle Laden" aufgrund fehlender Berechtigungen fehlschlägt.
+                    Tipp: Wenn ein Hof blockiert ist, suchen Sie hier nach der ID.
                 </p>
             </div>
 
             {/* Error Banner */}
             {error && (
-                <div className={`border p-4 rounded-xl mb-4 flex items-start ${error.includes("Keine Einträge") ? 'bg-slate-800 border-slate-600 text-slate-300' : 'bg-red-900/30 border-red-500/50 text-red-200'}`}>
-                    {error.includes("Keine Einträge") ? <Search className="shrink-0 mr-3 mt-0.5"/> : <AlertOctagon className="shrink-0 mr-3 mt-0.5" />}
+                <div className={`border p-4 rounded-xl mb-4 flex items-start ${error.includes("Keine sichtbaren") ? 'bg-slate-800 border-slate-600 text-slate-300' : 'bg-red-900/30 border-red-500/50 text-red-200'}`}>
+                    {error.includes("Keine sichtbaren") ? <Search className="shrink-0 mr-3 mt-0.5"/> : <AlertOctagon className="shrink-0 mr-3 mt-0.5" />}
                     <div>
-                        <h4 className="font-bold">{error.includes("Keine Einträge") ? "Info" : "Meldung"}</h4>
+                        <h4 className="font-bold">{error.includes("Keine sichtbaren") ? "Suche ergebnislos" : "Meldung"}</h4>
                         <p className="text-sm">{error}</p>
                     </div>
+                </div>
+            )}
+
+            {/* EMERGENCY DELETE BUTTON (Visible when search finds nothing but term exists) */}
+            {farms.length === 0 && searchTerm && !loading && (
+                <div className="bg-red-900/20 border border-red-800 p-4 rounded-xl mb-6 animate-in slide-in-from-top-2">
+                    <h4 className="text-red-400 font-bold mb-2 flex items-center">
+                        <AlertTriangle size={18} className="mr-2"/> Notfall: Geister-Eintrag löschen?
+                    </h4>
+                    <p className="text-slate-400 text-sm mb-4">
+                        Wenn die App sagt "Hof existiert bereits", Sie ihn hier aber nicht sehen, ist es ein "Geister-Eintrag" (evtl. anderer User ohne Leserechte).
+                        <br/>
+                        Sie können versuchen, ihn <strong>blind zu löschen</strong>.
+                    </p>
+                    <button 
+                        onClick={handleForceDelete}
+                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-bold w-full md:w-auto shadow-lg flex items-center justify-center"
+                    >
+                        <Trash2 size={18} className="mr-2"/>
+                        Blind-Löschung für ID '{searchTerm}' erzwingen
+                    </button>
                 </div>
             )}
 
@@ -198,7 +235,7 @@ export const AdminFarmManager: React.FC = () => {
                                 <td colSpan={6} className="p-12 text-center text-slate-500">
                                     {loading 
                                         ? <div className="flex items-center justify-center"><RefreshCw className="animate-spin mr-2"/> Lade Daten...</div> 
-                                        : 'Liste leer. Bitte Suche nutzen oder "Alle Laden" klicken.'}
+                                        : 'Liste leer.'}
                                 </td>
                             </tr>
                         ) : (
@@ -236,13 +273,24 @@ export const AdminFarmManager: React.FC = () => {
                                             )}
                                         </td>
                                         <td className="p-4 text-right">
-                                            <button 
-                                                onClick={() => handleDelete(farm.docId, farm.farmId)}
-                                                className="bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white p-2 rounded-lg transition-colors border border-red-900/50 hover:border-red-500 shadow-sm"
-                                                title="Eintrag unwiderruflich löschen"
-                                            >
-                                                <Trash2 size={16} />
-                                            </button>
+                                            <div className="flex justify-end space-x-2">
+                                                {isMe && (
+                                                    <button 
+                                                        onClick={() => handleDelete(farm.docId, farm.farmId)}
+                                                        className="bg-blue-900/20 hover:bg-blue-600 text-blue-400 hover:text-white p-2 rounded-lg transition-colors border border-blue-900/50 hover:border-blue-500 shadow-sm"
+                                                        title="Mein Profil zurücksetzen"
+                                                    >
+                                                        <Eraser size={16} />
+                                                    </button>
+                                                )}
+                                                <button 
+                                                    onClick={() => handleDelete(farm.docId, farm.farmId)}
+                                                    className="bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white p-2 rounded-lg transition-colors border border-red-900/50 hover:border-red-500 shadow-sm"
+                                                    title="Eintrag löschen"
+                                                >
+                                                    <Trash2 size={16} />
+                                                </button>
+                                            </div>
                                         </td>
                                     </tr>
                                 );
