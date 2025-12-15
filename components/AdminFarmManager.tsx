@@ -82,7 +82,7 @@ export const AdminFarmManager: React.FC = () => {
     };
 
     const handleDelete = async (docId: string, farmId: string) => {
-        if (!confirm(`WARNUNG: Möchten Sie den Einstellungs-Eintrag für Farm '${farmId}' (Doc: ${docId}) wirklich löschen?`)) return;
+        if (!confirm(`WARNUNG: Möchten Sie den Einstellungs-Eintrag für Farm '${farmId || 'Ohne ID'}' (Doc: ${docId}) wirklich löschen?`)) return;
         
         try {
             await dbService.deleteSettingsDoc(docId);
@@ -202,41 +202,51 @@ export const AdminFarmManager: React.FC = () => {
                                 </td>
                             </tr>
                         ) : (
-                            farms.map((farm) => (
-                                <tr key={farm.docId} className="hover:bg-slate-700/50 transition-colors group">
-                                    <td className="p-4 font-bold text-white font-mono bg-slate-800/30">{farm.farmId}</td>
-                                    <td className="p-4">
-                                        <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${farm.farmIdType === 'string' ? 'bg-blue-900/30 text-blue-300 border-blue-800' : 'bg-orange-900/30 text-orange-300 border-orange-800'}`}>
-                                            {farm.farmIdType === 'string' ? 'TEXT' : 'ZAHL'}
-                                        </span>
-                                    </td>
-                                    <td className="p-4">
-                                        <div className="flex items-center">
-                                            <User size={14} className="mr-2 text-slate-500"/>
-                                            <span className={farm.ownerEmail === 'Unbekannt' ? 'text-red-400 italic' : 'text-green-400 font-medium'}>
-                                                {farm.ownerEmail}
+                            farms.map((farm) => {
+                                const isMe = currentUser && currentUser.uid === farm.docId;
+                                return (
+                                    <tr key={farm.docId} className={`hover:bg-slate-700/50 transition-colors group ${isMe ? 'bg-blue-900/10' : ''}`}>
+                                        <td className="p-4 font-bold text-white font-mono bg-slate-800/30">
+                                            {farm.farmId ? farm.farmId : <span className="text-slate-500 italic font-normal">(Leer)</span>}
+                                        </td>
+                                        <td className="p-4">
+                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${farm.farmIdType === 'string' ? 'bg-blue-900/30 text-blue-300 border-blue-800' : 'bg-orange-900/30 text-orange-300 border-orange-800'}`}>
+                                                {farm.farmIdType === 'string' ? 'TEXT' : 'ZAHL'}
                                             </span>
-                                        </div>
-                                    </td>
-                                    <td className="p-4">
-                                        {farm.hasPin ? (
-                                            <span className="text-green-500 font-bold flex items-center"><ShieldCheck size={14} className="mr-1"/> JA</span>
-                                        ) : (
-                                            <span className="text-red-500 font-bold opacity-50 text-xs">NEIN</span>
-                                        )}
-                                    </td>
-                                    <td className="p-4 font-mono text-[10px] text-slate-500 select-all hidden md:table-cell">{farm.docId}</td>
-                                    <td className="p-4 text-right">
-                                        <button 
-                                            onClick={() => handleDelete(farm.docId, farm.farmId)}
-                                            className="bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white p-2 rounded-lg transition-colors border border-red-900/50 hover:border-red-500 shadow-sm"
-                                            title="Eintrag unwiderruflich löschen"
-                                        >
-                                            <Trash2 size={16} />
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))
+                                        </td>
+                                        <td className="p-4">
+                                            <div className="flex items-center">
+                                                <User size={14} className="mr-2 text-slate-500"/>
+                                                <span className={farm.ownerEmail === 'Unbekannt' ? 'text-red-400 italic' : 'text-green-400 font-medium'}>
+                                                    {farm.ownerEmail}
+                                                </span>
+                                            </div>
+                                        </td>
+                                        <td className="p-4">
+                                            {farm.hasPin ? (
+                                                <span className="text-green-500 font-bold flex items-center"><ShieldCheck size={14} className="mr-1"/> JA</span>
+                                            ) : (
+                                                <span className="text-red-500 font-bold opacity-50 text-xs">NEIN</span>
+                                            )}
+                                        </td>
+                                        <td className="p-4 font-mono text-[10px] text-slate-500 select-all hidden md:table-cell">
+                                            {farm.docId}
+                                            {isMe && (
+                                                <span className="ml-2 bg-blue-600 text-white px-1.5 py-0.5 rounded text-[9px] font-bold">DU</span>
+                                            )}
+                                        </td>
+                                        <td className="p-4 text-right">
+                                            <button 
+                                                onClick={() => handleDelete(farm.docId, farm.farmId)}
+                                                className="bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white p-2 rounded-lg transition-colors border border-red-900/50 hover:border-red-500 shadow-sm"
+                                                title="Eintrag unwiderruflich löschen"
+                                            >
+                                                <Trash2 size={16} />
+                                            </button>
+                                        </td>
+                                    </tr>
+                                );
+                            })
                         )}
                     </tbody>
                 </table>
