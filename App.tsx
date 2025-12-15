@@ -36,15 +36,23 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
             }
 
             try {
-                if (isRegistering) {
-                    await authService.register(email, cloudPass);
-                } else {
-                    await authService.login(email, cloudPass);
-                }
+                // Timeout Promise (10 seconds)
+                const timeoutPromise = new Promise((_, reject) => 
+                    setTimeout(() => reject(new Error("Zeitüberschreitung (Server antwortet nicht).")), 10000)
+                );
+
+                const authPromise = isRegistering 
+                    ? authService.register(email, cloudPass) 
+                    : authService.login(email, cloudPass);
+
+                // Race: Login vs Timeout
+                await Promise.race([authPromise, timeoutPromise]);
+                
                 onLogin(); // Success
             } catch (e: any) {
                 setErrorMsg(e.message || "Authentifizierung fehlgeschlagen.");
             } finally {
+                // Only set loading false if component is still mounted (implied by execution flow)
                 setLoading(false);
             }
             return;

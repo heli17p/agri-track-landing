@@ -23,8 +23,14 @@ export const authService = {
         if (!auth) throw new Error("Cloud nicht verfügbar.");
         try {
             const result = await signInWithEmailAndPassword(auth, email, pass);
-            // Nach Login: Prüfen ob lokale Daten migriert werden müssen
-            await dbService.migrateGuestDataToCloud();
+            
+            // NON-BLOCKING MIGRATION:
+            // Wir warten NICHT auf die Migration, damit der Login sofort durchgeht.
+            // Die Migration läuft im Hintergrund.
+            dbService.migrateGuestDataToCloud().catch(err => {
+                console.warn("[Auth] Hintergrund-Migration Fehler (nicht kritisch):", err);
+            });
+            
             return result.user;
         } catch (error: any) {
             console.error("Login Error:", error);
@@ -36,8 +42,12 @@ export const authService = {
         if (!auth) throw new Error("Cloud nicht verfügbar.");
         try {
             const result = await createUserWithEmailAndPassword(auth, email, pass);
-            // Neue User haben leere Cloud, wir schieben lokale Daten hoch
-            await dbService.migrateGuestDataToCloud();
+            
+            // Auch hier: Non-blocking
+            dbService.migrateGuestDataToCloud().catch(err => {
+                console.warn("[Auth] Hintergrund-Migration Fehler (nicht kritisch):", err);
+            });
+
             return result.user;
         } catch (error: any) {
             console.error("Register Error:", error);
