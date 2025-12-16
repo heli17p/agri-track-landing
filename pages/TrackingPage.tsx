@@ -1,12 +1,32 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, Popup } from 'react-leaflet';
-import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText } from 'lucide-react';
+import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { Field, StorageLocation, ActivityRecord, TrackPoint, ActivityType, FertilizerType, AppSettings, DEFAULT_SETTINGS, TillageType, HarvestType } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
 import { ManualFertilizationForm, HarvestForm, TillageForm } from '../components/ManualActivityForms';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
+
+// --- ICONS & ASSETS ---
+
+const createCustomIcon = (color: string, svgPath: string) => {
+  return L.divIcon({
+    className: 'custom-pin-icon',
+    html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; box-shadow: 0 3px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: white; position: relative;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${svgPath}</svg><div style="width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid ${color}; position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%);"></div></div>`,
+    iconSize: [32, 40],
+    iconAnchor: [16, 40], 
+    popupAnchor: [0, -42]
+  });
+};
+
+const iconPaths = {
+  droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>',
+  layers: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>'
+};
+
+const slurryIcon = createCustomIcon('#78350f', iconPaths.droplet); 
+const manureIcon = createCustomIcon('#d97706', iconPaths.layers); 
 
 // --- HELPERS ---
 
@@ -183,14 +203,14 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           isSpreading: false // default, updated below
       };
 
-      // 1. STORAGE DETECTION
-      checkStorageProximity(point, speedKmh);
+      // 1. STORAGE DETECTION (Only if Fertilization)
+      if (activityType === ActivityType.FERTILIZATION) {
+          checkStorageProximity(point, speedKmh);
+      }
 
       // 2. STATE MACHINE (Only if not Loading)
       if (trackingState !== 'LOADING') {
           // Detect Spreading vs Transit based on Speed & Field Proximity
-          // Simple logic: If inside field field and speed is optimal -> SPREADING
-          // If too fast or too slow -> TRANSIT
           
           // Check if inside any field
           const inField = fields.some(f => isPointInPolygon(point, f.boundary));
@@ -199,18 +219,13 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           let isSpreading = false;
           
           if (activityType === ActivityType.FERTILIZATION || activityType === ActivityType.TILLAGE) {
-             // Logic: Must be in a field (optional constraint) and within speed limits
-             // Some farmers spread outside defined fields, so mainly check speed
              const minSpeed = settings.minSpeed || 2.0;
              const maxSpeed = settings.maxSpeed || 15.0;
              
-             // If we are definitely in a field, we are more likely spreading
              if (inField && speedKmh >= minSpeed && speedKmh <= maxSpeed) {
                  isSpreading = true;
              }
-             // If manual override needed, we can add a toggle. For now auto-detect.
           } else if (activityType === ActivityType.HARVEST) {
-             // Harvest is often slower
              if (inField && speedKmh >= 1.0 && speedKmh <= 20.0) {
                  isSpreading = true;
              }
@@ -395,15 +410,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           });
       });
 
-      // Now convert points ratio to actual Volume (if manually entered later) or just keep ratio
-      // Since we don't have total volume yet, we save the ratios or raw counts
-      // Actually, we usually leave amount 0 for user to fill.
-      
-      // Let's refine: fieldDistribution should ideally be the Amount. 
-      // Since we don't know the amount yet, we can't fill it accurately.
-      // But we can save the *ratios* in a temporary property or just use the points length in UI to suggest split.
-      // For now, we save the record without amounts, but with fieldIds.
-
       const record: ActivityRecord = {
           id: generateId(),
           date: new Date(startTime || Date.now()).toISOString(),
@@ -416,8 +422,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           trackPoints: trackPoints,
           notes: saveNotes + `\nAutomatisch erfasst. Dauer: ${((Date.now() - (startTime||0))/60000).toFixed(0)} min`,
           year: new Date().getFullYear(),
-          // Save raw counts for later distribution calculation in UI if needed
-          // simplified: Just store fieldIds for now
       };
       
       if (activityType === ActivityType.TILLAGE) {
@@ -437,6 +441,17 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
       alert("Aktivität gespeichert!");
       onNavigate('DASHBOARD');
+  };
+
+  const handleDiscard = () => {
+      if(confirm("Aufzeichnung wirklich verwerfen? Alle Daten gehen verloren.")) {
+          stopGPS();
+          setTrackingState('IDLE');
+          setTrackPoints([]);
+          setShowSaveModal(false);
+          setDetectionCountdown(null);
+          pendingStorageIdRef.current = null;
+      }
   };
 
   const handleManualSave = async (record: ActivityRecord) => {
@@ -610,19 +625,24 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                     />
                 )}
 
-                {/* Storages (Only visible in Fertilization mode) */}
+                {/* Storages (Visible mainly in Fertilization mode, but good to see in general) */}
                 {activityType === ActivityType.FERTILIZATION && storages.map(s => (
-                     <Circle 
-                        key={s.id}
-                        center={[s.geo.lat, s.geo.lng]}
-                        radius={settings.storageRadius || 20}
-                        pathOptions={{ 
-                            color: getStorageColor(s.id), 
-                            fillColor: getStorageColor(s.id), 
-                            fillOpacity: 0.2,
-                            dashArray: '5, 5'
-                        }}
-                     />
+                     <React.Fragment key={s.id}>
+                         <Circle 
+                            center={[s.geo.lat, s.geo.lng]}
+                            radius={settings.storageRadius || 20}
+                            pathOptions={{ 
+                                color: getStorageColor(s.id), 
+                                fillColor: getStorageColor(s.id), 
+                                fillOpacity: 0.2,
+                                dashArray: '5, 5'
+                            }}
+                         />
+                         <Marker 
+                            position={[s.geo.lat, s.geo.lng]}
+                            icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
+                         />
+                     </React.Fragment>
                 ))}
             </MapContainer>
             
@@ -676,7 +696,15 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         <div className="bg-white border-t border-slate-200 p-4 pb-safe z-10 shrink-0">
              {showSaveModal ? (
                  <div className="space-y-4 animate-in slide-in-from-bottom-10">
-                     <h3 className="font-bold text-lg text-slate-800">Aufzeichnung beenden</h3>
+                     <div className="flex justify-between items-center">
+                         <h3 className="font-bold text-lg text-slate-800">Aufzeichnung beenden</h3>
+                         <button 
+                            onClick={handleDiscard}
+                            className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-100 font-bold flex items-center hover:bg-red-100"
+                         >
+                             <Trash2 size={14} className="mr-1"/> Verwerfen / Löschen
+                         </button>
+                     </div>
                      <div>
                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Notizen</label>
                          <textarea 
