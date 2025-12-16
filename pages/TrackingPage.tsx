@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, Popup } from 'react-leaflet';
-import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database } from 'lucide-react';
+import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
-import { Field, StorageLocation, ActivityRecord, TrackPoint, ActivityType, FertilizerType, AppSettings, DEFAULT_SETTINGS, TillageType, HarvestType } from '../types';
+import { Field, StorageLocation, ActivityRecord, TrackPoint, ActivityType, FertilizerType, AppSettings, DEFAULT_SETTINGS, TillageType, HarvestType, FarmProfile } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
 import { ManualFertilizationForm, HarvestForm, TillageForm } from '../components/ManualActivityForms';
 import L from 'leaflet';
@@ -22,20 +22,25 @@ const createCustomIcon = (color: string, svgPath: string) => {
 
 const iconPaths = {
   droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>',
-  layers: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>'
+  layers: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>',
+  house: '<path d="M3 21h18M5 21V7l8-5 8 5v14"/>',
 };
 
 const slurryIcon = createCustomIcon('#78350f', iconPaths.droplet); 
 const manureIcon = createCustomIcon('#d97706', iconPaths.layers); 
+const farmIcon = createCustomIcon('#2563eb', iconPaths.house);
 
 // --- HELPERS ---
 
 // Map Controller to follow user position
 const MapController = ({ center, zoom, follow }: { center: [number, number] | null, zoom: number, follow: boolean }) => {
     const map = useMap();
+    
+    // Initial Center Effect
     useEffect(() => {
-        if (center && follow) {
-            map.setView(center, zoom, { animate: true });
+        if (center) {
+            // If following, animate. If just initial set (no follow yet but center provided), jump there.
+            map.setView(center, zoom, { animate: follow });
         }
     }, [center, zoom, follow, map]);
     
@@ -71,6 +76,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   // Data
   const [fields, setFields] = useState<Field[]>([]);
   const [storages, setStorages] = useState<StorageLocation[]>([]);
+  const [profile, setProfile] = useState<FarmProfile | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
   // Tracking Core
@@ -113,6 +119,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         setFields(await dbService.getFields());
         setStorages(await dbService.getStorageLocations());
         setSettings(await dbService.getSettings());
+        
+        const profiles = await dbService.getFarmProfile();
+        if (profiles.length > 0) setProfile(profiles[0]);
     };
     init();
     return () => {
@@ -601,8 +610,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   // --- TRACKING UI ---
 
-  const currentLat = currentLocation?.coords.latitude || 47.5;
-  const currentLng = currentLocation?.coords.longitude || 14.5;
+  // Determine initial center: 1. Current GPS, 2. Farm Location, 3. Austria Default
+  const currentLat = currentLocation?.coords.latitude || profile?.addressGeo?.lat || 47.5;
+  const currentLng = currentLocation?.coords.longitude || profile?.addressGeo?.lng || 14.5;
 
   return (
     <div className="h-full relative bg-slate-900 flex flex-col">
@@ -617,7 +627,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                     }
                 />
                 
-                <MapController center={currentLocation ? [currentLat, currentLng] : null} zoom={16} follow={followUser} />
+                <MapController center={[currentLat, currentLng]} zoom={16} follow={followUser} />
                 
                 {/* Fields Overlay */}
                 {fields.map(f => (
@@ -627,6 +637,14 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                         pathOptions={{ color: f.type === 'Acker' ? '#d97706' : '#15803d', fillOpacity: 0.3, weight: 1 }}
                     />
                 ))}
+
+                {/* Farm Location (Hofstelle) */}
+                {profile?.addressGeo && (
+                    <Marker 
+                        position={[profile.addressGeo.lat, profile.addressGeo.lng]} 
+                        icon={farmIcon}
+                    />
+                )}
 
                 {/* Live Track - DYNAMIC SEGMENTS */}
                 {trackSegments.map((segment, index) => {
@@ -708,35 +726,58 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                 <Minimize2 size={24} />
             </button>
 
-            {/* 3. STATUS PILL (FLOATING) */}
-            <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg border border-slate-200 z-10 flex items-center space-x-2 pointer-events-none">
-                {(() => {
-                    let className = 'bg-slate-400';
-                    let style = {};
-                    
-                    if (trackingState === 'SPREADING') {
-                        className = 'bg-green-500 animate-pulse';
-                    } else if (trackingState === 'TRANSIT') {
-                        className = 'bg-blue-500';
-                    } else if (trackingState === 'LOADING' || (detectionCountdown !== null && pendingStorageIdRef.current)) {
-                        // Dynamic Color Match for Storage
-                        const targetId = activeLoadingStorageRef.current?.id || pendingStorageIdRef.current;
-                        const index = storages.findIndex(s => s.id === targetId);
-                        const color = getStorageColor(targetId, index >= 0 ? index : 0);
+            {/* 3. STATUS PILL (FLOATING & ENHANCED) */}
+            <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[400] w-full max-w-[90%] flex justify-center pointer-events-none">
+                <div className="bg-white/95 backdrop-blur shadow-xl border border-slate-300 rounded-full px-5 py-3 flex items-center space-x-3 pointer-events-auto transition-all">
+                    {/* Visual Indicator */}
+                    {(() => {
+                        let color = 'bg-slate-400';
+                        let Icon = Navigation;
+                        let animate = false;
                         
-                        className = 'animate-pulse';
-                        style = { backgroundColor: color, boxShadow: `0 0 6px ${color}` };
-                    }
+                        if (detectionCountdown !== null) {
+                            color = 'bg-amber-500';
+                            Icon = Clock;
+                            animate = true;
+                        } else if (trackingState === 'SPREADING') {
+                            color = 'bg-green-500';
+                            Icon = Droplets;
+                            animate = true;
+                        } else if (trackingState === 'LOADING') {
+                            const targetId = activeLoadingStorageRef.current?.id || pendingStorageIdRef.current;
+                            const index = storages.findIndex(s => s.id === targetId);
+                            color = getStorageColor(targetId, index >= 0 ? index : 0); // Use specific storage color
+                            Icon = Database;
+                            animate = true;
+                        } else if (trackingState === 'TRANSIT') {
+                            color = 'bg-blue-500';
+                            Icon = Truck;
+                        }
 
-                    return <div className={`w-3 h-3 rounded-full ${className}`} style={style}></div>;
-                })()}
-                
-                <span className="font-bold text-sm text-slate-700">
-                    {detectionCountdown 
-                        ? `Erkenne ${pendingStorageName}: ${detectionCountdown}s...` 
-                        : (trackingState === 'LOADING' ? `LADEN (${detectedStorageName})` : trackingState === 'TRANSIT' ? 'Transferfahrt' : 'Ausbringung')
-                    }
-                </span>
+                        return (
+                            <div className={`p-2 rounded-full text-white shadow-sm ${color} ${animate ? 'animate-pulse' : ''}`}>
+                                <Icon size={20} />
+                            </div>
+                        );
+                    })()}
+                    
+                    {/* Text Status */}
+                    <div className="flex flex-col">
+                        <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-0.5">Status</span>
+                        <span className="font-bold text-slate-800 text-sm whitespace-nowrap">
+                            {detectionCountdown 
+                                ? `Timer läuft: ${pendingStorageName} (${detectionCountdown}s)` 
+                                : trackingState === 'LOADING' 
+                                    ? `LADEN: ${detectedStorageName}` 
+                                    : trackingState === 'SPREADING' 
+                                        ? 'Am Feld (Ausbringung)'
+                                        : trackingState === 'TRANSIT' 
+                                            ? 'Transportfahrt' 
+                                            : 'Bereit (Warte auf GPS)'
+                            }
+                        </span>
+                    </div>
+                </div>
             </div>
         </div>
 
