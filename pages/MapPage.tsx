@@ -169,8 +169,16 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const getFieldColor = (field: Field) => {
     if (field.color) return field.color;
     
+    const usage = field.usage?.toUpperCase() || '';
+    const name = field.name.toUpperCase();
+
+    // Check for DIV / Miscellaneous (Grey)
+    if (usage.includes('DIV') || name.includes('DIV')) {
+        return mapStyle === 'satellite' ? '#cbd5e1' : '#475569'; // Slate-300 / Slate-600
+    }
+    
     // Check if it is pasture (Weide)
-    const isWeide = field.usage?.toLowerCase().includes('weide') || field.name.toLowerCase().includes('weide');
+    const isWeide = usage.includes('WEIDE') || name.includes('WEIDE');
 
     if (mapStyle === 'satellite') {
       if (field.type === 'Acker') return '#F59E0B'; // Amber
@@ -241,8 +249,26 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   
   // Logic to determine what exists for Legend
   const hasAcker = useMemo(() => fields.some(f => f.type === 'Acker'), [fields]);
-  const hasWeide = useMemo(() => fields.some(f => f.type === 'Grünland' && (f.usage?.toLowerCase().includes('weide') || f.name.toLowerCase().includes('weide'))), [fields]);
-  const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland' && !(f.usage?.toLowerCase().includes('weide') || f.name.toLowerCase().includes('weide'))), [fields]);
+  
+  const hasDiv = useMemo(() => fields.some(f => {
+      const u = f.usage?.toUpperCase() || '';
+      const n = f.name.toUpperCase();
+      return u.includes('DIV') || n.includes('DIV');
+  }), [fields]);
+
+  const hasWeide = useMemo(() => fields.some(f => {
+      const u = f.usage?.toUpperCase() || '';
+      const n = f.name.toUpperCase();
+      // Must include WEIDE but NOT DIV (priority to DIV if both exist, though unlikely)
+      return f.type === 'Grünland' && (u.includes('WEIDE') || n.includes('WEIDE')) && !u.includes('DIV') && !n.includes('DIV');
+  }), [fields]);
+
+  const hasGrunland = useMemo(() => fields.some(f => {
+      const u = f.usage?.toUpperCase() || '';
+      const n = f.name.toUpperCase();
+      // Is Grunland but NOT Weide and NOT Div
+      return f.type === 'Grünland' && !(u.includes('WEIDE') || n.includes('WEIDE')) && !(u.includes('DIV') || n.includes('DIV'));
+  }), [fields]);
   
   const hasSlurry = useMemo(() => storages.some(s => s.type === FertilizerType.SLURRY), [storages]);
   const hasManure = useMemo(() => storages.some(s => s.type === FertilizerType.MANURE), [storages]);
@@ -300,7 +326,7 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                         >
                           <Popup>
                             <div className="font-bold">{f.name}</div>
-                            <div className="text-xs">{f.areaHa.toFixed(2)} ha | {f.type}</div>
+                            <div className="text-xs">{f.areaHa.toFixed(2)} ha | {f.usage || f.type}</div>
                           </Popup>
                         </Polygon>
                     );
@@ -423,9 +449,15 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                          <span>Acker</span>
                      </div>
                  )}
+                 {hasDiv && (
+                     <div className="flex items-center mb-1">
+                         <span className="w-3 h-3 rounded-sm mr-2 border border-black/10" style={{background: mapStyle === 'satellite' ? '#cbd5e1' : '#475569'}}></span>
+                         <span>Div. Flächen (DIVNFZ)</span>
+                     </div>
+                 )}
 
                  {/* Separator if both exist */}
-                 {(hasGrunland || hasAcker || hasWeide) && (hasSlurry || hasManure) && <div className="h-px bg-slate-200 my-2"></div>}
+                 {(hasGrunland || hasAcker || hasWeide || hasDiv) && (hasSlurry || hasManure) && <div className="h-px bg-slate-200 my-2"></div>}
 
                  {/* Storage Types - Distinct Colors */}
                  {hasSlurry && (
