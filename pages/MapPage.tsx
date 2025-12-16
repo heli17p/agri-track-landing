@@ -168,10 +168,20 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
 
   const getFieldColor = (field: Field) => {
     if (field.color) return field.color;
+    
+    // Check if it is pasture (Weide)
+    const isWeide = field.usage?.toLowerCase().includes('weide') || field.name.toLowerCase().includes('weide');
+
     if (mapStyle === 'satellite') {
-      return field.type === 'Acker' ? '#F59E0B' : '#84CC16'; 
+      if (field.type === 'Acker') return '#F59E0B'; // Amber
+      if (isWeide) return '#BEF264'; // Lime-200 (Lighter Green/Yellowish)
+      return '#84CC16'; // Lime-500 (Standard Green)
     }
-    return field.type === 'Acker' ? '#92400E' : '#15803D'; 
+    
+    // Standard Map
+    if (field.type === 'Acker') return '#92400E'; // Brown
+    if (isWeide) return '#65a30d'; // Lime-600 (Distinct lighter green)
+    return '#15803D'; // Green-700 (Dark Green)
   };
 
   const handleStartEditGeometry = (field: Field) => {
@@ -229,8 +239,11 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
       setSplitPoints([]);
   };
   
+  // Logic to determine what exists for Legend
   const hasAcker = useMemo(() => fields.some(f => f.type === 'Acker'), [fields]);
-  const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
+  const hasWeide = useMemo(() => fields.some(f => f.type === 'Grünland' && (f.usage?.toLowerCase().includes('weide') || f.name.toLowerCase().includes('weide'))), [fields]);
+  const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland' && !(f.usage?.toLowerCase().includes('weide') || f.name.toLowerCase().includes('weide'))), [fields]);
+  
   const hasSlurry = useMemo(() => storages.some(s => s.type === FertilizerType.SLURRY), [storages]);
   const hasManure = useMemo(() => storages.some(s => s.type === FertilizerType.MANURE), [storages]);
 
@@ -381,11 +394,27 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
              <div className="absolute bottom-20 left-4 bg-white/90 p-3 rounded-lg shadow-lg z-[400] text-xs backdrop-blur-sm border border-slate-200 pointer-events-none">
                  <div className="font-bold mb-2 text-slate-700">Legende</div>
                  
+                 {/* Farm House */}
+                 {profile?.addressGeo && (
+                     <div className="flex items-center mb-1">
+                         <div className="w-4 h-4 rounded-full mr-2 bg-[#2563eb] border-2 border-white shadow-sm flex items-center justify-center">
+                             <div className="w-1 h-1 bg-white rounded-full opacity-50"></div>
+                         </div>
+                         <span>Hofstelle</span>
+                     </div>
+                 )}
+
                  {/* Fields */}
                  {hasGrunland && (
                      <div className="flex items-center mb-1">
                          <span className="w-3 h-3 rounded-sm mr-2 border border-black/10" style={{background: mapStyle === 'satellite' ? '#84CC16' : '#15803D'}}></span>
-                         <span>Grünland / Dauerweide</span>
+                         <span>Grünland (Mähwiese)</span>
+                     </div>
+                 )}
+                 {hasWeide && (
+                     <div className="flex items-center mb-1">
+                         <span className="w-3 h-3 rounded-sm mr-2 border border-black/10" style={{background: mapStyle === 'satellite' ? '#BEF264' : '#65a30d'}}></span>
+                         <span>Dauerweide</span>
                      </div>
                  )}
                  {hasAcker && (
@@ -396,7 +425,7 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                  )}
 
                  {/* Separator if both exist */}
-                 {(hasGrunland || hasAcker) && (hasSlurry || hasManure) && <div className="h-px bg-slate-200 my-2"></div>}
+                 {(hasGrunland || hasAcker || hasWeide) && (hasSlurry || hasManure) && <div className="h-px bg-slate-200 my-2"></div>}
 
                  {/* Storage Types - Distinct Colors */}
                  {hasSlurry && (
