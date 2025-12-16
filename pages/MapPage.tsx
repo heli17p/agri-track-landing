@@ -16,14 +16,14 @@ const MAP_COLORS = {
         acker: '#92400E',    // Amber-900 (Brown)
         weide: '#65a30d',    // Lime-600 (Distinct lighter green)
         grunland: '#15803D', // Green-700 (Dark Green)
-        div: '#475569',      // Slate-600 (Dark Grey)
+        div: '#EAB308',      // Yellow-500 (Light Yellow - Fixed for Legend consistency)
         hof: '#2563eb'       // Blue-600
     },
     satellite: {
         acker: '#F59E0B',    // Amber-500 (Orange/Yellow)
         weide: '#BEF264',    // Lime-200 (Very Light Green/Yellowish)
         grunland: '#84CC16', // Lime-500 (Standard Green)
-        div: '#cbd5e1',      // Slate-300 (Light Grey)
+        div: '#FEF08A',      // Yellow-200 (Very Light Yellow/Cream)
         hof: '#3b82f6'       // Blue-500
     }
 };
@@ -204,7 +204,7 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     const name = field.name.toUpperCase();
     const colors = mapStyle === 'satellite' ? MAP_COLORS.satellite : MAP_COLORS.standard;
 
-    // Check for DIV / Miscellaneous (Grey)
+    // Check for DIV / Miscellaneous (Yellow)
     if (usage.includes('DIV') || name.includes('DIV')) {
         return colors.div;
     }
