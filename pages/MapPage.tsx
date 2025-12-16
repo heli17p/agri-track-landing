@@ -10,6 +10,24 @@ import L from 'leaflet';
 
 import 'leaflet/dist/leaflet.css';
 
+// --- CENTRAL COLOR CONFIGURATION ---
+const MAP_COLORS = {
+    standard: {
+        acker: '#92400E',    // Amber-900 (Brown)
+        weide: '#65a30d',    // Lime-600 (Distinct lighter green)
+        grunland: '#15803D', // Green-700 (Dark Green)
+        div: '#475569',      // Slate-600 (Dark Grey)
+        hof: '#2563eb'       // Blue-600
+    },
+    satellite: {
+        acker: '#F59E0B',    // Amber-500 (Orange/Yellow)
+        weide: '#BEF264',    // Lime-200 (Very Light Green/Yellowish)
+        grunland: '#84CC16', // Lime-500 (Standard Green)
+        div: '#cbd5e1',      // Slate-300 (Light Grey)
+        hof: '#3b82f6'       // Blue-500
+    }
+};
+
 // ... (Custom Icons Code - Same as before) ...
 const createCustomIcon = (color: string, svgPath: string) => {
   return L.divIcon({
@@ -126,6 +144,19 @@ const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: 
     return null;
 };
 
+// Helper for Legend Items to match Map Polygon visual style
+const LegendPoly = ({ color, label }: { color: string, label: string }) => (
+    <div className="flex items-center mb-1">
+        <div className="relative w-4 h-4 mr-2 shadow-sm rounded-sm overflow-hidden">
+            {/* Fill matching map fillOpacity=0.5 */}
+            <div className="absolute inset-0" style={{ backgroundColor: color, opacity: 0.5 }}></div>
+            {/* Stroke matching map weight */}
+            <div className="absolute inset-0 border-2" style={{ borderColor: color }}></div>
+        </div>
+        <span className="text-slate-700">{label}</span>
+    </div>
+);
+
 interface Props {
     initialEditFieldId?: string | null;
     clearInitialEdit?: () => void;
@@ -171,25 +202,19 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     
     const usage = field.usage?.toUpperCase() || '';
     const name = field.name.toUpperCase();
+    const colors = mapStyle === 'satellite' ? MAP_COLORS.satellite : MAP_COLORS.standard;
 
     // Check for DIV / Miscellaneous (Grey)
     if (usage.includes('DIV') || name.includes('DIV')) {
-        return mapStyle === 'satellite' ? '#cbd5e1' : '#475569'; // Slate-300 / Slate-600
+        return colors.div;
     }
     
     // Check if it is pasture (Weide)
     const isWeide = usage.includes('WEIDE') || name.includes('WEIDE');
 
-    if (mapStyle === 'satellite') {
-      if (field.type === 'Acker') return '#F59E0B'; // Amber
-      if (isWeide) return '#BEF264'; // Lime-200 (Lighter Green/Yellowish)
-      return '#84CC16'; // Lime-500 (Standard Green)
-    }
-    
-    // Standard Map
-    if (field.type === 'Acker') return '#92400E'; // Brown
-    if (isWeide) return '#65a30d'; // Lime-600 (Distinct lighter green)
-    return '#15803D'; // Green-700 (Dark Green)
+    if (field.type === 'Acker') return colors.acker;
+    if (isWeide) return colors.weide;
+    return colors.grunland; // Default Grunland
   };
 
   const handleStartEditGeometry = (field: Field) => {
@@ -272,6 +297,8 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   
   const hasSlurry = useMemo(() => storages.some(s => s.type === FertilizerType.SLURRY), [storages]);
   const hasManure = useMemo(() => storages.some(s => s.type === FertilizerType.MANURE), [storages]);
+
+  const activeColors = mapStyle === 'satellite' ? MAP_COLORS.satellite : MAP_COLORS.standard;
 
   return (
     // FIX: Using full height relative container and min-height fallback
@@ -430,31 +457,11 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                      </div>
                  )}
 
-                 {/* Fields */}
-                 {hasGrunland && (
-                     <div className="flex items-center mb-1">
-                         <span className="w-3 h-3 rounded-sm mr-2 border border-black/10" style={{background: mapStyle === 'satellite' ? '#84CC16' : '#15803D'}}></span>
-                         <span>Grünland (Mähwiese)</span>
-                     </div>
-                 )}
-                 {hasWeide && (
-                     <div className="flex items-center mb-1">
-                         <span className="w-3 h-3 rounded-sm mr-2 border border-black/10" style={{background: mapStyle === 'satellite' ? '#BEF264' : '#65a30d'}}></span>
-                         <span>Dauerweide</span>
-                     </div>
-                 )}
-                 {hasAcker && (
-                     <div className="flex items-center mb-1">
-                         <span className="w-3 h-3 rounded-sm mr-2 border border-black/10" style={{background: mapStyle === 'satellite' ? '#F59E0B' : '#92400E'}}></span>
-                         <span>Acker</span>
-                     </div>
-                 )}
-                 {hasDiv && (
-                     <div className="flex items-center mb-1">
-                         <span className="w-3 h-3 rounded-sm mr-2 border border-black/10" style={{background: mapStyle === 'satellite' ? '#cbd5e1' : '#475569'}}></span>
-                         <span>Div. Flächen (DIVNFZ)</span>
-                     </div>
-                 )}
+                 {/* Fields - Using LegendPoly for visual match */}
+                 {hasGrunland && <LegendPoly color={activeColors.grunland} label="Grünland (Mähwiese)" />}
+                 {hasWeide && <LegendPoly color={activeColors.weide} label="Dauerweide" />}
+                 {hasAcker && <LegendPoly color={activeColors.acker} label="Acker" />}
+                 {hasDiv && <LegendPoly color={activeColors.div} label="Div. Flächen (DIVNFZ)" />}
 
                  {/* Separator if both exist */}
                  {(hasGrunland || hasAcker || hasWeide || hasDiv) && (hasSlurry || hasManure) && <div className="h-px bg-slate-200 my-2"></div>}
