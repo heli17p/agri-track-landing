@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { 
   Save, User, Database, Settings, Cloud, MapPin, Plus, Trash2, 
@@ -61,7 +60,7 @@ const translateError = (e: any): string => {
     if (msg.includes("offline")) {
         return "Sie sind offline. Diese Aktion erfordert eine Internetverbindung.";
     }
-    if (msg.includes("permission")) {
+    if (msg.includes("permission") || msg.includes("Missing or insufficient permissions")) {
         return "Zugriff verweigert. Die Datenbank ist gesperrt.";
     }
     if (msg.includes("deadline-exceeded")) {
@@ -93,7 +92,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   // Modals & Tools
   const [editingStorage, setEditingStorage] = useState<StorageLocation | null>(null);
   const [showDiagnose, setShowDiagnose] = useState(false);
-  const [activeDiagTab, setActiveDiagTab] = useState<'status' | 'logs' | 'inspector' | 'repair' | 'conflicts'>('status'); 
+  const [activeDiagTab, setActiveDiagTab] = useState<'status' | 'logs' | 'inspector' | 'conflicts'>('status'); 
   const [inspectorData, setInspectorData] = useState<any>(null);
   const [inspectorLoading, setInspectorLoading] = useState(false);
   const [showMapPicker, setShowMapPicker] = useState<'profile' | 'storage' | null>(null);
@@ -101,10 +100,6 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [userInfo, setUserInfo] = useState<any>(null);
   const [logs, setLogs] = useState<string[]>([]);
   
-  // Repair Tool State
-  const [repairAnalysis, setRepairAnalysis] = useState<any>(null);
-  const [repairLoading, setRepairLoading] = useState(false);
-
   // Conflicts Tool State
   const [conflicts, setConflicts] = useState<any[]>([]);
   const [conflictsLoading, setConflictsLoading] = useState(false);
@@ -293,6 +288,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           const cleanId = inputFarmId.trim();
           
           // Double check it doesn't exist
+          // NOTE: If this fails with permission denied, we catch it below
           const check = await dbService.verifyFarmPin(cleanId, '');
           if (!check.isNew) {
               setConnectError("Dieser Hof existiert bereits! Bitte 'Hof beitreten' nutzen.");
@@ -309,10 +305,11 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           alert(`Hof ${cleanId} erfolgreich erstellt!`);
       } catch (e: any) {
           const msg = translateError(e);
-          setConnectError(`Fehler beim Erstellen: ${msg}`);
+          setConnectError(msg);
           
           // Show Help if Permission Error
-          if (msg.includes("Zugriff verweigert") || e.message?.includes("permission")) {
+          // Firebase Code: permission-denied
+          if (msg.includes("Zugriff verweigert") || e.code === 'permission-denied' || e.message?.toLowerCase().includes("permission")) {
               setShowRulesHelp(true);
           }
       } finally {
@@ -418,33 +415,6 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
         } finally {
             setInspectorLoading(false);
         }
-  };
-
-  const analyzeRepair = async () => {
-      if (!settings.farmId) return;
-      setRepairLoading(true);
-      try {
-          const res = await dbService.analyzeDataTypes(settings.farmId);
-          setRepairAnalysis(res);
-      } finally {
-          setRepairLoading(false);
-      }
-  };
-
-  const executeRepair = async () => {
-      if (!settings.farmId) return;
-      if (!confirm("Reparatur starten? Dies konvertiert alte 'Zahlen-IDs' in 'Text-IDs'.")) return;
-      setRepairLoading(true);
-      try {
-          const msg = await dbService.repairDataTypes(settings.farmId);
-          alert(msg);
-          analyzeRepair(); // Refresh
-          loadCloudData(settings.farmId); // Update Main Stats
-      } catch (e: any) {
-          alert("Fehler: " + translateError(e));
-      } finally {
-          setRepairLoading(false);
-      }
   };
 
   const loadConflicts = async (manualId?: string) => {
@@ -1076,7 +1046,7 @@ service cloud.firestore {
                             <p className="text-xs font-bold text-slate-500 uppercase">Schritte zur Lösung:</p>
                             <ol className="list-decimal list-inside text-sm text-slate-700 space-y-1">
                                 <li>Öffnen Sie die <a href="https://console.firebase.google.com/" target="_blank" className="text-blue-600 underline">Firebase Konsole</a>.</li>
-                                <li>Gehen Sie zu <strong>Firestore Database</strong> &rarr; Reiter <strong>Regeln</strong> (Rules).</li>
+                                <li>Gehen Sie zu <strong>Firestore Database</strong> <span>&rarr;</span> Reiter <strong>Regeln</strong> (Rules).</li>
                                 <li>Löschen Sie den alten Code und fügen Sie den Code von oben ein.</li>
                                 <li>Klicken Sie auf <strong>Veröffentlichen</strong>.</li>
                             </ol>
@@ -1120,12 +1090,6 @@ service cloud.firestore {
                             className={`flex-1 min-w-[70px] py-3 text-xs font-bold ${activeDiagTab === 'inspector' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
                         >
                             Inhalt
-                        </button>
-                        <button 
-                            onClick={() => { setActiveDiagTab('repair'); analyzeRepair(); }}
-                            className={`flex-1 min-w-[70px] py-3 text-xs font-bold ${activeDiagTab === 'repair' ? 'bg-white border-b-2 border-blue-500 text-blue-600' : 'text-slate-500 hover:bg-slate-100'}`}
-                        >
-                            Repair
                         </button>
                         <button 
                             onClick={() => { setActiveDiagTab('conflicts'); loadConflicts(); }}
@@ -1232,53 +1196,6 @@ service cloud.firestore {
                                         </div>
                                     </>
                                 )}
-                            </div>
-                        )}
-
-                        {/* TAB: REPAIR */}
-                        {activeDiagTab === 'repair' && (
-                            <div className="space-y-4 p-2">
-                                <div className="bg-amber-50 p-3 rounded text-amber-800 border border-amber-200 mb-4">
-                                    <strong>Datentyp-Konflikt Löser</strong><br/>
-                                    Behebt das Problem, dass Daten am PC (als Zahl gespeichert) am Handy (als Text gesucht) nicht gefunden werden.
-                                </div>
-                                
-                                {repairLoading ? (
-                                    <div className="text-center p-4">Analysiere...</div>
-                                ) : (
-                                    repairAnalysis && (
-                                        <div className="bg-white p-3 rounded border space-y-2">
-                                            <div className="flex justify-between items-center">
-                                                <span className="font-bold text-green-600">{repairAnalysis.stringIdCount}</span>
-                                                <span>Einträge als TEXT (Neu)</span>
-                                            </div>
-                                            <div className="text-xs text-slate-400 pl-4">ID: '{settings.farmId}'</div>
-                                            
-                                            <div className="border-t my-2"></div>
-                                            
-                                            <div className="flex justify-between items-center">
-                                                <span className="font-bold text-red-600">{repairAnalysis.numberIdCount}</span>
-                                                <span>Einträge als ZAHL (Alt)</span>
-                                            </div>
-                                            <div className="text-xs text-slate-400 pl-4">ID: {Number(settings.farmId)}</div>
-
-                                            <div className="mt-4 pt-2 border-t">
-                                                <div className="text-[10px] text-slate-500 mb-2">Details:</div>
-                                                {repairAnalysis.details.map((line: string, i: number) => (
-                                                    <div key={i} className="text-[10px] text-slate-600">{line}</div>
-                                                ))}
-                                            </div>
-                                        </div>
-                                    )
-                                )}
-
-                                <button 
-                                    onClick={executeRepair}
-                                    disabled={repairLoading}
-                                    className="w-full bg-blue-600 text-white py-3 rounded-lg font-bold shadow hover:bg-blue-700 disabled:opacity-50"
-                                >
-                                    Daten zusammenführen (Zahl zu Text konvertieren)
-                                </button>
                             </div>
                         )}
 
