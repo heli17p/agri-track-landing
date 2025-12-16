@@ -38,13 +38,13 @@ const createCustomIcon = (color: string, svgPath: string) => {
 const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot') => {
     const rotation = heading || 0;
     let content = '';
-    let size = [40, 40];
-    let anchor = [20, 20];
+    let size = [32, 32];
+    let anchor = [16, 16];
 
     if (type === 'tractor') {
-        // Detailed Tractor Top-Down View
+        // Detailed Tractor Top-Down View (Compact)
         content = `
-            <svg viewBox="0 0 50 50" width="50" height="50" style="filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.4));">
+            <svg viewBox="0 0 50 50" width="100%" height="100%" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.4));">
                 <!-- Rear Axle -->
                 <rect x="5" y="30" width="12" height="18" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1"/>
                 <rect x="33" y="30" width="12" height="18" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1"/>
@@ -58,27 +58,26 @@ const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot'
                 
                 <!-- Cabin (Roof) -->
                 <rect x="14" y="24" width="22" height="14" rx="1" fill="#ffffff" fill-opacity="0.9" stroke="#94a3b8" stroke-width="2"/>
-                
-                <!-- Steering Wheel Hint -->
-                <circle cx="25" cy="28" r="3" fill="none" stroke="#64748b" stroke-width="1.5"/>
             </svg>
         `;
-        size = [50, 50];
-        anchor = [25, 25];
+        size = [36, 36]; // Smaller than 50
+        anchor = [18, 18];
     } else if (type === 'arrow') {
         // Classic Navigation Arrow
         content = `
-            <svg viewBox="0 0 24 24" width="40" height="40" fill="#2563eb" stroke="white" stroke-width="2" style="filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));">
+            <svg viewBox="0 0 24 24" width="100%" height="100%" fill="#2563eb" stroke="white" stroke-width="2" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.4));">
                 <path d="M12 2 L22 22 L12 18 L2 22 Z" />
             </svg>
         `;
+        size = [28, 28]; // Smaller than 40
+        anchor = [14, 14];
     } else {
         // Dot (Simple)
         content = `
-            <div style="width: 20px; height: 20px; background-color: #2563eb; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.5);"></div>
+            <div style="width: 100%; height: 100%; background-color: #2563eb; border: 2px solid white; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.5);"></div>
         `;
-        size = [20, 20];
-        anchor = [10, 10];
+        size = [16, 16]; // Very small
+        anchor = [8, 8];
     }
 
     // Apply rotation wrapper
