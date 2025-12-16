@@ -231,6 +231,8 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   
   const hasAcker = useMemo(() => fields.some(f => f.type === 'Acker'), [fields]);
   const hasGrunland = useMemo(() => fields.some(f => f.type === 'Grünland'), [fields]);
+  const hasSlurry = useMemo(() => storages.some(s => s.type === FertilizerType.SLURRY), [storages]);
+  const hasManure = useMemo(() => storages.some(s => s.type === FertilizerType.MANURE), [storages]);
 
   return (
     // FIX: Using full height relative container and min-height fallback
@@ -252,7 +254,11 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                 <MapClickHandler isEditing={isEditing} splitMode={isSplitting} onMapClick={handleMapClickAddPoint} />
 
                 {profile?.addressGeo && !isEditing && (
-                    <Marker position={[profile.addressGeo.lat, profile.addressGeo.lng]} icon={farmIcon}>
+                    <Marker 
+                        position={[profile.addressGeo.lat, profile.addressGeo.lng]} 
+                        icon={farmIcon}
+                        {...{ eventHandlers: {} } as any}
+                    >
                         <Popup>
                             <div className="flex items-center space-x-2">
                                 <Building2 size={16} className="text-blue-600"/>
@@ -271,13 +277,13 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                             color={getFieldColor(f)}
                             weight={2}
                             fillOpacity={0.5}
-                            eventHandlers={{
-                                click: (e) => {
+                            {...{ eventHandlers: {
+                                click: (e: any) => {
                                     if (isEditing) return;
                                     L.DomEvent.stopPropagation(e);
                                     setSelectedField(f);
                                 }
-                            }}
+                            }} as any}
                         >
                           <Popup>
                             <div className="font-bold">{f.name}</div>
@@ -291,7 +297,7 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                     <>
                         <Polygon 
                             positions={editingField.boundary.map(p => [p.lat, p.lng])}
-                            pathOptions={{ color: '#2563eb', dashArray: '5, 10', weight: 3, fillOpacity: 0.2 }}
+                            {...{ pathOptions: { color: '#2563eb', dashArray: '5, 10', weight: 3, fillOpacity: 0.2 } } as any}
                         />
                         {!isSplitting && editingField.boundary.map((p, i) => (
                             <VertexMarker 
@@ -310,12 +316,12 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                         key={s.id} 
                         position={[s.geo.lat, s.geo.lng]}
                         icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
-                        eventHandlers={{
-                            click: (e) => {
+                        {...{ eventHandlers: {
+                            click: (e: any) => {
                                 L.DomEvent.stopPropagation(e);
                                 setSelectedStorage(s);
                             }
-                        }}
+                        }} as any}
                     />
                 ))}
              </MapContainer>
@@ -370,13 +376,45 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
              </div>
          )}
 
-         {/* LEGEND */}
+         {/* LEGEND - ENHANCED */}
          {!isEditing && (
              <div className="absolute bottom-20 left-4 bg-white/90 p-3 rounded-lg shadow-lg z-[400] text-xs backdrop-blur-sm border border-slate-200 pointer-events-none">
                  <div className="font-bold mb-2 text-slate-700">Legende</div>
-                 {hasGrunland && <div className="flex items-center mb-1"><span className="w-3 h-3 rounded-sm mr-2" style={{background: mapStyle === 'satellite' ? '#84CC16' : '#15803D'}}></span><span>Grünland</span></div>}
-                 {hasAcker && <div className="flex items-center mb-1"><span className="w-3 h-3 rounded-sm mr-2" style={{background: mapStyle === 'satellite' ? '#F59E0B' : '#92400E'}}></span><span>Acker</span></div>}
-                 {storages.length > 0 && <div className="flex items-center mb-1"><span className="w-3 h-3 rounded-full mr-2 bg-amber-700 border border-white"></span><span>Lager</span></div>}
+                 
+                 {/* Fields */}
+                 {hasGrunland && (
+                     <div className="flex items-center mb-1">
+                         <span className="w-3 h-3 rounded-sm mr-2 border border-black/10" style={{background: mapStyle === 'satellite' ? '#84CC16' : '#15803D'}}></span>
+                         <span>Grünland / Dauerweide</span>
+                     </div>
+                 )}
+                 {hasAcker && (
+                     <div className="flex items-center mb-1">
+                         <span className="w-3 h-3 rounded-sm mr-2 border border-black/10" style={{background: mapStyle === 'satellite' ? '#F59E0B' : '#92400E'}}></span>
+                         <span>Acker</span>
+                     </div>
+                 )}
+
+                 {/* Separator if both exist */}
+                 {(hasGrunland || hasAcker) && (hasSlurry || hasManure) && <div className="h-px bg-slate-200 my-2"></div>}
+
+                 {/* Storage Types - Distinct Colors */}
+                 {hasSlurry && (
+                     <div className="flex items-center mb-1">
+                         <div className="w-4 h-4 rounded-full mr-2 bg-[#78350f] border-2 border-white shadow-sm flex items-center justify-center">
+                             <div className="w-1 h-1 bg-white rounded-full opacity-50"></div>
+                         </div>
+                         <span>Gülle Lager</span>
+                     </div>
+                 )}
+                 {hasManure && (
+                     <div className="flex items-center mb-1">
+                         <div className="w-4 h-4 rounded-full mr-2 bg-[#d97706] border-2 border-white shadow-sm flex items-center justify-center">
+                             <div className="w-1 h-1 bg-white rounded-full opacity-50"></div>
+                         </div>
+                         <span>Mist Lager</span>
+                     </div>
+                 )}
              </div>
          )}
 
@@ -399,3 +437,4 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     </div>
   );
 };
+
