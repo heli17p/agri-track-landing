@@ -79,6 +79,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [loadCount, setLoadCount] = useState(0); // Fuhren Zähler
   
   // Activity Config
   const [activityType, setActivityType] = useState<ActivityType>(ActivityType.FERTILIZATION);
@@ -165,6 +166,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setStartTime(Date.now());
       setTrackingState('TRANSIT');
       setTrackPoints([]);
+      setLoadCount(0);
       setIsPaused(false);
 
       watchIdRef.current = navigator.geolocation.watchPosition(
@@ -223,10 +225,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
              const maxSpeed = settings.maxSpeed || 15.0;
              
              if (inField && speedKmh >= minSpeed && speedKmh <= maxSpeed) {
-                 isSpreading = true;
-             }
-          } else if (activityType === ActivityType.HARVEST) {
-             if (inField && speedKmh >= 1.0 && speedKmh <= 20.0) {
                  isSpreading = true;
              }
           }
@@ -309,7 +307,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const startDetectionCountdown = (storage: StorageLocation) => {
       if (detectionCountdown !== null) return; // Already counting
       
-      setDetectionCountdown(5); // 5 seconds to confirm
+      setDetectionCountdown(60); // 60 seconds (USER REQUEST)
       
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
       
@@ -321,6 +319,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                   clearInterval(countdownIntervalRef.current);
                   setTrackingState('LOADING');
                   activeLoadingStorageRef.current = storage;
+                  
+                  // Increment Load Counter when detection is complete
+                  setLoadCount(c => c + 1);
                   
                   // Auto-switch subtype to storage type
                   if (storage.type === FertilizerType.MANURE) setSubType('Mist');
@@ -420,6 +421,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           amount: 0, // User must verify
           unit: activityType === ActivityType.HARVEST ? 'Stk' : (activityType === ActivityType.TILLAGE ? 'ha' : 'm³'),
           trackPoints: trackPoints,
+          loadCount: loadCount, // Save the counted loads
           notes: saveNotes + `\nAutomatisch erfasst. Dauer: ${((Date.now() - (startTime||0))/60000).toFixed(0)} min`,
           year: new Date().getFullYear(),
       };
@@ -432,6 +434,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
               if (fieldIds.has(f.id)) dist[f.id] = f.areaHa; // Simple assumption: full field worked
           });
           record.fieldDistribution = dist;
+      } else if (activityType === ActivityType.FERTILIZATION) {
+          // Auto-calculate amount if loads are known and settings exist
+          const loadSize = subType === 'Mist' ? settings.manureLoadSize : settings.slurryLoadSize;
+          if (loadSize && loadCount > 0) {
+              record.amount = loadCount * loadSize;
+          }
       }
 
       await dbService.saveActivity(record);
@@ -448,6 +456,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           stopGPS();
           setTrackingState('IDLE');
           setTrackPoints([]);
+          setLoadCount(0);
           setShowSaveModal(false);
           setDetectionCountdown(null);
           pendingStorageIdRef.current = null;
@@ -497,15 +506,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                       <div className="space-y-4">
                           <div>
                               <label className="block text-xs font-bold text-green-800 uppercase mb-2">Tätigkeit</label>
-                              <div className="grid grid-cols-3 gap-2">
-                                  <button onClick={() => { setActivityType(ActivityType.FERTILIZATION); setSubType('Gülle'); }} className={`py-2 rounded-lg border-2 text-sm font-bold transition-all ${activityType === ActivityType.FERTILIZATION ? 'border-green-600 bg-white text-green-700 shadow' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>
+                              <div className="grid grid-cols-2 gap-2">
+                                  <button onClick={() => { setActivityType(ActivityType.FERTILIZATION); setSubType('Gülle'); }} className={`py-3 rounded-lg border-2 text-base font-bold transition-all ${activityType === ActivityType.FERTILIZATION ? 'border-green-600 bg-white text-green-700 shadow' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>
                                       Düngung
                                   </button>
-                                  <button onClick={() => { setActivityType(ActivityType.HARVEST); setSubType('Silage'); }} className={`py-2 rounded-lg border-2 text-sm font-bold transition-all ${activityType === ActivityType.HARVEST ? 'border-green-600 bg-white text-green-700 shadow' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>
-                                      Ernte
-                                  </button>
-                                  <button onClick={() => { setActivityType(ActivityType.TILLAGE); setSubType('Wiesenegge'); }} className={`py-2 rounded-lg border-2 text-sm font-bold transition-all ${activityType === ActivityType.TILLAGE ? 'border-green-600 bg-white text-green-700 shadow' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>
-                                      Boden
+                                  <button onClick={() => { setActivityType(ActivityType.TILLAGE); setSubType('Wiesenegge'); }} className={`py-3 rounded-lg border-2 text-base font-bold transition-all ${activityType === ActivityType.TILLAGE ? 'border-green-600 bg-white text-green-700 shadow' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>
+                                      Bodenbearbeitung
                                   </button>
                               </div>
                           </div>
@@ -522,13 +528,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                                       <>
                                           <option value="Gülle">Gülle</option>
                                           <option value="Mist">Mist</option>
-                                      </>
-                                  )}
-                                  {activityType === ActivityType.HARVEST && (
-                                      <>
-                                          <option value="Silage">Silage</option>
-                                          <option value="Heu">Heu</option>
-                                          <option value="Stroh">Stroh</option>
                                       </>
                                   )}
                                   {activityType === ActivityType.TILLAGE && (
@@ -725,16 +724,32 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                      {/* Info Block */}
                      <div className="flex-1">
                          <div className="text-xs text-slate-500 font-bold uppercase mb-1">{activityType} • {subType}</div>
-                         <div className="flex items-end space-x-2">
-                             <span className="text-2xl font-mono font-bold text-slate-800">
-                                 {startTime ? ((Date.now() - startTime) / 60000).toFixed(0) : 0}
-                             </span>
-                             <span className="text-xs text-slate-400 mb-1.5">min</span>
+                         <div className="flex items-end space-x-6">
+                             {/* Timer */}
+                             <div>
+                                 <span className="text-2xl font-mono font-bold text-slate-800">
+                                     {startTime ? ((Date.now() - startTime) / 60000).toFixed(0) : 0}
+                                 </span>
+                                 <span className="text-xs text-slate-400 ml-1">min</span>
+                             </div>
                              
-                             <span className="text-2xl font-mono font-bold text-slate-800 ml-4">
-                                 {((currentLocation?.coords.speed || 0) * 3.6).toFixed(1)}
-                             </span>
-                             <span className="text-xs text-slate-400 mb-1.5">km/h</span>
+                             {/* Load Counter (New) */}
+                             {activityType === ActivityType.FERTILIZATION && (
+                                 <div>
+                                     <span className="text-2xl font-mono font-bold text-blue-600">
+                                         {loadCount}
+                                     </span>
+                                     <span className="text-xs text-blue-400 ml-1">Fuhren</span>
+                                 </div>
+                             )}
+                             
+                             {/* Speed */}
+                             <div>
+                                 <span className="text-2xl font-mono font-bold text-slate-800">
+                                     {((currentLocation?.coords.speed || 0) * 3.6).toFixed(1)}
+                                 </span>
+                                 <span className="text-xs text-slate-400 ml-1">km/h</span>
+                             </div>
                          </div>
                      </div>
 
