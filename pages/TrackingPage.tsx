@@ -1,1237 +1,725 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Play, Square, Truck, CheckCircle, AlertTriangle, History, PenTool, Wheat, Hammer, ChevronLeft, Droplets, Layers, Minimize2, ShoppingBag, Trash2, X, Clock, Calendar, LocateFixed } from 'lucide-react';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, Popup } from 'react-leaflet';
+import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
-import { AppSettings, DEFAULT_SETTINGS, StorageLocation, FertilizerType, ActivityType, HarvestType, TillageType, FarmProfile, TrackPoint, ActivityRecord, Field, GeoPoint } from '../types';
+import { Field, StorageLocation, ActivityRecord, TrackPoint, ActivityType, FertilizerType, AppSettings, DEFAULT_SETTINGS, TillageType, HarvestType } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
-import { MapContainer, TileLayer, Polygon, Polyline, Marker, useMap, Circle } from 'react-leaflet';
-import L from 'leaflet';
-import { FieldDetailView } from '../components/FieldDetailView';
-import { StorageDetailView } from '../components/StorageDetailView';
-import { ActivityDetailView } from '../components/ActivityDetailView';
 import { ManualFertilizationForm, HarvestForm, TillageForm } from '../components/ManualActivityForms';
+import L from 'leaflet';
+import 'leaflet/dist/leaflet.css';
 
-// ... (Custom Icons Setup remains same) ...
-const createCustomIcon = (color: string, svgPath: string) => {
-  return L.divIcon({
-    className: 'custom-pin-icon',
-    html: `
-      <div style="
-        background-color: ${color};
-        width: 32px;
-        height: 32px;
-        border-radius: 50%;
-        border: 2px solid white;
-        box-shadow: 0 3px 8px rgba(0,0,0,0.4);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        color: white;
-        position: relative;
-      ">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-          ${svgPath}
-        </svg>
-        <div style="
-          width: 0; 
-          height: 0; 
-          border-left: 6px solid transparent; 
-          border-right: 6px solid transparent; 
-          border-top: 8px solid ${color}; 
-          position: absolute; 
-          bottom: -7px; 
-          left: 50%; 
-          transform: translateX(-50%);
-        "></div>
-      </div>
-    `,
-    iconSize: [32, 40],
-    iconAnchor: [16, 40], // Point of the pin
-    popupAnchor: [0, -42]
-  });
+// --- HELPERS ---
+
+// Map Controller to follow user position
+const MapController = ({ center, zoom, follow }: { center: [number, number] | null, zoom: number, follow: boolean }) => {
+    const map = useMap();
+    useEffect(() => {
+        if (center && follow) {
+            map.setView(center, zoom, { animate: true });
+        }
+    }, [center, zoom, follow, map]);
+    
+    // Fix map rendering issues on mount
+    useEffect(() => {
+        const t = setTimeout(() => map.invalidateSize(), 200);
+        return () => clearTimeout(t);
+    }, [map]);
+    
+    return null;
 };
 
-const iconPaths = {
-  house: '<path d="M3 21h18M5 21V7l8-5 8 5v14"/>',
-  droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>',
-  layers: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>',
-  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>'
-};
-
-const farmIcon = createCustomIcon('#2563eb', iconPaths.house); // Blue
-const slurryIcon = createCustomIcon('#78350f', iconPaths.droplet); // Dark Brown
-const manureIcon = createCustomIcon('#d97706', iconPaths.layers); // Orange/Brown
-
-// Helper for dynamic track colors
+// Colors for storages
 const STORAGE_COLORS = ['#ea580c', '#be185d', '#7e22ce', '#374151', '#0f766e', '#15803d'];
-const getStorageColor = (storageId: string | undefined, index: number) => {
-    if (!storageId) return '#78350f'; // Default Brown
+const getStorageColor = (storageId: string | undefined, index: number = 0) => {
+    if (!storageId) return '#78350f'; 
     const sum = storageId.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
     return STORAGE_COLORS[sum % STORAGE_COLORS.length];
 };
 
-// Map Controller Component
-const MapController = ({ 
-    storages, 
-    profile, 
-    isTracking, 
-    lastPosition 
-}: { 
-    storages: StorageLocation[], 
-    profile: FarmProfile | null, 
-    isTracking: boolean, 
-    lastPosition: TrackPoint | null 
-}) => {
-    const map = useMap();
-    const hasCenteredRef = useRef(false);
-
-    useEffect(() => {
-        // FIX: Force resize aggressively
-        const resize = () => {
-             map.invalidateSize();
-        };
-        
-        // Immediate and delayed resize to handle layout transitions
-        resize();
-        const t1 = setTimeout(resize, 100);
-        const t2 = setTimeout(resize, 500);
-
-        if (isTracking) {
-            if (lastPosition) {
-                map.panTo([lastPosition.lat, lastPosition.lng], { animate: true });
-            } else if (profile?.addressGeo) {
-                // If no last position but profile, center there initially
-                map.setView([profile.addressGeo.lat, profile.addressGeo.lng], 18, { animate: true });
-            }
-            return () => { clearTimeout(t1); clearTimeout(t2); };
-        }
-
-        if (!hasCenteredRef.current && !isTracking && (storages.length > 0 || profile?.addressGeo)) {
-             const points: L.LatLng[] = [];
-             if (profile?.addressGeo) points.push(L.latLng(profile.addressGeo.lat, profile.addressGeo.lng));
-             storages.forEach(s => points.push(L.latLng(s.geo.lat, s.geo.lng)));
-
-             if (points.length > 0) {
-                 const bounds = L.latLngBounds(points);
-                 map.fitBounds(bounds, { padding: [50, 50], maxZoom: 16 });
-                 hasCenteredRef.current = true;
-             }
-        }
-        return () => { clearTimeout(t1); clearTimeout(t2); };
-    }, [map, storages, profile, isTracking, lastPosition]);
-
-    return null;
-};
+// Types
+type TrackingState = 'IDLE' | 'LOADING' | 'TRANSIT' | 'SPREADING';
 
 interface Props {
-    onTrackingStateChange?: (isTracking: boolean) => void;
-    onMinimize?: () => void;
-    onNavigate?: (view: string) => void;
+  onMinimize: () => void;
+  onNavigate: (view: string) => void;
+  onTrackingStateChange: (isActive: boolean) => void;
 }
 
-export const TrackingPage: React.FC<Props> = ({ onTrackingStateChange, onMinimize, onNavigate }) => {
-  const [mode, setMode] = useState<'selection' | 'tracking' | 'harvest' | 'tillage' | 'manual_fertilization'>('selection');
-  const [settings, setSettings] = useState<AppSettings | null>(null);
+export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTrackingStateChange }) => {
+  // --- STATE ---
+  
+  // Data
   const [fields, setFields] = useState<Field[]>([]);
   const [storages, setStorages] = useState<StorageLocation[]>([]);
-  const [profile, setProfile] = useState<FarmProfile | null>(null);
-  const [recentActivities, setRecentActivities] = useState<ActivityRecord[]>([]);
-  
-  // Map State
-  const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
-  const [showGhostTracks, setShowGhostTracks] = useState(true);
-  const [ghostTrackRange, setGhostTrackRange] = useState<'year' | '12m'>('year');
-  const [ghostTracks, setGhostTracks] = useState<{points: GeoPoint[], type: FertilizerType, date: string}[]>([]);
-  
-  // Tracking State
-  const [isTracking, setIsTracking] = useState(false);
-  const [showStartModal, setShowStartModal] = useState(false);
-  const [showCancelModal, setShowCancelModal] = useState(false);
-  const [trackingState, setTrackingState] = useState<'IDLE' | 'LOADING' | 'TRANSIT' | 'SPREADING'>('IDLE');
-  const [detectedStorageName, setDetectedStorageName] = useState<string | null>(null);
-  const [pendingStorageName, setPendingStorageName] = useState<string | null>(null);
-  const [detectionCountdown, setDetectionCountdown] = useState<number | null>(null);
-  const [wrongStorageWarning, setWrongStorageWarning] = useState<string | null>(null);
-  
-  const [loads, setLoads] = useState(0);
-  const [currentSpeed, setCurrentSpeed] = useState(0);
-  const [totalDistance, setTotalDistance] = useState(0);
-  const [currentField, setCurrentField] = useState<Field | null>(null);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+
+  // Tracking Core
+  const [trackingState, setTrackingState] = useState<TrackingState>('IDLE');
+  const [currentLocation, setCurrentLocation] = useState<GeolocationPosition | null>(null);
   const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
-  const [gpsError, setGpsError] = useState<string | null>(null);
-  const [wakeLockActive, setWakeLockActive] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
+  const [isPaused, setIsPaused] = useState(false);
   
-  const [selectedFertilizer, setSelectedFertilizer] = useState<FertilizerType>(FertilizerType.SLURRY);
-
-  // Detail View State
-  const [selectedMapField, setSelectedMapField] = useState<Field | null>(null);
-  const [selectedStorage, setSelectedStorage] = useState<StorageLocation | null>(null);
-  const [viewingActivity, setViewingActivity] = useState<ActivityRecord | null>(null);
+  // Activity Config
+  const [activityType, setActivityType] = useState<ActivityType>(ActivityType.FERTILIZATION);
+  const [subType, setSubType] = useState<string>('Gülle'); // Gülle, Mist, Silage, etc.
   
-  // SUCCESS MODAL STATE
-  const [successModal, setSuccessModal] = useState<{
-      title: string;
-      details: string[];
-      onConfirm: () => void;
-  } | null>(null);
-
-  const watchIdRef = useRef<number | null>(null);
-  const lastPositionRef = useRef<TrackPoint | null>(null);
-  const currentStateRef = useRef<'IDLE' | 'LOADING' | 'TRANSIT' | 'SPREADING'>('IDLE');
-  
-  // CRITICAL: Ref to store selected fertilizer to avoid stale closures in GPS callback
-  const selectedFertilizerRef = useRef<FertilizerType>(FertilizerType.SLURRY);
-  
-  // Wake Lock Refs
-  const wakeLockRef = useRef<any>(null);
-  
-  // Refs for Storage Tracking
-  const activeLoadingStorageRef = useRef<StorageLocation | null>(null);
-  const lastSourceStorageIdRef = useRef<string | null>(null); 
-  const storageDeductionsRef = useRef<Map<string, number>>(new Map());
-  const loadingStartTimeRef = useRef<number | null>(null);
+  // Storage Detection Logic
   const pendingStorageIdRef = useRef<string | null>(null);
+  const [detectionCountdown, setDetectionCountdown] = useState<number | null>(null);
+  const activeLoadingStorageRef = useRef<StorageLocation | null>(null);
+
+  // UI State
+  const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
+  const [followUser, setFollowUser] = useState(true);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveNotes, setSaveNotes] = useState('');
   
-  // LOGIC for Proportional Distribution
-  const currentLoadDistancesRef = useRef<Map<string, number>>(new Map()); 
-  const accumulatedFieldLoadsRef = useRef<Map<string, number>>(new Map()); 
-  const accumulatedDetailedLoadsRef = useRef<Map<string, Map<string, number>>>(new Map());
-  const fieldSourcesRef = useRef<Map<string, Set<string>>>(new Map());
+  // Manual Forms
+  const [manualMode, setManualMode] = useState<ActivityType | null>(null);
 
-  // REF PATTERN FOR PROCESS POSITION
-  const processPositionRef = useRef<(pos: GeolocationPosition) => void>(() => {});
-  
-  // Fix for ReferenceError: detectedFieldId needs to be a state derived variable in render scope
-  const detectedFieldId = currentField?.id || null; // Derived from state
+  // Refs for interval management
+  const watchIdRef = useRef<number | null>(null);
+  const countdownIntervalRef = useRef<any>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
-  const loadData = async () => {
-    const s = await dbService.getSettings();
-    const f = await dbService.getFields();
-    const st = await dbService.getStorageLocations();
-    const p = await dbService.getFarmProfile();
-    const acts = await dbService.getActivities();
-    
-    setSettings(s);
-    setFields(f);
-    setStorages(st);
-    if (p.length > 0) setProfile(p[0]);
-    
-    const currentYear = new Date().getFullYear();
-    const relevantActivities = acts
-        .filter(a => a.year === currentYear)
-        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    
-    setRecentActivities(relevantActivities);
-  };
-
+  // --- INIT ---
   useEffect(() => {
-    loadData();
+    const init = async () => {
+        setFields(await dbService.getFields());
+        setStorages(await dbService.getStorageLocations());
+        setSettings(await dbService.getSettings());
+    };
+    init();
     return () => {
-        stopGps();
+        stopGPS();
         releaseWakeLock();
     };
   }, []);
 
+  // Update parent about tracking state
   useEffect(() => {
-      selectedFertilizerRef.current = selectedFertilizer;
-  }, [selectedFertilizer]);
+      onTrackingStateChange(trackingState !== 'IDLE');
+  }, [trackingState, onTrackingStateChange]);
 
-  const requestWakeLock = async () => {
-      let active = false;
-      if ('wakeLock' in navigator) {
-        try {
-          if (!wakeLockRef.current || wakeLockRef.current.released) {
-              wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-          }
-          active = true;
-        } catch (err: any) { console.warn('Native Wake Lock error:', err.message); }
+  // Re-acquire wake lock if visibility changes (e.g. user switches tabs and comes back)
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === 'visible' && trackingState !== 'IDLE') {
+        requestWakeLock();
       }
-      setWakeLockActive(active);
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [trackingState]);
+
+  // --- WAKE LOCK ---
+  const requestWakeLock = async () => {
+    try {
+      if ('wakeLock' in navigator) {
+        wakeLockRef.current = await navigator.wakeLock.request('screen');
+      }
+    } catch (err) {
+      console.error('Wake Lock Error:', err);
+    }
   };
 
   const releaseWakeLock = async () => {
-      if (wakeLockRef.current && !wakeLockRef.current.released) {
-          try {
-            await wakeLockRef.current.release();
-            wakeLockRef.current = null;
-          } catch(e) {}
-      }
-      setWakeLockActive(false);
+    if (wakeLockRef.current) {
+      try {
+        await wakeLockRef.current.release();
+        wakeLockRef.current = null;
+      } catch(e) { console.error(e); }
+    }
   };
 
-  useEffect(() => {
-      let interval: any = null;
-      if (isTracking) {
-          requestWakeLock();
-          interval = setInterval(() => {
-              if (document.visibilityState === 'visible') requestWakeLock();
-          }, 10000);
-      } else {
-          releaseWakeLock();
+  // --- GPS LOGIC ---
+  const startGPS = async () => {
+      if (!navigator.geolocation) {
+          alert("GPS wird von diesem Browser nicht unterstützt.");
+          return;
       }
-      return () => { if (interval) clearInterval(interval); };
-  }, [isTracking]);
 
-  useEffect(() => {
-    currentStateRef.current = trackingState;
-  }, [trackingState]);
+      await requestWakeLock();
 
-  useEffect(() => {
-      const loadHistory = async () => {
-          if (!currentField) { setGhostTracks([]); return; }
-          const acts = await dbService.getActivitiesForField(currentField.id);
-          
-          const currentYear = new Date().getFullYear();
-          const oneYearAgo = new Date();
-          oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+      setStartTime(Date.now());
+      setTrackingState('TRANSIT');
+      setTrackPoints([]);
+      setIsPaused(false);
 
-          const relevantTracks = acts
-            .filter(a => {
-                if (a.type !== ActivityType.FERTILIZATION) return false;
-                if (!a.trackPoints || a.trackPoints.length === 0) return false;
-                
-                // Filter Logic: Current Year OR Last 12 Months
-                if (ghostTrackRange === 'year') {
-                    return a.year === currentYear;
-                } else {
-                    return new Date(a.date) > oneYearAgo;
-                }
-            })
-            .map(a => ({
-                points: a.trackPoints!.filter(p => p.isSpreading).map(p => ({lat: p.lat, lng: p.lng})),
-                type: a.fertilizerType || FertilizerType.SLURRY,
-                date: a.date
-            }));
-          setGhostTracks(relevantTracks);
+      watchIdRef.current = navigator.geolocation.watchPosition(
+          (pos) => handleNewPosition(pos),
+          (err) => console.error("GPS Error", err),
+          { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+      );
+  };
+
+  const stopGPS = () => {
+      if (watchIdRef.current !== null) {
+          navigator.geolocation.clearWatch(watchIdRef.current);
+          watchIdRef.current = null;
+      }
+      if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+      }
+      releaseWakeLock();
+  };
+
+  const handleNewPosition = (pos: GeolocationPosition) => {
+      setCurrentLocation(pos);
+      if (isPaused) return;
+
+      const { latitude, longitude, speed, accuracy } = pos.coords;
+      
+      // Filter poor accuracy points (> 30m)
+      if (accuracy > 30) return;
+
+      const speedKmh = (speed || 0) * 3.6;
+      const point: TrackPoint = {
+          lat: latitude,
+          lng: longitude,
+          timestamp: pos.timestamp,
+          speed: speedKmh,
+          isSpreading: false // default, updated below
       };
-      if (isTracking && currentField) loadHistory();
-  }, [currentField, isTracking, ghostTrackRange]);
 
-  // Calculate dynamic storage breakdown for HUD
-  const storageBreakdown = useMemo(() => {
-      if (!storageDeductionsRef.current) return { breakdown: [], totalPlusActive: 0 };
-      
-      const counts = new Map(storageDeductionsRef.current);
-      let totalPlusActive = loads;
-      
-      if (isTracking && lastSourceStorageIdRef.current && trackingState !== 'LOADING') {
-          const currentCount = counts.get(lastSourceStorageIdRef.current) || 0;
-          counts.set(lastSourceStorageIdRef.current, currentCount + 1);
-          totalPlusActive += 1;
+      // 1. STORAGE DETECTION
+      checkStorageProximity(point, speedKmh);
+
+      // 2. STATE MACHINE (Only if not Loading)
+      if (trackingState !== 'LOADING') {
+          // Detect Spreading vs Transit based on Speed & Field Proximity
+          // Simple logic: If inside field field and speed is optimal -> SPREADING
+          // If too fast or too slow -> TRANSIT
+          
+          // Check if inside any field
+          const inField = fields.some(f => isPointInPolygon(point, f.boundary));
+          
+          // Determine if spreading
+          let isSpreading = false;
+          
+          if (activityType === ActivityType.FERTILIZATION || activityType === ActivityType.TILLAGE) {
+             // Logic: Must be in a field (optional constraint) and within speed limits
+             // Some farmers spread outside defined fields, so mainly check speed
+             const minSpeed = settings.minSpeed || 2.0;
+             const maxSpeed = settings.maxSpeed || 15.0;
+             
+             // If we are definitely in a field, we are more likely spreading
+             if (inField && speedKmh >= minSpeed && speedKmh <= maxSpeed) {
+                 isSpreading = true;
+             }
+             // If manual override needed, we can add a toggle. For now auto-detect.
+          } else if (activityType === ActivityType.HARVEST) {
+             // Harvest is often slower
+             if (inField && speedKmh >= 1.0 && speedKmh <= 20.0) {
+                 isSpreading = true;
+             }
+          }
+
+          const newState = isSpreading ? 'SPREADING' : 'TRANSIT';
+          if (newState !== trackingState) setTrackingState(newState);
+          
+          point.isSpreading = isSpreading;
+      } else {
+          // If LOADING, we are not spreading
+          point.isSpreading = false;
+          // Tag point with storage ID if we are loading from one
+          if (activeLoadingStorageRef.current) {
+              point.storageId = activeLoadingStorageRef.current.id;
+          }
       }
 
-      const breakdown = Array.from(counts.entries()).map(([id, count]) => {
-          const s = storages.find(store => store.id === id);
-          return { 
-              id,
-              name: s ? s.name : 'Unbekannt', 
-              count 
-          };
+      // Add to track
+      setTrackPoints(prev => [...prev, point]);
+  };
+
+  const checkStorageProximity = (point: TrackPoint, speedKmh: number) => {
+      // Only for Fertilization
+      if (activityType !== ActivityType.FERTILIZATION) return;
+
+      const detectionRadius = settings.storageRadius || 20; // meters
+      
+      // Find nearest storage
+      let nearest: StorageLocation | null = null;
+      let minDist = Infinity;
+
+      storages.forEach(s => {
+          const dist = getDistance(point, s.geo);
+          if (dist < minDist) {
+              minDist = dist;
+              nearest = s;
+          }
+      });
+
+      if (nearest && minDist <= detectionRadius) {
+          // We are close to a storage
+          const nearestId = (nearest as StorageLocation).id;
+
+          if (trackingState === 'LOADING' && activeLoadingStorageRef.current?.id === nearestId) {
+              // Already loading from this storage, reset pending check
+              pendingStorageIdRef.current = null;
+              if (detectionCountdown !== null) {
+                  setDetectionCountdown(null);
+                  if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+              }
+              return;
+          }
+
+          // If we are moving very slowly or stopped, start countdown to switch to LOADING
+          if (speedKmh < 3.0) {
+              if (pendingStorageIdRef.current !== nearestId) {
+                  // New detection
+                  pendingStorageIdRef.current = nearestId;
+                  startDetectionCountdown(nearest as StorageLocation);
+              }
+          } else {
+              // Moving too fast, cancel countdown
+              cancelDetection();
+          }
+      } else {
+          // Left proximity
+          cancelDetection();
+          
+          // If we were LOADING, switch back to TRANSIT
+          if (trackingState === 'LOADING') {
+              // Only switch if we moved significantly away (hysteresis +5m)
+              if (!nearest || minDist > (detectionRadius + 5)) {
+                  setTrackingState('TRANSIT');
+                  activeLoadingStorageRef.current = null;
+              }
+          }
+      }
+  };
+
+  const startDetectionCountdown = (storage: StorageLocation) => {
+      if (detectionCountdown !== null) return; // Already counting
+      
+      setDetectionCountdown(5); // 5 seconds to confirm
+      
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      
+      countdownIntervalRef.current = setInterval(() => {
+          setDetectionCountdown(prev => {
+              if (prev === null) return null;
+              if (prev <= 1) {
+                  // Countdown finished -> Switch to LOADING
+                  clearInterval(countdownIntervalRef.current);
+                  setTrackingState('LOADING');
+                  activeLoadingStorageRef.current = storage;
+                  
+                  // Auto-switch subtype to storage type
+                  if (storage.type === FertilizerType.MANURE) setSubType('Mist');
+                  else setSubType('Gülle');
+
+                  return null;
+              }
+              return prev - 1;
+          });
+      }, 1000);
+  };
+
+  const cancelDetection = () => {
+      pendingStorageIdRef.current = null;
+      setDetectionCountdown(null);
+      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+  };
+
+  // --- SAVE ---
+  const handleFinish = async () => {
+      stopGPS();
+      setTrackingState('IDLE'); // This hides the UI overlays immediately
+      
+      // Calculate Stats
+      const totalDist = trackPoints.length > 1 ? trackPoints.reduce((acc, p, i) => {
+          if (i === 0) return 0;
+          return acc + getDistance(trackPoints[i-1], p);
+      }, 0) : 0; // meters
+
+      // Calculate Area (approximate by spread width * distance spreading)
+      // Filter spreading points
+      let spreadDist = 0;
+      let lastSpreadPoint: TrackPoint | null = null;
+      
+      trackPoints.forEach(p => {
+          if (p.isSpreading) {
+              if (lastSpreadPoint) {
+                  spreadDist += getDistance(lastSpreadPoint, p);
+              }
+              lastSpreadPoint = p;
+          } else {
+              lastSpreadPoint = null;
+          }
+      });
+
+      // Area in Hectares
+      const width = activityType === ActivityType.FERTILIZATION 
+          ? (subType === 'Mist' ? settings.manureSpreadWidth : settings.slurrySpreadWidth) 
+          : 6; // Default width
+      
+      const calculatedAreaHa = (spreadDist * (width || 12)) / 10000;
+
+      // Identify Fields
+      const fieldIds = new Set<string>();
+      
+      // We just list fields touched by spreading points
+      fields.forEach(f => {
+          const pointsInField = trackPoints.filter(p => p.isSpreading && isPointInPolygon(p, f.boundary));
+          if (pointsInField.length > 5) { // Threshold to ignore noise
+              fieldIds.add(f.id);
+          }
       });
       
-      return { breakdown, totalPlusActive };
-  }, [loads, storages, isTracking, trackingState]);
-
-  const trackSegments = useMemo(() => {
-      if (trackPoints.length < 2) return [];
+      // Calculate detailed distribution (per field and per source)
+      const detailedFieldSources: Record<string, Record<string, number>> = {};
+      const fieldDist: Record<string, number> = {};
       
-      const segments: { points: [number, number][], isSpreading: boolean, storageId?: string }[] = [];
-      
-      let currentPoints: [number, number][] = [[trackPoints[0].lat, trackPoints[0].lng]];
-      let currentSpreadState = trackPoints[0].isSpreading;
-      let currentStorageId = trackPoints[0].storageId;
-
-      for (let i = 1; i < trackPoints.length; i++) {
-          const p = trackPoints[i];
-          const prevP = trackPoints[i-1];
+      trackPoints.forEach(p => {
+          if (!p.isSpreading) return;
           
-          const stateChanged = p.isSpreading !== currentSpreadState;
-          const storageChanged = p.storageId !== currentStorageId;
-
-          if (stateChanged || storageChanged) {
-              segments.push({ points: currentPoints, isSpreading: currentSpreadState, storageId: currentStorageId });
-              
-              currentPoints = [[prevP.lat, prevP.lng], [p.lat, p.lng]];
-              currentSpreadState = p.isSpreading;
-              currentStorageId = p.storageId;
-          } else {
-              currentPoints.push([p.lat, p.lng]);
-          }
-      }
-      segments.push({ points: currentPoints, isSpreading: currentSpreadState, storageId: currentStorageId });
-      return segments;
-  }, [trackPoints]);
-
-  const startGps = (type: FertilizerType) => {
-    if (!navigator.geolocation) {
-      setGpsError('GPS nicht verfügbar auf diesem Gerät.');
-      return;
-    }
-    requestWakeLock();
-    
-    selectedFertilizerRef.current = type;
-    setSelectedFertilizer(type);
-    
-    setShowStartModal(false);
-    setIsTracking(true);
-    if (onTrackingStateChange) onTrackingStateChange(true);
-
-    setTrackingState('IDLE');
-    setDetectedStorageName(null);
-    setPendingStorageName(null);
-    setDetectionCountdown(null);
-    setWrongStorageWarning(null);
-    setTrackPoints([]);
-    setLoads(0);
-    setTotalDistance(0);
-    setGpsError(null);
-    
-    lastPositionRef.current = null;
-    storageDeductionsRef.current = new Map();
-    activeLoadingStorageRef.current = null;
-    lastSourceStorageIdRef.current = null;
-    loadingStartTimeRef.current = null;
-    pendingStorageIdRef.current = null;
-    
-    currentLoadDistancesRef.current = new Map();
-    accumulatedFieldLoadsRef.current = new Map();
-    accumulatedDetailedLoadsRef.current = new Map();
-    fieldSourcesRef.current = new Map();
-
-    watchIdRef.current = navigator.geolocation.watchPosition(
-      (pos) => {
-          if (processPositionRef.current) processPositionRef.current(pos);
-      },
-      (err) => {
-          let msg = 'GPS Fehler';
-          switch(err.code) {
-              case 1: msg = 'Standortzugriff verweigert. Bitte in Browser-Einstellungen aktivieren.'; break;
-              case 2: msg = 'Kein GPS Signal verfügbar. Sind Sie in einem Gebäude?'; break;
-              case 3: msg = 'Zeitüberschreitung bei GPS-Suche.'; break;
-              default: msg = `GPS Fehler: ${err.message}`;
-          }
-          setGpsError(msg);
-      },
-      { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
-    );
-  };
-
-  const stopGps = () => {
-    if (watchIdRef.current !== null) {
-      navigator.geolocation.clearWatch(watchIdRef.current);
-      watchIdRef.current = null;
-    }
-    setIsTracking(false);
-    if (onTrackingStateChange) onTrackingStateChange(false);
-    releaseWakeLock();
-  };
-  
-  const handleConfirmCancel = () => {
-      setShowCancelModal(false);
-      stopGps();
-      setTrackPoints([]);
-      setMode('selection');
-      storageDeductionsRef.current = new Map();
-      accumulatedFieldLoadsRef.current = new Map();
-      
-      // FIX: Stay on selection page, but ensure full-screen mode is off
-      if(onTrackingStateChange) onTrackingStateChange(false);
-  };
-
-  const finalizeCurrentLoad = () => {
-      let totalDist = 0;
-      currentLoadDistancesRef.current.forEach(d => totalDist += d);
-
-      if (totalDist > 10) { 
-          currentLoadDistancesRef.current.forEach((dist, fieldId) => {
-              const fraction = dist / totalDist;
-              const current = accumulatedFieldLoadsRef.current.get(fieldId) || 0;
-              accumulatedFieldLoadsRef.current.set(fieldId, current + fraction);
-
-              if (lastSourceStorageIdRef.current) {
-                  const sId = lastSourceStorageIdRef.current;
-                  if (!accumulatedDetailedLoadsRef.current.has(fieldId)) {
-                      accumulatedDetailedLoadsRef.current.set(fieldId, new Map());
-                  }
-                  const fieldMap = accumulatedDetailedLoadsRef.current.get(fieldId)!;
-                  const currentStorageFraction = fieldMap.get(sId) || 0;
-                  fieldMap.set(sId, currentStorageFraction + fraction);
+          fields.forEach(f => {
+              if (isPointInPolygon(p, f.boundary)) {
+                  // It's in this field
+                  // Add minimal amount (approx based on distance between points would be better, but count is ok for ratio)
+                  const fieldId = f.id;
+                  const storageId = p.storageId || 'unknown';
+                  
+                  if (!detailedFieldSources[fieldId]) detailedFieldSources[fieldId] = {};
+                  if (!detailedFieldSources[fieldId][storageId]) detailedFieldSources[fieldId][storageId] = 0;
+                  
+                  // We just count points for distribution ratio
+                  detailedFieldSources[fieldId][storageId]++;
+                  
+                  if (!fieldDist[fieldId]) fieldDist[fieldId] = 0;
+                  fieldDist[fieldId]++;
               }
           });
-
-          if (lastSourceStorageIdRef.current) {
-              const sId = lastSourceStorageIdRef.current;
-              const currentS = storageDeductionsRef.current.get(sId) || 0;
-              storageDeductionsRef.current.set(sId, currentS + 1);
-          }
-
-          setLoads(prev => prev + 1);
-      }
-      currentLoadDistancesRef.current.clear();
-  };
-
-  const processPosition = (pos: GeolocationPosition) => {
-    if (gpsError) setGpsError(null);
-    if (!settings) return;
-
-    const lat = pos.coords.latitude;
-    const lng = pos.coords.longitude;
-    const accuracy = pos.coords.accuracy;
-    const speedKmh = (pos.coords.speed || 0) * 3.6; 
-    setCurrentSpeed(speedKmh);
-
-    if (accuracy > 30) return;
-
-    const currentGeo = { lat, lng };
-    let nearestStorage: StorageLocation | null = null;
-    let minDist = settings.storageRadius; 
-
-    storages.forEach(s => {
-        const d = getDistance(currentGeo, s.geo);
-        if (d < minDist) {
-            minDist = d;
-            nearestStorage = s;
-        }
-    });
-
-    let dist = 0;
-    if (lastPositionRef.current) {
-        dist = getDistance({lat: lastPositionRef.current.lat, lng: lastPositionRef.current.lng}, currentGeo);
-        if (speedKmh < 0.5 && dist < 5) {
-            if (!nearestStorage && currentStateRef.current !== 'LOADING') return;
-        }
-    }
-
-    const timestamp = pos.timestamp;
-    const point: TrackPoint = { lat, lng, timestamp, speed: speedKmh, isSpreading: false };
-    
-    if (lastPositionRef.current) {
-        if (dist > 100) {
-            setTrackPoints(prev => prev.length < 5 ? [point] : prev);
-            if (trackPoints.length < 5) {
-                lastPositionRef.current = point;
-                setTotalDistance(0);
-            }
-            return;
-        }
-        setTotalDistance(prev => prev + dist);
-    }
-
-    const foundField = fields.find(f => isPointInPolygon(currentGeo, f.boundary));
-    setCurrentField(foundField || null);
-
-    let nextState = currentStateRef.current;
-    
-    const STOP_SPEED_THRESHOLD = 2.0; 
-    const MIN_LOADING_TIME_MS = 60000; 
-
-    if (nearestStorage) {
-        const currentSelectedType = selectedFertilizerRef.current;
-        const isStopped = speedKmh < STOP_SPEED_THRESHOLD;
-        
-        if (nearestStorage.type !== currentSelectedType) {
-            if (isStopped) {
-                const msg = `ACHTUNG: Falsches Lager! Sie stehen am ${nearestStorage.type}-Lager "${nearestStorage.name}", haben aber ${currentSelectedType} gewählt!`;
-                setWrongStorageWarning(msg);
-            } else {
-                 setWrongStorageWarning(null);
-            }
-            
-            setPendingStorageName(null);
-            setDetectionCountdown(null);
-            pendingStorageIdRef.current = null;
-            loadingStartTimeRef.current = null;
-            
-            if (nextState === 'LOADING') nextState = 'IDLE'; 
-            
-        } else {
-            setWrongStorageWarning(null);
-
-            if (isStopped) {
-                if (nextState !== 'LOADING') {
-                    nextState = 'IDLE';
-                }
-
-                if (pendingStorageIdRef.current === nearestStorage.id) {
-                    const elapsed = Date.now() - (loadingStartTimeRef.current || 0);
-                    
-                    if (elapsed > MIN_LOADING_TIME_MS) {
-                         if (nextState !== 'LOADING') {
-                             finalizeCurrentLoad(); 
-                         }
-                         
-                         nextState = 'LOADING';
-                         setDetectedStorageName(nearestStorage.name);
-                         setPendingStorageName(null);
-                         setDetectionCountdown(null);
-                         activeLoadingStorageRef.current = nearestStorage; 
-                         lastSourceStorageIdRef.current = nearestStorage.id;
-                    } else {
-                         setPendingStorageName(nearestStorage.name);
-                         setDetectionCountdown(Math.ceil((MIN_LOADING_TIME_MS - elapsed) / 1000));
-                    }
-                } else {
-                    pendingStorageIdRef.current = nearestStorage.id;
-                    loadingStartTimeRef.current = Date.now();
-                    setPendingStorageName(nearestStorage.name);
-                    setDetectionCountdown(60);
-                }
-            } else {
-                 pendingStorageIdRef.current = null;
-                 loadingStartTimeRef.current = null;
-                 setPendingStorageName(null);
-                 setDetectionCountdown(null);
-            }
-        }
-    } else {
-        setDetectedStorageName(null);
-        setPendingStorageName(null);
-        setDetectionCountdown(null);
-        setWrongStorageWarning(null);
-        pendingStorageIdRef.current = null;
-        loadingStartTimeRef.current = null;
-
-        if (currentStateRef.current === 'LOADING') {
-             nextState = 'TRANSIT';
-        } else if (foundField) {
-             const isSpeedOk = speedKmh >= settings!.minSpeed && speedKmh <= settings!.maxSpeed;
-             if (isSpeedOk) {
-                 nextState = 'SPREADING';
-                 point.isSpreading = true; 
-                 
-                 if (lastSourceStorageIdRef.current) {
-                     point.storageId = lastSourceStorageIdRef.current;
-                 }
-
-                 const currentDist = currentLoadDistancesRef.current.get(foundField.id) || 0;
-                 currentLoadDistancesRef.current.set(foundField.id, currentDist + dist);
-
-                 if (lastSourceStorageIdRef.current) {
-                     if (!fieldSourcesRef.current.has(foundField.id)) {
-                         fieldSourcesRef.current.set(foundField.id, new Set());
-                     }
-                     fieldSourcesRef.current.get(foundField.id)!.add(lastSourceStorageIdRef.current);
-                 }
-
-             } else {
-                 nextState = 'TRANSIT';
-             }
-        } else {
-             nextState = 'TRANSIT';
-        }
-    }
-
-    setTrackingState(nextState);
-    const stateChanged = nextState !== currentStateRef.current;
-    if (dist > 5 || point.isSpreading || stateChanged) {
-        setTrackPoints(prev => [...prev, point]);
-        lastPositionRef.current = point;
-    }
-  };
-
-  useEffect(() => {
-    processPositionRef.current = processPosition;
-  });
-
-  const saveSession = async () => {
-    stopGps();
-    if (trackPoints.length === 0) {
-        // Wenn keine Punkte da sind, nur Modus resetten, nicht zum Dashboard springen
-        setMode('selection');
-        if(onTrackingStateChange) onTrackingStateChange(false);
-        return;
-    }
-
-    finalizeCurrentLoad();
-
-    const affectedFieldIds = new Set<string>();
-    trackPoints.forEach(p => {
-        if(p.isSpreading) {
-             const f = fields.find(field => isPointInPolygon({lat: p.lat, lng: p.lng}, field.boundary));
-             if(f) affectedFieldIds.add(f.id);
-        }
-    });
-    for (const fid of accumulatedFieldLoadsRef.current.keys()) affectedFieldIds.add(fid);
-
-    const loadSize = settings 
-        ? (selectedFertilizerRef.current === FertilizerType.SLURRY ? settings.slurryLoadSize : settings.manureLoadSize) 
-        : 0;
-
-    const fieldDist: Record<string, number> = {};
-    const detailedFieldSources: Record<string, Record<string, number>> = {};
-    
-    let distributionSumVolume = 0;
-
-    accumulatedFieldLoadsRef.current.forEach((fractionalLoads, fieldId) => {
-        const vol = Math.round(fractionalLoads * loadSize * 100) / 100;
-        fieldDist[fieldId] = vol;
-        distributionSumVolume += vol;
-    });
-
-    accumulatedDetailedLoadsRef.current.forEach((storageMap, fieldId) => {
-        const fieldDetails: Record<string, number> = {};
-        storageMap.forEach((fraction, storageId) => {
-            fieldDetails[storageId] = Math.round(fraction * loadSize * 100) / 100;
-        });
-        detailedFieldSources[fieldId] = fieldDetails;
-    });
-
-    const details: string[] = [];
-    accumulatedFieldLoadsRef.current.forEach((fractionalLoads, fieldId) => {
-        const field = fields.find(f => f.id === fieldId);
-        if (field) {
-             const vol = (fractionalLoads * loadSize).toFixed(1);
-             const loads = fractionalLoads.toFixed(1);
-             details.push(`${field.name}: ${loads} Fuhren (${vol} m³)`);
-        }
-    });
-
-    await dbService.processStorageGrowth();
-
-    const storageDist: Record<string, number> = {};
-    const storageDetails: string[] = [];
-    const freshStorages = await dbService.getStorageLocations();
-    
-    for (const [sId, count] of storageDeductionsRef.current.entries()) {
-        const storage = freshStorages.find(s => s.id === sId);
-        if (storage) {
-            const amount = count * loadSize;
-            storageDist[sId] = amount;
-            storage.currentLevel = Math.max(0, storage.currentLevel - amount);
-            await dbService.saveStorageLocation(storage);
-            storageDetails.push(`${storage.name}: -${count} Fuhren (-${amount} m³)`);
-        }
-    }
-    
-    const finalFieldSources: Record<string, string[]> = {};
-    fieldSourcesRef.current.forEach((sourceSet, fieldId) => {
-        finalFieldSources[fieldId] = Array.from(sourceSet);
-    });
-
-    let finalTotalVolume = distributionSumVolume;
-    
-    if (finalTotalVolume === 0 && loads > 0) {
-        finalTotalVolume = loads * loadSize;
-    }
-
-    const finalLoads = loadSize > 0 ? (finalTotalVolume / loadSize) : 0;
-
-    const record: ActivityRecord = {
-        id: Math.random().toString(36).substr(2, 9),
-        date: new Date().toISOString(),
-        type: ActivityType.FERTILIZATION,
-        fertilizerType: selectedFertilizerRef.current,
-        fieldIds: Array.from(affectedFieldIds),
-        amount: parseFloat(finalTotalVolume.toFixed(2)),
-        unit: 'm³',
-        loadCount: parseFloat(finalLoads.toFixed(1)),
-        fieldDistribution: fieldDist,
-        storageDistribution: storageDist,
-        fieldSources: finalFieldSources,
-        detailedFieldSources: detailedFieldSources,
-        trackPoints: trackPoints,
-        notes: `Automatisch erfasst via GPS.`,
-        year: new Date().getFullYear()
-    };
-
-    await dbService.saveActivity(record);
-    
-    setSuccessModal({
-        title: 'Fahrt gespeichert',
-        details: [
-            `Gesamt: ${finalLoads.toFixed(1)} Fuhren (${finalTotalVolume.toFixed(1)} m³)`,
-            ...details,
-            ...storageDetails
-        ],
-        onConfirm: () => {
-             setSuccessModal(null);
-             setIsTracking(false);
-             if (onTrackingStateChange) onTrackingStateChange(false);
-             setTrackPoints([]);
-             
-             // FIX: Stay on selection screen instead of going to dashboard
-             setMode('selection');
-             
-             loadData();
-        }
-    });
-  };
-
-  // --- MANUAL SAVE HANDLER ---
-  const handleManualActivitySave = async (record: ActivityRecord, summary: string[]) => {
-      await dbService.saveActivity(record);
-      setSuccessModal({
-          title: record.type === ActivityType.FERTILIZATION ? 'Düngung gespeichert' : record.type === ActivityType.HARVEST ? 'Ernte gespeichert' : 'Gespeichert',
-          details: summary,
-          onConfirm: () => {
-              setSuccessModal(null);
-              setMode('selection');
-              loadData();
-          }
       });
-  };
 
-  const getActivityStyle = (act: ActivityRecord) => {
-      let colorClass = 'border-slate-500';
-      let bgClass = 'bg-slate-50';
-      let label = act.type === ActivityType.HARVEST ? 'Ernte' : act.type === ActivityType.TILLAGE ? 'Bodenbearbeitung' : 'Düngung'; 
+      // Now convert points ratio to actual Volume (if manually entered later) or just keep ratio
+      // Since we don't have total volume yet, we save the ratios or raw counts
+      // Actually, we usually leave amount 0 for user to fill.
       
-      if (act.type === ActivityType.HARVEST) {
-          const notes = act.notes || '';
-          if (notes.includes(HarvestType.HAY)) {
-              label = 'Ernte (Heu)';
-              colorClass = 'border-yellow-400';
-              bgClass = 'bg-yellow-50';
-          } else if (notes.includes(HarvestType.STRAW)) {
-              label = 'Ernte (Stroh)';
-              colorClass = 'border-yellow-600';
-              bgClass = 'bg-yellow-50';
-          } else {
-              label = 'Ernte (Silage)';
-              colorClass = 'border-lime-500';
-              bgClass = 'bg-lime-50';
-          }
-      } else if (act.type === ActivityType.FERTILIZATION) {
-          if (act.fertilizerType === FertilizerType.MANURE) {
-              label = 'Mist Ausbringung';
-              colorClass = 'border-orange-500';
-              bgClass = 'bg-orange-50';
-          } else {
-              label = 'Gülle Ausbringung';
-              colorClass = 'border-amber-900';
-              bgClass = 'bg-amber-50';
-          }
-      } else if (act.type === ActivityType.TILLAGE) {
-          label = act.tillageType || 'Bodenbearbeitung';
-          colorClass = 'border-blue-500';
-          bgClass = 'bg-blue-50';
-          
-          if (act.tillageType === TillageType.MULCH) { colorClass = 'border-indigo-500'; bgClass = 'bg-indigo-50'; }
-          else if (act.tillageType === TillageType.WEEDER) { colorClass = 'border-sky-400'; bgClass = 'bg-sky-50'; }
-          else if (act.tillageType === TillageType.RESEEDING) { colorClass = 'border-teal-500'; bgClass = 'bg-teal-50'; }
+      // Let's refine: fieldDistribution should ideally be the Amount. 
+      // Since we don't know the amount yet, we can't fill it accurately.
+      // But we can save the *ratios* in a temporary property or just use the points length in UI to suggest split.
+      // For now, we save the record without amounts, but with fieldIds.
+
+      const record: ActivityRecord = {
+          id: generateId(),
+          date: new Date(startTime || Date.now()).toISOString(),
+          type: activityType,
+          fertilizerType: activityType === ActivityType.FERTILIZATION ? (subType === 'Mist' ? FertilizerType.MANURE : FertilizerType.SLURRY) : undefined,
+          tillageType: activityType === ActivityType.TILLAGE ? (subType as TillageType) : undefined,
+          fieldIds: Array.from(fieldIds),
+          amount: 0, // User must verify
+          unit: activityType === ActivityType.HARVEST ? 'Stk' : (activityType === ActivityType.TILLAGE ? 'ha' : 'm³'),
+          trackPoints: trackPoints,
+          notes: saveNotes + `\nAutomatisch erfasst. Dauer: ${((Date.now() - (startTime||0))/60000).toFixed(0)} min`,
+          year: new Date().getFullYear(),
+          // Save raw counts for later distribution calculation in UI if needed
+          // simplified: Just store fieldIds for now
+      };
+      
+      if (activityType === ActivityType.TILLAGE) {
+          record.amount = parseFloat(calculatedAreaHa.toFixed(2));
+          // Pre-fill distribution for tillage
+          const dist: Record<string, number> = {};
+          fields.forEach(f => {
+              if (fieldIds.has(f.id)) dist[f.id] = f.areaHa; // Simple assumption: full field worked
+          });
+          record.fieldDistribution = dist;
       }
-      return { colorClass, bgClass, label };
-  };
 
-  const getFieldColor = (field: Field) => {
-    if (currentField?.id === field.id) return '#22c55e'; // Bright Green Highlight
-    if (field.color) return field.color;
-    if (mapStyle === 'satellite') {
-      return field.type === 'Acker' ? '#F59E0B' : '#84CC16'; // Lighter colors for satellite
-    }
-    return field.type === 'Acker' ? '#92400E' : '#15803D'; // Darker/Standard
-  };
-
-  const getTrackWeight = () => {
-      // In tracking mode (GPS), we are doing Fertilization
-      if (selectedFertilizer === FertilizerType.SLURRY) return (settings?.slurrySpreadWidth || 12);
-      if (selectedFertilizer === FertilizerType.MANURE) return (settings?.manureSpreadWidth || 10);
-      return settings?.spreadWidth || 12;
-  };
-
-  const getSmartDateHeader = (dateStr: string) => {
-      const date = new Date(dateStr);
-      const today = new Date();
-      const yesterday = new Date();
-      yesterday.setDate(today.getDate() - 1);
-
-      if (date.toDateString() === today.toDateString()) return 'Heute';
-      if (date.toDateString() === yesterday.toDateString()) return 'Gestern';
+      await dbService.saveActivity(record);
       
-      return date.toLocaleDateString('de-AT', { weekday: 'long', day: '2-digit', month: '2-digit', year: 'numeric' });
+      // Sync
+      dbService.syncActivities();
+
+      alert("Aktivität gespeichert!");
+      onNavigate('DASHBOARD');
   };
 
-  if (successModal) {
+  const handleManualSave = async (record: ActivityRecord) => {
+      await dbService.saveActivity(record);
+      dbService.syncActivities(); // Background
+      alert("Gespeichert!");
+      setManualMode(null);
+      onNavigate('DASHBOARD');
+  }
+
+  // --- RENDER HELPERS ---
+  const pendingStorageName = useMemo(() => {
+      if (!pendingStorageIdRef.current) return '';
+      return storages.find(s => s.id === pendingStorageIdRef.current)?.name || 'Lager';
+  }, [storages, detectionCountdown]); // dependent on countdown state
+
+  const detectedStorageName = activeLoadingStorageRef.current?.name || 'Lager';
+
+  // --- MANUAL MODE RENDER ---
+  if (manualMode) {
+      if (manualMode === ActivityType.FERTILIZATION) return <ManualFertilizationForm fields={fields} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
+      if (manualMode === ActivityType.HARVEST) return <HarvestForm fields={fields} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
+      if (manualMode === ActivityType.TILLAGE) return <TillageForm fields={fields} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
+  }
+
+  // --- SELECTION SCREEN (IDLE) ---
+  if (trackingState === 'IDLE') {
       return (
-          <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4 animate-fade-scale">
-              <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
-                  <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4 text-green-600">
-                      <CheckCircle size={32} />
+          <div className="h-full bg-white flex flex-col overflow-y-auto">
+              {/* Header */}
+              <div className="bg-slate-900 text-white p-6 shrink-0">
+                  <h1 className="text-2xl font-bold mb-2">Neue Tätigkeit</h1>
+                  <p className="text-slate-400 text-sm">Wähle eine Methode um zu starten.</p>
+              </div>
+
+              {/* Quick Start Tracking */}
+              <div className="p-6 space-y-6">
+                  <div className="bg-green-50 border border-green-200 rounded-2xl p-5 shadow-sm">
+                      <h2 className="text-lg font-bold text-green-900 mb-4 flex items-center">
+                          <Navigation className="mr-2 fill-green-600 text-green-600"/> GPS Aufzeichnung starten
+                      </h2>
+                      
+                      <div className="space-y-4">
+                          <div>
+                              <label className="block text-xs font-bold text-green-800 uppercase mb-2">Tätigkeit</label>
+                              <div className="grid grid-cols-3 gap-2">
+                                  <button onClick={() => { setActivityType(ActivityType.FERTILIZATION); setSubType('Gülle'); }} className={`py-2 rounded-lg border-2 text-sm font-bold transition-all ${activityType === ActivityType.FERTILIZATION ? 'border-green-600 bg-white text-green-700 shadow' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>
+                                      Düngung
+                                  </button>
+                                  <button onClick={() => { setActivityType(ActivityType.HARVEST); setSubType('Silage'); }} className={`py-2 rounded-lg border-2 text-sm font-bold transition-all ${activityType === ActivityType.HARVEST ? 'border-green-600 bg-white text-green-700 shadow' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>
+                                      Ernte
+                                  </button>
+                                  <button onClick={() => { setActivityType(ActivityType.TILLAGE); setSubType('Wiesenegge'); }} className={`py-2 rounded-lg border-2 text-sm font-bold transition-all ${activityType === ActivityType.TILLAGE ? 'border-green-600 bg-white text-green-700 shadow' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>
+                                      Boden
+                                  </button>
+                              </div>
+                          </div>
+                          
+                          {/* Subtype Selector */}
+                          <div>
+                              <label className="block text-xs font-bold text-green-800 uppercase mb-2">Art</label>
+                              <select 
+                                value={subType} 
+                                onChange={(e) => setSubType(e.target.value)}
+                                className="w-full p-3 rounded-xl border border-green-200 bg-white font-bold text-slate-700 outline-none focus:ring-2 focus:ring-green-500"
+                              >
+                                  {activityType === ActivityType.FERTILIZATION && (
+                                      <>
+                                          <option value="Gülle">Gülle</option>
+                                          <option value="Mist">Mist</option>
+                                      </>
+                                  )}
+                                  {activityType === ActivityType.HARVEST && (
+                                      <>
+                                          <option value="Silage">Silage</option>
+                                          <option value="Heu">Heu</option>
+                                          <option value="Stroh">Stroh</option>
+                                      </>
+                                  )}
+                                  {activityType === ActivityType.TILLAGE && (
+                                      <>
+                                          <option value="Wiesenegge">Wiesenegge</option>
+                                          <option value="Schlegeln">Schlegeln</option>
+                                          <option value="Striegel">Striegel</option>
+                                          <option value="Nachsaat">Nachsaat</option>
+                                          <option value="Pflug">Pflug</option>
+                                      </>
+                                  )}
+                              </select>
+                          </div>
+
+                          <button 
+                            onClick={startGPS}
+                            className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-900/20 flex items-center justify-center text-lg active:scale-[0.98] transition-all"
+                          >
+                              <Play size={24} className="mr-2 fill-white"/> Start
+                          </button>
+                      </div>
                   </div>
-                  <h3 className="text-xl font-bold text-center text-slate-800 mb-2">{successModal.title}</h3>
-                  <div className="bg-slate-50 rounded-lg p-3 mb-6 space-y-1 text-sm text-slate-600 border border-slate-100">
-                      {successModal.details.map((line, i) => (
-                          <p key={i} className="flex items-start"><span className="mr-2">•</span>{line}</p>
-                      ))}
+
+                  {/* Manual Entry Options */}
+                  <div>
+                      <h3 className="font-bold text-slate-700 mb-3">Oder manuell erfassen</h3>
+                      <div className="grid grid-cols-1 gap-3">
+                          <button onClick={() => setManualMode(ActivityType.FERTILIZATION)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 shadow-sm group">
+                              <div className="p-2 bg-amber-100 text-amber-700 rounded-lg mr-4 group-hover:bg-amber-200"><Truck size={20}/></div>
+                              <span className="font-bold text-slate-600">Düngung nachtragen</span>
+                          </button>
+                          <button onClick={() => setManualMode(ActivityType.HARVEST)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 shadow-sm group">
+                              <div className="p-2 bg-lime-100 text-lime-700 rounded-lg mr-4 group-hover:bg-lime-200"><Wheat size={20}/></div>
+                              <span className="font-bold text-slate-600">Ernte nachtragen</span>
+                          </button>
+                          <button onClick={() => setManualMode(ActivityType.TILLAGE)} className="flex items-center p-4 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm group">
+                              <div className="p-2 bg-blue-100 text-blue-700 rounded-lg mr-4 group-hover:bg-blue-200"><Hammer size={20}/></div>
+                              <span className="font-bold text-slate-600">Bodenbearbeitung nachtragen</span>
+                          </button>
+                      </div>
                   </div>
-                  <button onClick={successModal.onConfirm} className="w-full bg-slate-800 text-white py-3 rounded-xl font-bold hover:bg-slate-900 transition">
-                      OK, Schließen
-                  </button>
               </div>
           </div>
       );
   }
 
+  // --- TRACKING UI ---
+
+  const currentLat = currentLocation?.coords.latitude || 47.5;
+  const currentLng = currentLocation?.coords.longitude || 14.5;
+
   return (
-    <div className="h-full flex flex-col bg-slate-50 relative">
-      
-      {/* GPS Warning Overlay */}
-      {isTracking && wrongStorageWarning && (
-          <div className="absolute top-16 left-4 right-4 z-[1000] bg-red-600 text-white p-4 rounded-xl shadow-2xl animate-pulse flex items-start">
-              <AlertTriangle className="shrink-0 mr-3" size={24} />
-              <div>
-                  <h3 className="font-bold text-lg">Warnung</h3>
-                  <p className="text-sm font-medium">{wrongStorageWarning}</p>
-              </div>
-          </div>
-      )}
-
-      {/* Mode Selection */}
-      {mode === 'selection' && !isTracking && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 pb-24 bg-slate-50">
-          <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-100 text-center">
-            <h2 className="text-xl font-bold text-slate-800 mb-4">Neue Tätigkeit</h2>
-            <div className="grid grid-cols-2 gap-4">
-              <button onClick={() => { setSelectedFertilizer(FertilizerType.SLURRY); setMode('tracking'); }} className="p-4 bg-green-50 border-2 border-green-100 rounded-xl hover:border-green-500 hover:bg-green-100 transition flex flex-col items-center">
-                <Truck size={32} className="text-green-600 mb-2" />
-                <span className="font-bold text-slate-700">GPS Tracking</span>
-                <span className="text-xs text-slate-500">Automatisch erfassen</span>
-              </button>
-              <button onClick={() => setMode('manual_fertilization')} className="p-4 bg-amber-50 border-2 border-amber-100 rounded-xl hover:border-amber-500 hover:bg-amber-100 transition flex flex-col items-center">
-                <PenTool size={32} className="text-amber-700 mb-2" />
-                <span className="font-bold text-slate-700">Manuell</span>
-                <span className="text-xs text-slate-500">Düngung nachtragen</span>
-              </button>
-              <button onClick={() => setMode('harvest')} className="p-4 bg-yellow-50 border-2 border-yellow-100 rounded-xl hover:border-yellow-500 hover:bg-yellow-100 transition flex flex-col items-center">
-                <Wheat size={32} className="text-yellow-600 mb-2" />
-                <span className="font-bold text-slate-700">Ernte</span>
-              </button>
-              <button onClick={() => setMode('tillage')} className="p-4 bg-blue-50 border-2 border-blue-100 rounded-xl hover:border-blue-500 hover:bg-blue-100 transition flex flex-col items-center">
-                <Hammer size={32} className="text-blue-600 mb-2" />
-                <span className="font-bold text-slate-700">Boden</span>
-              </button>
-            </div>
-          </div>
-
-          <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100">
-             <h3 className="font-bold text-slate-700 mb-3 flex items-center"><History className="mr-2" size={18}/> Aktivitäten ({new Date().getFullYear()})</h3>
-             {recentActivities.length === 0 ? (
-                 <p className="text-sm text-slate-400 italic">Keine Einträge vorhanden.</p>
-             ) : (
-                 <div className="space-y-3">
-                     {recentActivities.map((act, index) => {
-                         const style = getActivityStyle(act);
-                         const involvedFields = fields.filter(f => act.fieldIds.includes(f.id)).map(f => f.name).join(', ');
-
-                         const currentDateStr = new Date(act.date).toDateString();
-                         const prevDateStr = index > 0 ? new Date(recentActivities[index - 1].date).toDateString() : null;
-                         const showHeader = currentDateStr !== prevDateStr;
-
-                         return (
-                             <React.Fragment key={act.id}>
-                                {showHeader && (
-                                    <div className="relative flex items-center justify-center mt-6 mb-3">
-                                        <div className="absolute inset-0 flex items-center">
-                                            <div className="w-full border-t border-slate-300/50"></div>
-                                        </div>
-                                        <span className="relative bg-slate-200 text-slate-700 px-3 py-1 rounded-full text-xs font-bold border border-slate-300 shadow-sm uppercase tracking-wide z-10">
-                                            {getSmartDateHeader(act.date)}
-                                        </span>
-                                    </div>
-                                )}
-                                <div 
-                                    onClick={() => setViewingActivity(act)} 
-                                    className={`p-3 rounded-lg border-l-4 cursor-pointer hover:bg-white transition-all ${style.colorClass} ${style.bgClass}`}
-                                >
-                                    <div className="flex justify-between items-start">
-                                        <div>
-                                            <div className="font-bold text-sm text-slate-700">{style.label}</div>
-                                            <div className="text-xs text-slate-500 mt-0.5">
-                                                {new Date(act.date).toLocaleTimeString('de-AT', {hour: '2-digit', minute:'2-digit'})}
-                                                {involvedFields && <span className="mx-1">•</span>}
-                                                <span className="italic">{involvedFields}</span>
-                                            </div>
-                                        </div>
-                                        <div className="text-right shrink-0 ml-2">
-                                            <div className="font-bold text-slate-800">{act.amount} {act.unit}</div>
-                                            {act.loadCount && <div className="text-[10px] text-slate-500">({act.loadCount} Fuhren)</div>}
-                                        </div>
-                                    </div>
-                                </div>
-                             </React.Fragment>
-                         );
-                     })}
-                 </div>
-             )}
-          </div>
-          
-          <button onClick={onMinimize} className="mt-auto flex items-center justify-center text-gray-500 py-4 hover:text-white">
-               <Minimize2 className="mr-2" size={20}/> Zurück zum Dashboard
-          </button>
-        </div>
-      )}
-
-      {/* GPS Tracking Mode Setup */}
-      {mode === 'tracking' && !isTracking && (
-        <div className="flex-1 flex flex-col p-6 bg-white overflow-y-auto pb-24">
-           <button onClick={() => setMode('selection')} className="mb-6 flex items-center text-slate-500"><ChevronLeft className="mr-1"/> Zurück</button>
-           <h2 className="text-2xl font-bold text-slate-800 mb-6">Tracking Starten</h2>
-           
-           <div className="space-y-4 mb-8">
-               <label className="block text-sm font-bold text-slate-500 uppercase">Dünger Art wählen</label>
-               <div className="grid grid-cols-2 gap-4">
-                   <button 
-                    onClick={() => setSelectedFertilizer(FertilizerType.SLURRY)}
-                    className={`p-6 rounded-xl border-2 flex flex-col items-center transition-all ${selectedFertilizer === FertilizerType.SLURRY ? 'border-amber-900 bg-amber-50 shadow-md transform scale-105' : 'border-slate-200 text-slate-400'}`}
-                   >
-                       <Droplets size={32} className={selectedFertilizer === FertilizerType.SLURRY ? 'text-amber-900' : 'text-slate-300'} />
-                       <span className={`mt-2 font-bold ${selectedFertilizer === FertilizerType.SLURRY ? 'text-amber-900' : 'text-slate-400'}`}>Gülle</span>
-                   </button>
-                   <button 
-                    onClick={() => setSelectedFertilizer(FertilizerType.MANURE)}
-                    className={`p-6 rounded-xl border-2 flex flex-col items-center transition-all ${selectedFertilizer === FertilizerType.MANURE ? 'border-orange-600 bg-orange-50 shadow-md transform scale-105' : 'border-slate-200 text-slate-400'}`}
-                   >
-                       <Layers size={32} className={selectedFertilizer === FertilizerType.MANURE ? 'text-orange-600' : 'text-slate-300'} />
-                       <span className={`mt-2 font-bold ${selectedFertilizer === FertilizerType.MANURE ? 'text-orange-600' : 'text-slate-400'}`}>Mist</span>
-                   </button>
-               </div>
-           </div>
-
-           <div className="mt-auto">
-               <button 
-                onClick={() => setShowStartModal(true)}
-                className="w-full bg-green-600 text-white py-4 rounded-2xl font-bold text-lg shadow-lg hover:bg-green-700 flex items-center justify-center"
-               >
-                   <Play className="mr-2" fill="currentColor" /> START
-               </button>
-           </div>
-        </div>
-      )}
-
-      {/* Security Modal for Start */}
-      {showStartModal && (
-          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-scale">
-              <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
-                  <h3 className="text-xl font-bold text-slate-800 mb-2">Tracking starten?</h3>
-                  <p className="text-slate-600 mb-6">
-                      Haben Sie <strong>{selectedFertilizer}</strong> korrekt ausgewählt?
-                  </p>
-                  <div className="flex space-x-3">
-                      <button onClick={() => setShowStartModal(false)} className="flex-1 py-3 bg-slate-100 text-slate-700 rounded-xl font-bold">Abbrechen</button>
-                      <button onClick={() => startGps(selectedFertilizer)} className="flex-1 py-3 bg-green-600 text-white rounded-xl font-bold shadow-lg">Bestätigen</button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* Security Modal for Cancel */}
-      {showCancelModal && (
-          <div className="fixed inset-0 z-[2000] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4 animate-fade-scale">
-              <div className="bg-white rounded-2xl shadow-2xl p-6 w-full max-w-sm">
-                  <div className="w-16 h-16 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4 text-red-600">
-                      <AlertTriangle size={32} />
-                  </div>
-                  <h3 className="text-xl font-bold text-center text-slate-800 mb-2">Tracking abbrechen?</h3>
-                  <p className="text-center text-slate-600 mb-6 text-sm">
-                      Möchten Sie die laufende Aufzeichnung wirklich verwerfen? Alle bisher gesammelten Daten dieser Fahrt gehen verloren.
-                  </p>
-                  <div className="space-y-3">
-                      <button 
-                        onClick={handleConfirmCancel} 
-                        className="w-full bg-red-600 text-white py-3 rounded-xl font-bold hover:bg-red-700 transition"
-                      >
-                          Ja, Aufzeichnung verwerfen
-                      </button>
-                      <button 
-                        onClick={() => setShowCancelModal(false)} 
-                        className="w-full bg-slate-100 text-slate-700 py-3 rounded-xl font-bold hover:bg-slate-200 transition"
-                      >
-                          Nein, weiterfahren
-                      </button>
-                  </div>
-              </div>
-          </div>
-      )}
-
-      {/* Active Tracking View */}
-      {isTracking && (
-        <div className="absolute inset-0 z-50 flex flex-col bg-slate-900 overflow-hidden">
-            
-            {/* 1. MAP LAYER (FULLSCREEN BACKGROUND) */}
-            <div className="absolute inset-0 z-0">
-                <MapContainer center={[47.5, 14.5]} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-                    <TileLayer 
-                        attribution='&copy; OpenStreetMap'
-                        url={mapStyle === 'standard' 
-                            ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-                            : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                        }
+    <div className="h-full relative bg-slate-900 flex flex-col">
+        {/* MAP */}
+        <div className="flex-1 relative z-0">
+            <MapContainer center={[currentLat, currentLng]} zoom={16} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                <TileLayer 
+                    attribution='&copy; OpenStreetMap'
+                    url={mapStyle === 'standard' 
+                        ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                        : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                    }
+                />
+                
+                <MapController center={currentLocation ? [currentLat, currentLng] : null} zoom={16} follow={followUser} />
+                
+                {/* Fields Overlay */}
+                {fields.map(f => (
+                    <Polygon 
+                        key={f.id} 
+                        positions={f.boundary.map(p => [p.lat, p.lng])}
+                        pathOptions={{ color: f.type === 'Acker' ? '#d97706' : '#15803d', fillOpacity: 0.3, weight: 1 }}
                     />
-                    <MapController storages={storages} profile={profile} isTracking={isTracking} lastPosition={lastPositionRef.current} />
-                    
-                    {/* Map Elements */}
-                    {showGhostTracks && ghostTracks.map((track, i) => (
-                        <Polyline 
-                            key={`ghost-${i}`} 
-                            positions={track.points.map(p => [p.lat, p.lng])} 
-                            pathOptions={{ color: track.type === FertilizerType.SLURRY ? '#78350f' : '#d97706', weight: 3, opacity: 0.3, dashArray: '5, 10' }} 
-                        />
-                    ))}
+                ))}
 
-                    {/* LIVE TRACK */}
-                    {trackSegments.map((segment, index) => {
-                         const isSpreading = segment.isSpreading;
-                         const storageColor = getStorageColor(segment.storageId, index);
-                         
-                         if (isSpreading) {
-                             return (
-                                 <React.Fragment key={`live-seg-${index}`}>
-                                     <Polyline positions={segment.points} pathOptions={{ color: storageColor, weight: getTrackWeight(), opacity: 0.8 }} />
-                                     <Polyline positions={segment.points} pathOptions={{ color: 'white', weight: 2, opacity: 0.9, dashArray: '5, 5' }} />
-                                 </React.Fragment>
-                             );
-                         } else {
-                             return (
-                                 <Polyline key={`live-seg-${index}`} positions={segment.points} pathOptions={{ color: '#3b82f6', weight: 4, opacity: 0.8 }} />
-                             );
-                         }
-                    })}
+                {/* Live Track */}
+                {trackPoints.length > 0 && (
+                    <Polyline 
+                        positions={trackPoints.map(p => [p.lat, p.lng])}
+                        pathOptions={{ color: '#ef4444', weight: 4 }}
+                    />
+                )}
 
-                    {lastPositionRef.current && (
-                        <Marker position={[lastPositionRef.current.lat, lastPositionRef.current.lng]} icon={createCustomIcon('#22c55e', '<circle cx="12" cy="12" r="6" fill="white"/>')} />
-                    )}
+                {/* Current Location Marker */}
+                {currentLocation && (
+                    <Marker 
+                        position={[currentLat, currentLng]}
+                        icon={L.divIcon({
+                            className: 'tracker-icon',
+                            html: '<div class="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg pulse-ring"></div>',
+                            iconSize: [16, 16],
+                            iconAnchor: [8, 8]
+                        })}
+                    />
+                )}
 
-                    {fields.map(f => (
-                        <Polygon 
-                            key={f.id} 
-                            positions={f.boundary.map((p:any) => [p.lat, p.lng])} 
-                            pathOptions={{ 
-                                color: getFieldColor(f), 
-                                fillOpacity: detectedFieldId === f.id ? 0.4 : 0.2, 
-                                weight: detectedFieldId === f.id ? 2 : 1 
-                            }}
-                        />
-                    ))}
-                    
-                    {storages.map(s => (
-                        <React.Fragment key={s.id}>
-                            <Circle 
-                                center={[s.geo.lat, s.geo.lng]} 
-                                radius={settings?.storageRadius || 15}
-                                pathOptions={{ color: '#94a3b8', fillColor: '#94a3b8', fillOpacity: 0.1, weight: 1, dashArray: '4, 4' }} 
-                            />
-                            <Marker 
-                                position={[s.geo.lat, s.geo.lng]} 
-                                icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
-                            />
-                        </React.Fragment>
-                    ))}
-                </MapContainer>
-            </div>
+                {/* Storages (Only visible in Fertilization mode) */}
+                {activityType === ActivityType.FERTILIZATION && storages.map(s => (
+                     <Circle 
+                        key={s.id}
+                        center={[s.geo.lat, s.geo.lng]}
+                        radius={settings.storageRadius || 20}
+                        pathOptions={{ 
+                            color: getStorageColor(s.id), 
+                            fillColor: getStorageColor(s.id), 
+                            fillOpacity: 0.2,
+                            dashArray: '5, 5'
+                        }}
+                     />
+                ))}
+            </MapContainer>
             
-            {/* 2. TOP HUD (FLOATING) */}
-            <div className="absolute top-4 left-4 right-4 z-10 pointer-events-none flex justify-between items-start">
-                 {onMinimize && (
-                     <button onClick={onMinimize} className="pointer-events-auto bg-white/90 p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700">
-                        <Minimize2 size={24} />
-                     </button>
-                 )}
-                <div className="bg-white/90 backdrop-blur p-3 rounded-xl shadow-lg border border-slate-200 ml-auto mr-2">
-                    <div className="text-[10px] uppercase font-bold text-slate-400">km/h</div>
-                    <div className="text-2xl font-bold text-slate-800 tabular-nums">{currentSpeed.toFixed(1)}</div>
-                </div>
-                <div className="bg-white/90 backdrop-blur p-3 rounded-xl shadow-lg border border-slate-200">
-                    <div className="text-[10px] uppercase font-bold text-slate-400">Fuhren</div>
-                    <div className="text-2xl font-bold text-slate-800 tabular-nums">{loads}</div>
-                </div>
+            {/* Map Controls */}
+            <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400]">
+                 <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white/90 p-3 rounded-xl shadow-lg border border-slate-200"><Layers size={24} className="text-slate-700"/></button>
+                 <button onClick={() => setFollowUser(!followUser)} className={`p-3 rounded-xl shadow-lg border border-slate-200 ${followUser ? 'bg-blue-600 text-white' : 'bg-white/90 text-slate-700'}`}><LocateFixed size={24}/></button>
             </div>
+
+            {/* Minimize Button */}
+            <button 
+                onClick={onMinimize}
+                className="absolute top-4 left-4 z-[400] bg-white/90 p-2 rounded-lg shadow-lg border border-slate-200 text-slate-600"
+            >
+                <Minimize2 size={24} />
+            </button>
 
             {/* 3. STATUS PILL (FLOATING) */}
             <div className="absolute top-20 left-1/2 transform -translate-x-1/2 bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg border border-slate-200 z-10 flex items-center space-x-2 pointer-events-none">
-                <div className={`w-3 h-3 rounded-full ${trackingState === 'SPREADING' ? 'bg-green-500 animate-pulse' : 'bg-slate-400'}`}></div>
+                {(() => {
+                    let className = 'bg-slate-400';
+                    let style = {};
+                    
+                    if (trackingState === 'SPREADING') {
+                        className = 'bg-green-500 animate-pulse';
+                    } else if (trackingState === 'TRANSIT') {
+                        className = 'bg-blue-500';
+                    } else if (trackingState === 'LOADING' || (detectionCountdown !== null && pendingStorageIdRef.current)) {
+                        // Dynamic Color Match for Storage
+                        const targetId = activeLoadingStorageRef.current?.id || pendingStorageIdRef.current;
+                        const index = storages.findIndex(s => s.id === targetId);
+                        const color = getStorageColor(targetId, index >= 0 ? index : 0);
+                        
+                        className = 'animate-pulse';
+                        style = { backgroundColor: color, boxShadow: `0 0 6px ${color}` };
+                    }
+
+                    return <div className={`w-3 h-3 rounded-full ${className}`} style={style}></div>;
+                })()}
+                
                 <span className="font-bold text-sm text-slate-700">
                     {detectionCountdown 
                         ? `Erkenne ${pendingStorageName}: ${detectionCountdown}s...` 
-                        : (trackingState === 'IDLE' ? 'Bereit / Warten' : trackingState === 'LOADING' ? `LADEN (${detectedStorageName})` : trackingState === 'TRANSIT' ? 'Transferfahrt' : 'Ausbringung')
+                        : (trackingState === 'LOADING' ? `LADEN (${detectedStorageName})` : trackingState === 'TRANSIT' ? 'Transferfahrt' : 'Ausbringung')
                     }
                 </span>
             </div>
-            
-            {/* Map Controls (Right Side) */}
-            <div className="absolute top-32 right-4 pointer-events-auto flex flex-col space-y-2 z-[400]">
-                    <div className="flex bg-white rounded-lg shadow-lg overflow-hidden border border-slate-200">
-                        <button 
-                            onClick={() => setShowGhostTracks(!showGhostTracks)} 
-                            className={`p-3 text-xs font-bold transition-colors ${showGhostTracks ? 'bg-blue-100 text-blue-700' : 'bg-white text-slate-500'}`}
-                        >
-                            Spur
-                        </button>
-                        {showGhostTracks && (
-                            <button 
-                                onClick={() => setGhostTrackRange(prev => prev === 'year' ? '12m' : 'year')}
-                                className="p-3 border-l border-slate-200 bg-slate-50 text-xs font-bold text-slate-600 hover:bg-slate-100 w-[50px]"
-                            >
-                                {ghostTrackRange === 'year' ? new Date().getFullYear() : '12M'}
-                            </button>
-                        )}
-                    </div>
-                    <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="p-3 bg-white rounded-lg shadow-lg text-xs font-bold text-slate-700 w-full hover:bg-slate-50 transition-colors flex items-center justify-center">
-                        <Layers size={18} className="mr-1"/> {mapStyle === 'standard' ? 'Sat' : 'Karte'}
-                    </button>
-            </div>
-
-            {/* 4. BOTTOM CONTROLS (FLOATING OVERLAY) */}
-            <div className="absolute bottom-0 left-0 right-0 z-20 pointer-events-auto bg-white/95 backdrop-blur-md p-4 rounded-t-3xl shadow-[0_-5px_20px_rgba(0,0,0,0.1)] border-t border-slate-200/50 pb-24 md:pb-6">
-                <div className="flex justify-between items-center mb-4">
-                    <div>
-                        <div className="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Aktuelles Feld</div>
-                        <div className="font-bold text-lg text-slate-800 truncate max-w-[200px]">
-                            {currentField ? currentField.name : 'Unbekannt / Unterwegs'}
-                        </div>
-                    </div>
-                    {gpsError && <div className="bg-red-100 text-red-600 px-3 py-1 rounded-full text-xs font-bold animate-pulse">{gpsError}</div>}
-                </div>
-
-                <div className="flex space-x-3">
-                    <button onClick={() => setShowCancelModal(true)} className="bg-red-50 text-red-600 p-4 rounded-2xl font-bold shadow-sm hover:bg-red-100 transition-colors border border-red-100">
-                        <Trash2 size={24} />
-                    </button>
-                    <button onClick={saveSession} className="flex-1 bg-slate-900 text-white py-4 rounded-2xl font-bold text-lg shadow-xl shadow-slate-900/20 flex items-center justify-center hover:bg-black active:scale-[0.98] transition-all">
-                        <Square className="mr-2 fill-current" size={20} /> STOP & SPEICHERN
-                    </button>
-                </div>
-            </div>
-
         </div>
-      )}
 
-      {/* Extracted Manual Forms */}
-      {!isTracking && mode === 'manual_fertilization' && (
-          <ManualFertilizationForm 
-            fields={fields} 
-            settings={settings} 
-            onCancel={() => setMode('selection')} 
-            onSave={handleManualActivitySave} 
-            onNavigate={onNavigate}
-          />
-      )}
-      {!isTracking && mode === 'harvest' && (
-          <HarvestForm 
-            fields={fields} 
-            settings={settings}
-            onCancel={() => setMode('selection')} 
-            onSave={handleManualActivitySave} 
-            onNavigate={onNavigate}
-          />
-      )}
-      {!isTracking && mode === 'tillage' && (
-          <TillageForm 
-            fields={fields} 
-            settings={settings}
-            onCancel={() => setMode('selection')} 
-            onSave={handleManualActivitySave} 
-            onNavigate={onNavigate}
-          />
-      )}
+        {/* BOTTOM CONTROLS */}
+        <div className="bg-white border-t border-slate-200 p-4 pb-safe z-10 shrink-0">
+             {showSaveModal ? (
+                 <div className="space-y-4 animate-in slide-in-from-bottom-10">
+                     <h3 className="font-bold text-lg text-slate-800">Aufzeichnung beenden</h3>
+                     <div>
+                         <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Notizen</label>
+                         <textarea 
+                            value={saveNotes} 
+                            onChange={e => setSaveNotes(e.target.value)}
+                            className="w-full border p-2 rounded-lg"
+                            placeholder="Wetter, Besonderheiten..."
+                            rows={2}
+                         />
+                     </div>
+                     <div className="flex space-x-3">
+                         <button onClick={() => setShowSaveModal(false)} className="flex-1 py-3 bg-slate-100 font-bold text-slate-600 rounded-xl">Zurück</button>
+                         <button onClick={handleFinish} className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg">Speichern</button>
+                     </div>
+                 </div>
+             ) : (
+                 <div className="flex items-center justify-between space-x-4">
+                     {/* Info Block */}
+                     <div className="flex-1">
+                         <div className="text-xs text-slate-500 font-bold uppercase mb-1">{activityType} • {subType}</div>
+                         <div className="flex items-end space-x-2">
+                             <span className="text-2xl font-mono font-bold text-slate-800">
+                                 {startTime ? ((Date.now() - startTime) / 60000).toFixed(0) : 0}
+                             </span>
+                             <span className="text-xs text-slate-400 mb-1.5">min</span>
+                             
+                             <span className="text-2xl font-mono font-bold text-slate-800 ml-4">
+                                 {((currentLocation?.coords.speed || 0) * 3.6).toFixed(1)}
+                             </span>
+                             <span className="text-xs text-slate-400 mb-1.5">km/h</span>
+                         </div>
+                     </div>
 
-      {viewingActivity && (
-           <ActivityDetailView activity={viewingActivity} onClose={() => setViewingActivity(null)} onUpdate={loadData} />
-      )}
-      {selectedMapField && (
-           <FieldDetailView field={selectedMapField} onClose={() => setSelectedMapField(null)} />
-      )}
-      {selectedStorage && (
-           <StorageDetailView storage={selectedStorage} onClose={() => setSelectedStorage(null)} />
-      )}
+                     {/* Action Button */}
+                     <button 
+                        onClick={() => setShowSaveModal(true)}
+                        className="w-16 h-16 bg-red-600 text-white rounded-2xl flex items-center justify-center shadow-lg hover:bg-red-700 active:scale-95 transition-all"
+                     >
+                         <Square size={24} fill="currentColor" />
+                     </button>
+                 </div>
+             )}
+        </div>
     </div>
   );
 };
