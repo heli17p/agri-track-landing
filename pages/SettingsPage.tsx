@@ -1,10 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   Save, User, Database, Settings, Cloud, MapPin, Plus, Trash2, 
   AlertTriangle, RefreshCw, CheckCircle, Smartphone, 
   Terminal, ShieldCheck, CloudOff, Info, DownloadCloud,
   X, Layers, Link as LinkIcon, Lock, Calendar, FileText, UserPlus, Eye, EyeOff, Wrench, Wifi, Activity, Server,
-  Split, Search, ExternalLink, Copy
+  Split, Search, ExternalLink, Copy, Move
 } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { authService } from '../services/auth';
@@ -35,19 +35,75 @@ const farmIcon = createCustomIcon('#2563eb', iconPaths.house);
 const slurryIcon = createCustomIcon('#78350f', iconPaths.droplet); 
 const manureIcon = createCustomIcon('#d97706', iconPaths.layers); 
 
-// --- MAP COMPONENT ---
+// --- MAP COMPONENT (ENHANCED) ---
 const LocationPickerMap = ({ position, onPick, icon }: { position: { lat: number, lng: number } | undefined, onPick: (lat: number, lng: number) => void, icon?: any }) => {
     const map = useMap();
-    useEffect(() => {
-        if (position) map.setView(position, 15);
-        else map.locate({ setView: true, maxZoom: 14 });
-    }, [map]);
+    const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
+    const markerRef = useRef<L.Marker>(null);
 
+    useEffect(() => {
+        // Fix map rendering issues
+        setTimeout(() => map.invalidateSize(), 200);
+        
+        if (position) {
+            map.setView(position, map.getZoom() || 15);
+        } else {
+            map.locate({ setView: true, maxZoom: 14 });
+        }
+    }, [map]); // Dependency on map only, manual control for position updates
+
+    // Handle Click on Map
     useMapEvents({
         click(e) { onPick(e.latlng.lat, e.latlng.lng); }
     });
 
-    return position ? <Marker position={position} icon={icon || farmIcon} /> : null;
+    // Handle Drag of Marker
+    const eventHandlers = useMemo(() => ({
+        dragend() {
+            const marker = markerRef.current;
+            if (marker != null) {
+                const { lat, lng } = marker.getLatLng();
+                onPick(lat, lng);
+            }
+        },
+    }), [onPick]);
+
+    return (
+        <>
+            <TileLayer 
+                attribution='&copy; OpenStreetMap'
+                url={mapStyle === 'standard' 
+                    ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                }
+            />
+            
+            {/* Layer Switcher Button */}
+            <div className="absolute top-2 right-2 z-[400]">
+                <button 
+                    onClick={(e) => { 
+                        e.stopPropagation(); // Prevent map click
+                        e.preventDefault();
+                        setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard'); 
+                    }}
+                    className="bg-white/90 p-2 rounded shadow-md border border-slate-300 text-slate-700 hover:text-blue-600 backdrop-blur-sm flex items-center text-xs font-bold"
+                    title="Ansicht wechseln"
+                >
+                    <Layers size={16} className="mr-1"/> {mapStyle === 'standard' ? 'Satellit' : 'Karte'}
+                </button>
+            </div>
+
+            {position && (
+                <Marker 
+                    draggable={true}
+                    eventHandlers={eventHandlers}
+                    position={position} 
+                    icon={icon || farmIcon} 
+                    ref={markerRef}
+                />
+            )}
+        </>
+    );
 };
 
 // --- ERROR TRANSLATION HELPER ---
@@ -1360,19 +1416,18 @@ service cloud.firestore {
                         </div>
                         
                         <div className="border-t pt-4">
-                            <label className="block text-xs font-bold text-slate-500 uppercase mb-2">Standort auf Karte</label>
+                            <div className="flex justify-between items-center mb-2">
+                                <label className="block text-xs font-bold text-slate-500 uppercase">Standort auf Karte</label>
+                                <span className="text-[10px] text-blue-600 flex items-center bg-blue-50 px-2 py-0.5 rounded"><Move size={10} className="mr-1"/> Marker verschiebbar</span>
+                            </div>
                             <div className="h-48 rounded-lg overflow-hidden border border-slate-200 relative">
                                 <MapContainer center={editingStorage.geo} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
-                                    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
                                     <LocationPickerMap 
                                         position={editingStorage.geo} 
                                         onPick={(lat, lng) => setEditingStorage({...editingStorage, geo: { lat, lng }})}
                                         icon={editingStorage.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
                                     />
                                 </MapContainer>
-                                <div className="absolute bottom-2 left-2 right-2 bg-white/90 p-2 text-center text-xs rounded shadow backdrop-blur-sm pointer-events-none">
-                                    Tippen um Position zu setzen
-                                </div>
                             </div>
                         </div>
 
@@ -1413,16 +1468,18 @@ service cloud.firestore {
                     <button onClick={() => setShowMapPicker(null)} className="px-4 py-2 bg-slate-100 rounded font-bold">Fertig</button>
                 </div>
                 <div className="flex-1 relative">
-                    <MapContainer center={profile.addressGeo || { lat: 47.5, lng: 14.5 }} zoom={13} style={{ height: '100%', width: '100%' }}>
-                        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                    <MapContainer center={profile.addressGeo || { lat: 47.5, lng: 14.5 }} zoom={13} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                         <LocationPickerMap 
                             position={profile.addressGeo} 
                             onPick={(lat, lng) => setProfile({...profile, addressGeo: { lat, lng }})}
                             icon={farmIcon}
                         />
                     </MapContainer>
-                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-white/90 px-4 py-2 rounded-full shadow-lg font-bold text-sm pointer-events-none z-[1000]">
-                        Klicke auf die Karte um den Hof zu markieren
+                    <div className="absolute top-4 left-1/2 transform -translate-x-1/2 bg-white/90 px-4 py-2 rounded-full shadow-lg font-bold text-sm pointer-events-none z-[1000] text-center">
+                        <div className="flex items-center justify-center mb-1">
+                            <Move size={16} className="mr-1 text-blue-600"/> 
+                            <span>Marker ziehen zum Verschieben</span>
+                        </div>
                     </div>
                 </div>
             </div>
