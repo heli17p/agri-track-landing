@@ -774,6 +774,18 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   return (
     <div className="h-full relative bg-slate-900 flex flex-col">
+        {/* CSS for Filling Animation */}
+        <style>{`
+            @keyframes fillUp {
+                0% { height: 0%; opacity: 0.8; }
+                50% { height: 60%; opacity: 1; }
+                100% { height: 100%; opacity: 0.8; }
+            }
+            .animate-fill {
+                animation: fillUp 2s infinite ease-in-out;
+            }
+        `}</style>
+
         {/* MAP */}
         <div className="flex-1 relative z-0">
             <MapContainer center={[currentLat, currentLng]} zoom={16} style={{ height: '100%', width: '100%' }} zoomControl={false}>
@@ -938,32 +950,54 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                 <div className="bg-white/95 backdrop-blur shadow-xl border border-slate-300 rounded-full px-5 py-3 flex items-center space-x-3 pointer-events-auto transition-all w-fit max-w-full">
                     {/* Visual Indicator */}
                     {(() => {
-                        let color = 'bg-slate-400';
-                        let Icon = Navigation;
-                        let animate = false;
-                        
                         if (detectionCountdown !== null) {
-                            color = 'bg-amber-500';
-                            Icon = Clock;
-                            animate = true;
-                        } else if (trackingState === 'SPREADING') {
-                            color = 'bg-green-500';
-                            Icon = Droplets;
-                            animate = true;
-                        } else if (trackingState === 'LOADING') {
+                            return (
+                                <div className="p-2 rounded-full text-white shadow-sm bg-amber-500 animate-pulse">
+                                    <Clock size={20} />
+                                </div>
+                            );
+                        } 
+                        
+                        if (trackingState === 'LOADING') {
                             const targetId = activeLoadingStorageRef.current?.id || pendingStorageIdRef.current;
                             const index = storages.findIndex(s => s.id === targetId);
-                            color = getStorageColor(targetId, index >= 0 ? index : 0); // Use specific storage color
-                            Icon = Database;
-                            animate = true;
-                        } else if (trackingState === 'TRANSIT') {
-                            color = 'bg-blue-500';
-                            Icon = Truck;
+                            const color = getStorageColor(targetId, index >= 0 ? index : 0);
+                            
+                            return (
+                                <div className="relative w-10 h-10 rounded-full border-2 border-white shadow-sm overflow-hidden bg-slate-200">
+                                    {/* FILL ANIMATION */}
+                                    <div 
+                                        className="absolute bottom-0 left-0 w-full animate-fill"
+                                        style={{ backgroundColor: color }}
+                                    ></div>
+                                    {/* ICON */}
+                                    <div className="absolute inset-0 flex items-center justify-center text-white drop-shadow-sm z-10">
+                                        <Database size={18} />
+                                    </div>
+                                </div>
+                            );
+                        } 
+                        
+                        if (trackingState === 'SPREADING') {
+                            return (
+                                <div className="w-10 h-10 flex items-center justify-center rounded-full text-white shadow-sm bg-green-500 animate-pulse border-2 border-white">
+                                    <Droplets size={20} />
+                                </div>
+                            );
+                        } 
+                        
+                        if (trackingState === 'TRANSIT') {
+                            return (
+                                <div className="w-10 h-10 flex items-center justify-center rounded-full text-white shadow-sm bg-blue-500 border-2 border-white">
+                                    <Truck size={20} />
+                                </div>
+                            );
                         }
 
+                        // Default IDLE
                         return (
-                            <div className={`p-2 rounded-full text-white shadow-sm ${color} ${animate ? 'animate-pulse' : ''}`}>
-                                <Icon size={20} />
+                            <div className="p-2 rounded-full text-white shadow-sm bg-slate-400">
+                                <Navigation size={20} />
                             </div>
                         );
                     })()}
