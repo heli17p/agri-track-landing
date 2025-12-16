@@ -51,7 +51,7 @@ const MapController = ({ center, zoom, follow }: { center: [number, number] | nu
 // Colors for storages
 const STORAGE_COLORS = ['#ea580c', '#be185d', '#7e22ce', '#374151', '#0f766e', '#15803d'];
 const getStorageColor = (storageId: string | undefined, index: number = 0) => {
-    if (!storageId) return '#78350f'; 
+    if (!storageId) return '#3b82f6'; // Default Blue (No Storage / Transit)
     const sum = storageId.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
     return STORAGE_COLORS[sum % STORAGE_COLORS.length];
 };
@@ -80,9 +80,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [startTime, setStartTime] = useState<number | null>(null);
   const [isPaused, setIsPaused] = useState(false);
   
-  // Load Counting (Detailed per Storage)
+  // Load Counting & Source Tracking
   const [loadCounts, setLoadCounts] = useState<Record<string, number>>({}); 
-  
+  const [activeSourceId, setActiveSourceId] = useState<string | null>(null); // The storage we currently "have in the tank"
+
   // Activity Config
   const [activityType, setActivityType] = useState<ActivityType>(ActivityType.FERTILIZATION);
   const [subType, setSubType] = useState<string>('Gülle'); // Gülle, Mist, Silage, etc.
@@ -125,7 +126,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       onTrackingStateChange(trackingState !== 'IDLE');
   }, [trackingState, onTrackingStateChange]);
 
-  // Re-acquire wake lock if visibility changes (e.g. user switches tabs and comes back)
+  // Re-acquire wake lock if visibility changes
   useEffect(() => {
     const handleVisibilityChange = () => {
       if (document.visibilityState === 'visible' && trackingState !== 'IDLE') {
@@ -169,6 +170,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setTrackingState('TRANSIT');
       setTrackPoints([]);
       setLoadCounts({});
+      setActiveSourceId(null);
       setIsPaused(false);
 
       watchIdRef.current = navigator.geolocation.watchPosition(
@@ -199,12 +201,14 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       if (accuracy > 30) return;
 
       const speedKmh = (speed || 0) * 3.6;
+      
       const point: TrackPoint = {
           lat: latitude,
           lng: longitude,
           timestamp: pos.timestamp,
           speed: speedKmh,
-          isSpreading: false // default, updated below
+          isSpreading: false,
+          storageId: activeSourceId || undefined // Tag every point with current source
       };
 
       // 1. STORAGE DETECTION (Only if Fertilization)
@@ -212,7 +216,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           checkStorageProximity(point, speedKmh);
       }
 
-      // 2. STATE MACHINE (Only if not Loading)
+      // 2. STATE MACHINE
       if (trackingState !== 'LOADING') {
           // Detect Spreading vs Transit based on Speed & Field Proximity
           
@@ -238,7 +242,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       } else {
           // If LOADING, we are not spreading
           point.isSpreading = false;
-          // Tag point with storage ID if we are loading from one
+          // While loading, track definitely belongs to this storage
           if (activeLoadingStorageRef.current) {
               point.storageId = activeLoadingStorageRef.current.id;
           }
@@ -328,6 +332,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                       [storage.id]: (prevCounts[storage.id] || 0) + 1
                   }));
                   
+                  // SET CURRENT SOURCE -> All future track points will have this color
+                  setActiveSourceId(storage.id);
+                  
                   // Auto-switch subtype to storage type
                   if (storage.type === FertilizerType.MANURE) setSubType('Mist');
                   else setSubType('Gülle');
@@ -392,8 +399,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           
           Object.entries(loadCounts).forEach(([storageId, count]) => {
               totalLoadCount += count;
-              // Add to distribution (Volume = Count * Size)
-              // If we have precise storage capacity tracking later, this is where it goes
               storageDistribution[storageId] = count * loadSize;
           });
       }
@@ -440,6 +445,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           setTrackingState('IDLE');
           setTrackPoints([]);
           setLoadCounts({});
+          setActiveSourceId(null);
           setShowSaveModal(false);
           setDetectionCountdown(null);
           pendingStorageIdRef.current = null;
@@ -462,8 +468,41 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   const detectedStorageName = activeLoadingStorageRef.current?.name || 'Lager';
 
-  // Calculate Total Loads for Display
   const totalLoadsDisplay = Object.values(loadCounts).reduce((a, b) => a + b, 0);
+
+  // --- MAP SEGMENTS FOR COLORING ---
+  const trackSegments = useMemo(() => {
+      if (trackPoints.length < 2) return [];
+      
+      const segments: { points: [number, number][], color: string, isSpreading: boolean }[] = [];
+      let currentPoints: [number, number][] = [[trackPoints[0].lat, trackPoints[0].lng]];
+      let currentColor = getStorageColor(trackPoints[0].storageId);
+      let currentSpreadState = trackPoints[0].isSpreading;
+
+      for (let i = 1; i < trackPoints.length; i++) {
+          const p = trackPoints[i];
+          const prev = trackPoints[i-1];
+          const color = getStorageColor(p.storageId);
+          
+          // Start new segment if color OR spreading state changes
+          if (color !== currentColor || p.isSpreading !== currentSpreadState) {
+              segments.push({ 
+                  points: currentPoints, 
+                  color: currentColor,
+                  isSpreading: currentSpreadState 
+              });
+              // Start new segment overlapping previous point
+              currentPoints = [[prev.lat, prev.lng], [p.lat, p.lng]];
+              currentColor = color;
+              currentSpreadState = p.isSpreading;
+          } else {
+              currentPoints.push([p.lat, p.lng]);
+          }
+      }
+      // Push final
+      segments.push({ points: currentPoints, color: currentColor, isSpreading: currentSpreadState });
+      return segments;
+  }, [trackPoints, storages]); // Recalc when points change
 
   // --- MANUAL MODE RENDER ---
   if (manualMode) {
@@ -589,13 +628,37 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                     />
                 ))}
 
-                {/* Live Track */}
-                {trackPoints.length > 0 && (
-                    <Polyline 
-                        positions={trackPoints.map(p => [p.lat, p.lng])}
-                        pathOptions={{ color: '#ef4444', weight: 4 }}
-                    />
-                )}
+                {/* Live Track - DYNAMIC SEGMENTS */}
+                {trackSegments.map((segment, index) => {
+                    const weight = segment.isSpreading ? 6 : 4;
+                    const opacity = segment.isSpreading ? 0.9 : 0.6;
+                    
+                    return (
+                        <React.Fragment key={`seg-${index}`}>
+                            {/* Main Colored Line */}
+                            <Polyline 
+                                positions={segment.points}
+                                pathOptions={{ 
+                                    color: segment.color, 
+                                    weight: weight,
+                                    opacity: opacity
+                                }}
+                            />
+                            {/* Dash overlay for spreading */}
+                            {segment.isSpreading && (
+                                <Polyline 
+                                    positions={segment.points}
+                                    pathOptions={{ 
+                                        color: 'white', 
+                                        weight: 2,
+                                        opacity: 0.5,
+                                        dashArray: '5, 10'
+                                    }}
+                                />
+                            )}
+                        </React.Fragment>
+                    );
+                })}
 
                 {/* Current Location Marker */}
                 {currentLocation && (
@@ -610,7 +673,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                     />
                 )}
 
-                {/* Storages (Visible mainly in Fertilization mode, but good to see in general) */}
+                {/* Storages */}
                 {activityType === ActivityType.FERTILIZATION && storages.map(s => (
                      <React.Fragment key={s.id}>
                          <Circle 
