@@ -8,6 +8,20 @@ import { ManualFertilizationForm, HarvestForm, TillageForm } from '../components
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
+// --- COLOR CONSTANTS (Synced with MapPage) ---
+const MAP_COLORS = {
+    standard: {
+        acker: '#92400E',    // Amber-900
+        grunland: '#15803D', // Green-700
+        default: '#3b82f6'
+    },
+    satellite: {
+        acker: '#F59E0B',    // Amber-500
+        grunland: '#84CC16', // Lime-500
+        default: '#60a5fa'
+    }
+};
+
 // --- ICONS & ASSETS ---
 
 const createCustomIcon = (color: string, svgPath: string) => {
@@ -20,26 +34,70 @@ const createCustomIcon = (color: string, svgPath: string) => {
   });
 };
 
-// TRACTOR ICON GENERATOR (Dynamic Rotation)
-const getTractorIcon = (heading: number | null) => {
+// DYNAMIC CURSOR ICON GENERATOR
+const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot') => {
     const rotation = heading || 0;
+    let content = '';
+    let size = [40, 40];
+    let anchor = [20, 20];
+
+    if (type === 'tractor') {
+        // Detailed Tractor Top-Down View
+        content = `
+            <svg viewBox="0 0 50 50" width="50" height="50" style="filter: drop-shadow(0px 4px 6px rgba(0,0,0,0.4));">
+                <!-- Rear Axle -->
+                <rect x="5" y="30" width="12" height="18" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1"/>
+                <rect x="33" y="30" width="12" height="18" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1"/>
+                
+                <!-- Front Axle -->
+                <rect x="8" y="5" width="8" height="10" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1"/>
+                <rect x="34" y="5" width="8" height="10" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1"/>
+                
+                <!-- Body (Hood + Chassis) -->
+                <path d="M20 4 L30 4 L30 20 L34 22 L34 40 L16 40 L16 22 L20 20 Z" fill="#16a34a" stroke="#14532d" stroke-width="1"/>
+                
+                <!-- Cabin (Roof) -->
+                <rect x="14" y="24" width="22" height="14" rx="1" fill="#ffffff" fill-opacity="0.9" stroke="#94a3b8" stroke-width="2"/>
+                
+                <!-- Steering Wheel Hint -->
+                <circle cx="25" cy="28" r="3" fill="none" stroke="#64748b" stroke-width="1.5"/>
+            </svg>
+        `;
+        size = [50, 50];
+        anchor = [25, 25];
+    } else if (type === 'arrow') {
+        // Classic Navigation Arrow
+        content = `
+            <svg viewBox="0 0 24 24" width="40" height="40" fill="#2563eb" stroke="white" stroke-width="2" style="filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));">
+                <path d="M12 2 L22 22 L12 18 L2 22 Z" />
+            </svg>
+        `;
+    } else {
+        // Dot (Simple)
+        content = `
+            <div style="width: 20px; height: 20px; background-color: #2563eb; border: 3px solid white; border-radius: 50%; box-shadow: 0 2px 5px rgba(0,0,0,0.5);"></div>
+        `;
+        size = [20, 20];
+        anchor = [10, 10];
+    }
+
+    // Apply rotation wrapper
+    const html = `
+        <div style="
+            transform: rotate(${rotation}deg); 
+            transition: transform 0.3s ease; 
+            width: ${size[0]}px; height: ${size[1]}px; 
+            display: flex; align-items: center; justify-content: center;
+        ">
+            ${content}
+        </div>
+    `;
+
     return L.divIcon({
-        className: 'tractor-icon-container',
-        html: `
-            <div style="
-                transform: rotate(${rotation}deg); 
-                transition: transform 0.5s ease; 
-                width: 40px; height: 40px; 
-                display: flex; align-items: center; justify-content: center;
-            ">
-                <svg viewBox="0 0 24 24" width="36" height="36" fill="#2563eb" stroke="white" stroke-width="2" style="filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));">
-                    <path d="M5 10 L12 2 L19 10 L19 20 A2 2 0 0 1 17 22 L7 22 A2 2 0 0 1 5 20 Z" />
-                    <rect x="8" y="14" width="8" height="6" fill="white" fill-opacity="0.3" stroke="none" />
-                </svg>
-            </div>
-        `,
-        iconSize: [40, 40],
-        iconAnchor: [20, 20]
+        className: 'vehicle-cursor',
+        html: html,
+        iconSize: [size[0], size[1]],
+        iconAnchor: [anchor[0], anchor[1]]
     });
 };
 
@@ -87,6 +145,7 @@ const getStorageColor = (storageId: string | undefined, index: number = 0) => {
 // Types
 type TrackingState = 'IDLE' | 'LOADING' | 'TRANSIT' | 'SPREADING';
 type HistoryMode = 'OFF' | 'RECENT' | 'YEAR' | 'ALL_12M';
+type VehicleIconType = 'tractor' | 'arrow' | 'dot';
 
 interface Props {
   onMinimize: () => void;
@@ -131,6 +190,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [followUser, setFollowUser] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveNotes, setSaveNotes] = useState('');
+  
+  // Visual Preferences
+  const [vehicleIconType, setVehicleIconType] = useState<VehicleIconType>('tractor');
   
   // Ghost Tracks (History)
   const [historyMode, setHistoryMode] = useState<HistoryMode>('OFF');
@@ -528,6 +590,15 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       });
   };
 
+  // Toggle vehicle icon
+  const toggleVehicleIcon = () => {
+      setVehicleIconType(prev => {
+          if (prev === 'tractor') return 'arrow';
+          if (prev === 'arrow') return 'dot';
+          return 'tractor';
+      });
+  };
+
   // --- HISTORY FILTER ---
   const visibleHistoryTracks = useMemo(() => {
       if (historyMode === 'OFF') return [];
@@ -559,6 +630,13 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const detectedStorageName = activeLoadingStorageRef.current?.name || 'Lager';
 
   const totalLoadsDisplay = Object.values(loadCounts).reduce((a, b) => a + b, 0);
+
+  // --- FIELD COLOR LOGIC (Match MapPage) ---
+  const getFieldColor = (field: Field) => {
+      if (field.color) return field.color;
+      const colors = mapStyle === 'satellite' ? MAP_COLORS.satellite : MAP_COLORS.standard;
+      return field.type === 'Acker' ? colors.acker : colors.grunland;
+  };
 
   // --- MAP SEGMENTS FOR COLORING ---
   const trackSegments = useMemo(() => {
@@ -710,12 +788,16 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                 
                 <MapController center={[currentLat, currentLng]} zoom={16} follow={followUser} />
                 
-                {/* Fields Overlay */}
+                {/* Fields Overlay - Now using synchronized colors */}
                 {fields.map(f => (
                     <Polygon 
                         key={f.id} 
                         positions={f.boundary.map(p => [p.lat, p.lng])}
-                        pathOptions={{ color: f.type === 'Acker' ? '#d97706' : '#15803d', fillOpacity: 0.3, weight: 1 }}
+                        pathOptions={{ 
+                            color: getFieldColor(f), // Uses same logic as MapPage
+                            fillOpacity: 0.3, 
+                            weight: 1 
+                        }}
                     />
                 ))}
 
@@ -727,14 +809,14 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                     />
                 )}
 
-                {/* GHOST TRACKS (History) - Faded Grey Lines */}
+                {/* GHOST TRACKS (History) */}
                 {historyMode !== 'OFF' && visibleHistoryTracks.map((act, i) => (
                     act.trackPoints && act.trackPoints.length > 1 && (
                         <Polyline 
                             key={`hist-${i}`}
                             positions={act.trackPoints.map(p => [p.lat, p.lng])}
                             pathOptions={{
-                                color: historyMode === 'ALL_12M' ? '#a855f7' : historyMode === 'YEAR' ? '#16a34a' : '#3b82f6', // Purple/Green/Blue
+                                color: historyMode === 'ALL_12M' ? '#a855f7' : historyMode === 'YEAR' ? '#16a34a' : '#3b82f6', 
                                 weight: 2,
                                 opacity: 0.4,
                                 dashArray: '4, 4'
@@ -775,12 +857,15 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                     );
                 })}
 
-                {/* Current Location Marker (TRACTOR) */}
+                {/* Current Location Marker (TRACTOR / ARROW / DOT) */}
                 {currentLocation && (
                     <Marker 
                         position={[currentLat, currentLng]}
-                        icon={getTractorIcon(currentLocation.coords.heading)}
+                        icon={getCursorIcon(currentLocation.coords.heading, vehicleIconType)}
                         zIndexOffset={1000} // Always on top
+                        eventHandlers={{
+                            click: toggleVehicleIcon // Click to cycle through icons
+                        }}
                     />
                 )}
 
