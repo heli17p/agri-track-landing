@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, Popup } from 'react-leaflet';
-import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight } from 'lucide-react';
+import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { Field, StorageLocation, ActivityRecord, TrackPoint, ActivityType, FertilizerType, AppSettings, DEFAULT_SETTINGS, TillageType, HarvestType, FarmProfile } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
@@ -98,6 +98,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const pendingStorageIdRef = useRef<string | null>(null);
   const [detectionCountdown, setDetectionCountdown] = useState<number | null>(null);
   const activeLoadingStorageRef = useRef<StorageLocation | null>(null);
+  
+  // WARNING STATE for Mismatched Storage Type
+  const [storageWarning, setStorageWarning] = useState<string | null>(null);
 
   // UI State
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
@@ -181,6 +184,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setLoadCounts({});
       setActiveSourceId(null);
       setIsPaused(false);
+      setStorageWarning(null);
 
       watchIdRef.current = navigator.geolocation.watchPosition(
           (pos) => handleNewPosition(pos),
@@ -280,8 +284,21 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       });
 
       if (nearest && minDist <= detectionRadius) {
-          // We are close to a storage
-          const nearestId = (nearest as StorageLocation).id;
+          const nearestLoc = nearest as StorageLocation;
+          
+          // 1. CHECK TYPE MISMATCH (New Requirement)
+          // `subType` matches `FertilizerType` values ('Gülle' or 'Mist')
+          if (nearestLoc.type !== subType) {
+              setStorageWarning(`${nearestLoc.name} erkannt, aber falscher Typ (${nearestLoc.type})!`);
+              cancelDetection(); // Ensure we don't accidentally start counting
+              return; 
+          }
+          
+          // If types match, clear warning
+          setStorageWarning(null);
+
+          // We are close to a VALID storage
+          const nearestId = nearestLoc.id;
 
           if (trackingState === 'LOADING' && activeLoadingStorageRef.current?.id === nearestId) {
               // Already loading from this storage, reset pending check
@@ -298,7 +315,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
               if (pendingStorageIdRef.current !== nearestId) {
                   // New detection
                   pendingStorageIdRef.current = nearestId;
-                  startDetectionCountdown(nearest as StorageLocation);
+                  startDetectionCountdown(nearestLoc);
               }
           } else {
               // Moving too fast, cancel countdown
@@ -307,6 +324,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       } else {
           // Left proximity
           cancelDetection();
+          setStorageWarning(null); // Clear warning if we leave the area
           
           // If we were LOADING, switch back to TRANSIT
           if (trackingState === 'LOADING') {
@@ -344,9 +362,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                   // SET CURRENT SOURCE -> All future track points will have this color
                   setActiveSourceId(storage.id);
                   
-                  // Auto-switch subtype to storage type
-                  if (storage.type === FertilizerType.MANURE) setSubType('Mist');
-                  else setSubType('Gülle');
+                  // Removed Auto-Switching Subtype: We now enforce matching types!
+                  // if (storage.type === FertilizerType.MANURE) setSubType('Mist');
+                  // else setSubType('Gülle');
 
                   return null;
               }
@@ -457,6 +475,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           setActiveSourceId(null);
           setShowSaveModal(false);
           setDetectionCountdown(null);
+          setStorageWarning(null);
           pendingStorageIdRef.current = null;
       }
   };
@@ -727,8 +746,17 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
             </button>
 
             {/* 3. STATUS PILL (FLOATING & ENHANCED) */}
-            <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[400] w-full max-w-[90%] flex justify-center pointer-events-none">
-                <div className="bg-white/95 backdrop-blur shadow-xl border border-slate-300 rounded-full px-5 py-3 flex items-center space-x-3 pointer-events-auto transition-all">
+            <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[400] w-full max-w-[90%] flex flex-col items-center pointer-events-none space-y-2">
+                
+                {/* WARNING BANNER FOR MISMATCHED TYPE */}
+                {storageWarning && (
+                    <div className="bg-orange-500/95 backdrop-blur text-white px-4 py-2 rounded-xl shadow-xl flex items-center space-x-2 animate-in slide-in-from-top-4 w-full justify-center">
+                        <Ban size={20} className="shrink-0 animate-pulse"/>
+                        <span className="font-bold text-xs">{storageWarning}</span>
+                    </div>
+                )}
+
+                <div className="bg-white/95 backdrop-blur shadow-xl border border-slate-300 rounded-full px-5 py-3 flex items-center space-x-3 pointer-events-auto transition-all w-fit max-w-full">
                     {/* Visual Indicator */}
                     {(() => {
                         let color = 'bg-slate-400';
@@ -762,9 +790,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                     })()}
                     
                     {/* Text Status */}
-                    <div className="flex flex-col">
+                    <div className="flex flex-col overflow-hidden">
                         <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider leading-none mb-0.5">Status</span>
-                        <span className="font-bold text-slate-800 text-sm whitespace-nowrap">
+                        <span className="font-bold text-slate-800 text-sm whitespace-nowrap truncate">
                             {detectionCountdown 
                                 ? `Timer läuft: ${pendingStorageName} (${detectionCountdown}s)` 
                                 : trackingState === 'LOADING' 
