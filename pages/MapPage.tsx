@@ -451,9 +451,9 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
              </div>
          )}
 
-         {/* LEGEND - DYNAMIC & ENHANCED */}
+         {/* LEGEND - Moved to Top Left to avoid bottom nav overlap */}
          {!isEditing && (
-             <div className="absolute bottom-20 left-4 bg-white/90 p-3 rounded-lg shadow-lg z-[400] text-xs backdrop-blur-sm border border-slate-200 pointer-events-none">
+             <div className="absolute top-4 left-4 bg-white/90 p-3 rounded-lg shadow-lg z-[400] text-xs backdrop-blur-sm border border-slate-200 pointer-events-none max-w-[200px]">
                  <div className="font-bold mb-2 text-slate-700">Legende</div>
                  
                  {/* Farm House */}
