@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, Popup } from 'react-leaflet';
-import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban } from 'lucide-react';
+import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban, History } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { Field, StorageLocation, ActivityRecord, TrackPoint, ActivityType, FertilizerType, AppSettings, DEFAULT_SETTINGS, TillageType, HarvestType, FarmProfile } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
@@ -18,6 +18,29 @@ const createCustomIcon = (color: string, svgPath: string) => {
     iconAnchor: [16, 40], 
     popupAnchor: [0, -42]
   });
+};
+
+// TRACTOR ICON GENERATOR (Dynamic Rotation)
+const getTractorIcon = (heading: number | null) => {
+    const rotation = heading || 0;
+    return L.divIcon({
+        className: 'tractor-icon-container',
+        html: `
+            <div style="
+                transform: rotate(${rotation}deg); 
+                transition: transform 0.5s ease; 
+                width: 40px; height: 40px; 
+                display: flex; align-items: center; justify-content: center;
+            ">
+                <svg viewBox="0 0 24 24" width="36" height="36" fill="#2563eb" stroke="white" stroke-width="2" style="filter: drop-shadow(0px 2px 4px rgba(0,0,0,0.5));">
+                    <path d="M5 10 L12 2 L19 10 L19 20 A2 2 0 0 1 17 22 L7 22 A2 2 0 0 1 5 20 Z" />
+                    <rect x="8" y="14" width="8" height="6" fill="white" fill-opacity="0.3" stroke="none" />
+                </svg>
+            </div>
+        `,
+        iconSize: [40, 40],
+        iconAnchor: [20, 20]
+    });
 };
 
 const iconPaths = {
@@ -108,6 +131,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveNotes, setSaveNotes] = useState('');
   
+  // Ghost Tracks (History)
+  const [showHistory, setShowHistory] = useState(false);
+  const [historyTracks, setHistoryTracks] = useState<ActivityRecord[]>([]);
+  
   // Manual Forms
   const [manualMode, setManualMode] = useState<ActivityType | null>(null);
 
@@ -125,6 +152,14 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         
         const profiles = await dbService.getFarmProfile();
         if (profiles.length > 0) setProfile(profiles[0]);
+
+        // Preload History (only recent 10 fertilizations)
+        const allActs = await dbService.getActivities();
+        const pastTracks = allActs
+            .filter(a => a.type === ActivityType.FERTILIZATION && a.trackPoints && a.trackPoints.length > 0)
+            .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+            .slice(0, 10);
+        setHistoryTracks(pastTracks);
     };
     init();
     return () => {
@@ -665,6 +700,22 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                     />
                 )}
 
+                {/* GHOST TRACKS (History) - Faded Grey Lines */}
+                {showHistory && historyTracks.map((act, i) => (
+                    act.trackPoints && act.trackPoints.length > 1 && (
+                        <Polyline 
+                            key={`hist-${i}`}
+                            positions={act.trackPoints.map(p => [p.lat, p.lng])}
+                            pathOptions={{
+                                color: '#94a3b8', // slate-400
+                                weight: 2,
+                                opacity: 0.5,
+                                dashArray: '4, 4'
+                            }}
+                        />
+                    )
+                ))}
+
                 {/* Live Track - DYNAMIC SEGMENTS */}
                 {trackSegments.map((segment, index) => {
                     const weight = segment.isSpreading ? 6 : 4;
@@ -697,16 +748,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                     );
                 })}
 
-                {/* Current Location Marker */}
+                {/* Current Location Marker (TRACTOR) */}
                 {currentLocation && (
                     <Marker 
                         position={[currentLat, currentLng]}
-                        icon={L.divIcon({
-                            className: 'tracker-icon',
-                            html: '<div class="w-4 h-4 bg-blue-500 rounded-full border-2 border-white shadow-lg pulse-ring"></div>',
-                            iconSize: [16, 16],
-                            iconAnchor: [8, 8]
-                        })}
+                        icon={getTractorIcon(currentLocation.coords.heading)}
+                        zIndexOffset={1000} // Always on top
                     />
                 )}
 
@@ -735,6 +782,15 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
             <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400]">
                  <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white/90 p-3 rounded-xl shadow-lg border border-slate-200"><Layers size={24} className="text-slate-700"/></button>
                  <button onClick={() => setFollowUser(!followUser)} className={`p-3 rounded-xl shadow-lg border border-slate-200 ${followUser ? 'bg-blue-600 text-white' : 'bg-white/90 text-slate-700'}`}><LocateFixed size={24}/></button>
+                 
+                 {/* Ghost Tracks Toggle */}
+                 <button 
+                    onClick={() => setShowHistory(!showHistory)} 
+                    className={`p-3 rounded-xl shadow-lg border border-slate-200 ${showHistory ? 'bg-slate-700 text-white' : 'bg-white/90 text-slate-700'}`}
+                    title="Alte Spuren anzeigen"
+                 >
+                    <History size={24}/>
+                 </button>
             </div>
 
             {/* Minimize Button */}
