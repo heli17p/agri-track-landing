@@ -10,13 +10,13 @@ import L from 'leaflet';
 
 import 'leaflet/dist/leaflet.css';
 
-// --- CENTRAL COLOR CONFIGURATION ---
+// --- CENTRAL COLOR CONFIGURATION (DEFAULTS) ---
 const MAP_COLORS = {
     standard: {
         acker: '#92400E',    // Amber-900 (Brown)
         weide: '#65a30d',    // Lime-600 (Distinct lighter green)
         grunland: '#15803D', // Green-700 (Dark Green)
-        div: '#EAB308',      // Yellow-500 (Light Yellow - Fixed for Legend consistency)
+        div: '#EAB308',      // Yellow-500 (Light Yellow)
         hof: '#2563eb'       // Blue-600
     },
     satellite: {
@@ -204,7 +204,7 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     const name = field.name.toUpperCase();
     const colors = mapStyle === 'satellite' ? MAP_COLORS.satellite : MAP_COLORS.standard;
 
-    // Check for DIV / Miscellaneous (Yellow)
+    // Check for DIV / Miscellaneous
     if (usage.includes('DIV') || name.includes('DIV')) {
         return colors.div;
     }
@@ -272,33 +272,42 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
       setSplitPoints([]);
   };
   
-  // Logic to determine what exists for Legend
-  const hasAcker = useMemo(() => fields.some(f => f.type === 'Acker'), [fields]);
-  
-  const hasDiv = useMemo(() => fields.some(f => {
-      const u = f.usage?.toUpperCase() || '';
-      const n = f.name.toUpperCase();
-      return u.includes('DIV') || n.includes('DIV');
-  }), [fields]);
+  // --- DYNAMIC LEGEND LOGIC ---
+  const legendData = useMemo(() => {
+      const colors = mapStyle === 'satellite' ? MAP_COLORS.satellite : MAP_COLORS.standard;
+      const data = {
+          grunland: { label: 'Grünland (Mähwiese)', color: colors.grunland, present: false },
+          weide: { label: 'Dauerweide', color: colors.weide, present: false },
+          acker: { label: 'Acker', color: colors.acker, present: false },
+          div: { label: 'Div. Flächen (DIVNFZ)', color: colors.div, present: false }
+      };
 
-  const hasWeide = useMemo(() => fields.some(f => {
-      const u = f.usage?.toUpperCase() || '';
-      const n = f.name.toUpperCase();
-      // Must include WEIDE but NOT DIV (priority to DIV if both exist, though unlikely)
-      return f.type === 'Grünland' && (u.includes('WEIDE') || n.includes('WEIDE')) && !u.includes('DIV') && !n.includes('DIV');
-  }), [fields]);
+      fields.forEach(f => {
+          const usage = f.usage?.toUpperCase() || '';
+          const name = f.name.toUpperCase();
+          const displayColor = getFieldColor(f); // This includes custom colors!
 
-  const hasGrunland = useMemo(() => fields.some(f => {
-      const u = f.usage?.toUpperCase() || '';
-      const n = f.name.toUpperCase();
-      // Is Grunland but NOT Weide and NOT Div
-      return f.type === 'Grünland' && !(u.includes('WEIDE') || n.includes('WEIDE')) && !(u.includes('DIV') || n.includes('DIV'));
-  }), [fields]);
-  
+          // Detect type and assign the ACTUAL color used (overwriting default if custom is set)
+          if (usage.includes('DIV') || name.includes('DIV')) {
+              data.div.present = true;
+              data.div.color = displayColor;
+          } else if (f.type === 'Grünland' && (usage.includes('WEIDE') || name.includes('WEIDE'))) {
+              data.weide.present = true;
+              data.weide.color = displayColor;
+          } else if (f.type === 'Acker') {
+              data.acker.present = true;
+              data.acker.color = displayColor;
+          } else if (f.type === 'Grünland') {
+              data.grunland.present = true;
+              data.grunland.color = displayColor;
+          }
+      });
+
+      return data;
+  }, [fields, mapStyle]); // Re-calculate when fields or style changes
+
   const hasSlurry = useMemo(() => storages.some(s => s.type === FertilizerType.SLURRY), [storages]);
   const hasManure = useMemo(() => storages.some(s => s.type === FertilizerType.MANURE), [storages]);
-
-  const activeColors = mapStyle === 'satellite' ? MAP_COLORS.satellite : MAP_COLORS.standard;
 
   return (
     // FIX: Using full height relative container and min-height fallback
@@ -442,7 +451,7 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
              </div>
          )}
 
-         {/* LEGEND - ENHANCED */}
+         {/* LEGEND - DYNAMIC & ENHANCED */}
          {!isEditing && (
              <div className="absolute bottom-20 left-4 bg-white/90 p-3 rounded-lg shadow-lg z-[400] text-xs backdrop-blur-sm border border-slate-200 pointer-events-none">
                  <div className="font-bold mb-2 text-slate-700">Legende</div>
@@ -457,14 +466,14 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                      </div>
                  )}
 
-                 {/* Fields - Using LegendPoly for visual match */}
-                 {hasGrunland && <LegendPoly color={activeColors.grunland} label="Grünland (Mähwiese)" />}
-                 {hasWeide && <LegendPoly color={activeColors.weide} label="Dauerweide" />}
-                 {hasAcker && <LegendPoly color={activeColors.acker} label="Acker" />}
-                 {hasDiv && <LegendPoly color={activeColors.div} label="Div. Flächen (DIVNFZ)" />}
+                 {/* Dynamic Field Categories */}
+                 {legendData.grunland.present && <LegendPoly color={legendData.grunland.color} label={legendData.grunland.label} />}
+                 {legendData.weide.present && <LegendPoly color={legendData.weide.color} label={legendData.weide.label} />}
+                 {legendData.acker.present && <LegendPoly color={legendData.acker.color} label={legendData.acker.label} />}
+                 {legendData.div.present && <LegendPoly color={legendData.div.color} label={legendData.div.label} />}
 
                  {/* Separator if both exist */}
-                 {(hasGrunland || hasAcker || hasWeide || hasDiv) && (hasSlurry || hasManure) && <div className="h-px bg-slate-200 my-2"></div>}
+                 {(legendData.grunland.present || legendData.acker.present || legendData.weide.present || legendData.div.present) && (hasSlurry || hasManure) && <div className="h-px bg-slate-200 my-2"></div>}
 
                  {/* Storage Types - Distinct Colors */}
                  {hasSlurry && (
