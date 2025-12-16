@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, Popup } from 'react-leaflet';
-import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban, History } from 'lucide-react';
+import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban, History, Calendar } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { Field, StorageLocation, ActivityRecord, TrackPoint, ActivityType, FertilizerType, AppSettings, DEFAULT_SETTINGS, TillageType, HarvestType, FarmProfile } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
@@ -86,6 +86,7 @@ const getStorageColor = (storageId: string | undefined, index: number = 0) => {
 
 // Types
 type TrackingState = 'IDLE' | 'LOADING' | 'TRANSIT' | 'SPREADING';
+type HistoryMode = 'OFF' | 'RECENT' | 'YEAR' | 'ALL_12M';
 
 interface Props {
   onMinimize: () => void;
@@ -132,8 +133,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [saveNotes, setSaveNotes] = useState('');
   
   // Ghost Tracks (History)
-  const [showHistory, setShowHistory] = useState(false);
-  const [historyTracks, setHistoryTracks] = useState<ActivityRecord[]>([]);
+  const [historyMode, setHistoryMode] = useState<HistoryMode>('OFF');
+  const [allHistoryTracks, setAllHistoryTracks] = useState<ActivityRecord[]>([]);
   
   // Manual Forms
   const [manualMode, setManualMode] = useState<ActivityType | null>(null);
@@ -153,13 +154,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         const profiles = await dbService.getFarmProfile();
         if (profiles.length > 0) setProfile(profiles[0]);
 
-        // Preload History (only recent 10 fertilizations)
+        // Preload ALL History (Sorted DESC)
         const allActs = await dbService.getActivities();
         const pastTracks = allActs
             .filter(a => a.type === ActivityType.FERTILIZATION && a.trackPoints && a.trackPoints.length > 0)
-            .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-            .slice(0, 10);
-        setHistoryTracks(pastTracks);
+            .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+        setAllHistoryTracks(pastTracks);
     };
     init();
     return () => {
@@ -397,10 +397,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                   // SET CURRENT SOURCE -> All future track points will have this color
                   setActiveSourceId(storage.id);
                   
-                  // Removed Auto-Switching Subtype: We now enforce matching types!
-                  // if (storage.type === FertilizerType.MANURE) setSubType('Mist');
-                  // else setSubType('Gülle');
-
                   return null;
               }
               return prev - 1;
@@ -522,6 +518,37 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setManualMode(null);
       onNavigate('DASHBOARD');
   }
+
+  const cycleHistoryMode = () => {
+      setHistoryMode(prev => {
+          if (prev === 'OFF') return 'RECENT';
+          if (prev === 'RECENT') return 'YEAR';
+          if (prev === 'YEAR') return 'ALL_12M';
+          return 'OFF';
+      });
+  };
+
+  // --- HISTORY FILTER ---
+  const visibleHistoryTracks = useMemo(() => {
+      if (historyMode === 'OFF') return [];
+      
+      if (historyMode === 'RECENT') return allHistoryTracks.slice(0, 5); // Last 5 trips
+      
+      if (historyMode === 'YEAR') {
+          const currentYear = new Date().getFullYear();
+          // Filter safety cap at 100 to avoid crash
+          return allHistoryTracks.filter(a => new Date(a.date).getFullYear() === currentYear).slice(0, 100);
+      }
+      
+      if (historyMode === 'ALL_12M') {
+          const oneYearAgo = new Date();
+          oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
+          // Filter safety cap at 150
+          return allHistoryTracks.filter(a => new Date(a.date) >= oneYearAgo).slice(0, 150);
+      }
+      
+      return [];
+  }, [historyMode, allHistoryTracks]);
 
   // --- RENDER HELPERS ---
   const pendingStorageName = useMemo(() => {
@@ -701,15 +728,15 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                 )}
 
                 {/* GHOST TRACKS (History) - Faded Grey Lines */}
-                {showHistory && historyTracks.map((act, i) => (
+                {historyMode !== 'OFF' && visibleHistoryTracks.map((act, i) => (
                     act.trackPoints && act.trackPoints.length > 1 && (
                         <Polyline 
                             key={`hist-${i}`}
                             positions={act.trackPoints.map(p => [p.lat, p.lng])}
                             pathOptions={{
-                                color: '#94a3b8', // slate-400
+                                color: historyMode === 'ALL_12M' ? '#a855f7' : historyMode === 'YEAR' ? '#16a34a' : '#3b82f6', // Purple/Green/Blue
                                 weight: 2,
-                                opacity: 0.5,
+                                opacity: 0.4,
                                 dashArray: '4, 4'
                             }}
                         />
@@ -779,18 +806,30 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
             </MapContainer>
             
             {/* Map Controls */}
-            <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400]">
+            <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400] items-end">
                  <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white/90 p-3 rounded-xl shadow-lg border border-slate-200"><Layers size={24} className="text-slate-700"/></button>
                  <button onClick={() => setFollowUser(!followUser)} className={`p-3 rounded-xl shadow-lg border border-slate-200 ${followUser ? 'bg-blue-600 text-white' : 'bg-white/90 text-slate-700'}`}><LocateFixed size={24}/></button>
                  
-                 {/* Ghost Tracks Toggle */}
-                 <button 
-                    onClick={() => setShowHistory(!showHistory)} 
-                    className={`p-3 rounded-xl shadow-lg border border-slate-200 ${showHistory ? 'bg-slate-700 text-white' : 'bg-white/90 text-slate-700'}`}
-                    title="Alte Spuren anzeigen"
-                 >
-                    <History size={24}/>
-                 </button>
+                 {/* Ghost Tracks Toggle with Mode Indicator */}
+                 <div className="flex items-center space-x-2">
+                     {historyMode !== 'OFF' && (
+                         <span className="bg-white/90 backdrop-blur text-[10px] font-bold px-2 py-1 rounded shadow-sm text-slate-600 animate-in slide-in-from-right-4">
+                             {historyMode === 'RECENT' ? 'Letzte 5' : historyMode === 'YEAR' ? `Jahr ${new Date().getFullYear()}` : '12 Monate'}
+                         </span>
+                     )}
+                     <button 
+                        onClick={cycleHistoryMode} 
+                        className={`p-3 rounded-xl shadow-lg border border-slate-200 transition-colors ${
+                            historyMode === 'RECENT' ? 'bg-blue-600 text-white border-blue-500' :
+                            historyMode === 'YEAR' ? 'bg-green-600 text-white border-green-500' :
+                            historyMode === 'ALL_12M' ? 'bg-purple-600 text-white border-purple-500' :
+                            'bg-white/90 text-slate-700'
+                        }`}
+                        title="Alte Spuren anzeigen"
+                     >
+                        <History size={24}/>
+                     </button>
+                 </div>
             </div>
 
             {/* Minimize Button */}
