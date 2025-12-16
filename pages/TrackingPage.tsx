@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, Popup } from 'react-leaflet';
-import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban, History, Calendar } from 'lucide-react';
+import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban, History, Calendar, CheckCircle, Home, Share2 } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { Field, StorageLocation, ActivityRecord, TrackPoint, ActivityType, FertilizerType, AppSettings, DEFAULT_SETTINGS, TillageType, HarvestType, FarmProfile } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
@@ -189,6 +189,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [followUser, setFollowUser] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveNotes, setSaveNotes] = useState('');
+  const [summaryRecord, setSummaryRecord] = useState<ActivityRecord | null>(null);
   
   // Visual Preferences
   const [vehicleIconType, setVehicleIconType] = useState<VehicleIconType>('tractor');
@@ -281,6 +282,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setActiveSourceId(null);
       setIsPaused(false);
       setStorageWarning(null);
+      setSummaryRecord(null); // Clear previous summary
 
       watchIdRef.current = navigator.geolocation.watchPosition(
           (pos) => handleNewPosition(pos),
@@ -522,6 +524,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           });
       }
 
+      // Calculate Duration
+      const durationMs = startTime ? Date.now() - startTime : 0;
+      const durationMin = Math.round(durationMs / 60000);
+
       const record: ActivityRecord = {
           id: generateId(),
           date: new Date(startTime || Date.now()).toISOString(),
@@ -534,7 +540,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           trackPoints: trackPoints,
           loadCount: totalLoadCount,
           storageDistribution: activityType === ActivityType.FERTILIZATION ? storageDistribution : undefined,
-          notes: saveNotes + `\nAutomatisch erfasst. Dauer: ${((Date.now() - (startTime||0))/60000).toFixed(0)} min`,
+          notes: saveNotes + `\nAutomatisch erfasst. Dauer: ${durationMin} min`,
           year: new Date().getFullYear(),
       };
       
@@ -554,7 +560,13 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       await dbService.saveActivity(record);
       dbService.syncActivities();
 
-      alert("Aktivität gespeichert!");
+      // Show Summary instead of Alert
+      setSummaryRecord(record); 
+      setShowSaveModal(false);
+  };
+
+  const handleCloseSummary = () => {
+      setSummaryRecord(null);
       onNavigate('DASHBOARD');
   };
 
@@ -771,6 +783,115 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   // Determine initial center: 1. Current GPS, 2. Farm Location, 3. Austria Default
   const currentLat = currentLocation?.coords.latitude || profile?.addressGeo?.lat || 47.5;
   const currentLng = currentLocation?.coords.longitude || profile?.addressGeo?.lng || 14.5;
+
+  // --- SUMMARY OVERLAY (New Feature) ---
+  if (summaryRecord) {
+      return (
+          <div className="h-full relative bg-slate-900 overflow-hidden">
+              {/* Blurred Map Background */}
+              <div className="absolute inset-0 opacity-50 blur-sm pointer-events-none">
+                  <MapContainer center={[currentLat, currentLng]} zoom={13} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                      <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+                      {summaryRecord.trackPoints && <Polyline positions={summaryRecord.trackPoints.map(p => [p.lat, p.lng])} color="blue" />}
+                  </MapContainer>
+              </div>
+
+              {/* Summary Card */}
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-4 z-50">
+                  <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                      
+                      {/* Success Header */}
+                      <div className="bg-green-600 p-8 text-center text-white relative overflow-hidden">
+                          <div className="absolute inset-0 bg-gradient-to-br from-green-500 to-green-700 opacity-90"></div>
+                          <div className="relative z-10 flex flex-col items-center">
+                              <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mb-4 shadow-inner backdrop-blur-sm">
+                                  <CheckCircle size={48} className="text-white drop-shadow-md" />
+                              </div>
+                              <h2 className="text-3xl font-bold mb-1">Gespeichert!</h2>
+                              <div className="text-green-100 font-medium text-sm bg-white/10 px-3 py-1 rounded-full">{summaryRecord.type}</div>
+                          </div>
+                      </div>
+
+                      {/* Stats Grid */}
+                      <div className="p-6">
+                          <div className="grid grid-cols-2 gap-4 mb-6">
+                              {/* Duration */}
+                              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                  <div className="flex items-center text-slate-400 text-xs font-bold uppercase mb-1">
+                                      <Clock size={12} className="mr-1"/> Dauer
+                                  </div>
+                                  <div className="text-xl font-bold text-slate-800">
+                                      {summaryRecord.notes?.match(/Dauer: (\d+) min/)?.[1] || 0} <span className="text-sm text-slate-500">min</span>
+                                  </div>
+                              </div>
+
+                              {/* Amount */}
+                              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                  <div className="flex items-center text-slate-400 text-xs font-bold uppercase mb-1">
+                                      <Database size={12} className="mr-1"/> Gesamt
+                                  </div>
+                                  <div className="text-xl font-bold text-slate-800">
+                                      {summaryRecord.amount} <span className="text-sm text-slate-500">{summaryRecord.unit}</span>
+                                  </div>
+                              </div>
+
+                              {/* Loads (If available) */}
+                              {summaryRecord.loadCount !== undefined && summaryRecord.loadCount > 0 && (
+                                  <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                      <div className="flex items-center text-slate-400 text-xs font-bold uppercase mb-1">
+                                          <Truck size={12} className="mr-1"/> Fuhren
+                                      </div>
+                                      <div className="text-xl font-bold text-slate-800">
+                                          {summaryRecord.loadCount}
+                                      </div>
+                                  </div>
+                              )}
+
+                              {/* Fields Count */}
+                              <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                                  <div className="flex items-center text-slate-400 text-xs font-bold uppercase mb-1">
+                                      <Square size={12} className="mr-1"/> Felder
+                                  </div>
+                                  <div className="text-xl font-bold text-slate-800">
+                                      {summaryRecord.fieldIds.length}
+                                  </div>
+                              </div>
+                          </div>
+
+                          {/* Involved Fields List (Preview) */}
+                          <div className="mb-6">
+                              <h3 className="text-xs font-bold text-slate-400 uppercase mb-2">Bearbeitete Felder</h3>
+                              <div className="flex flex-wrap gap-2">
+                                  {summaryRecord.fieldIds.length === 0 ? (
+                                      <span className="text-xs text-slate-400 italic">Keine Felder zugeordnet.</span>
+                                  ) : (
+                                      summaryRecord.fieldIds.slice(0, 5).map(fid => {
+                                          const f = fields.find(field => field.id === fid);
+                                          return f ? (
+                                              <span key={fid} className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold border border-slate-200">
+                                                  {f.name}
+                                              </span>
+                                          ) : null;
+                                      })
+                                  )}
+                                  {summaryRecord.fieldIds.length > 5 && (
+                                      <span className="text-xs text-slate-400 py-1">+ {summaryRecord.fieldIds.length - 5} weitere</span>
+                                  )}
+                              </div>
+                          </div>
+
+                          <button 
+                              onClick={handleCloseSummary}
+                              className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg hover:bg-slate-800 flex items-center justify-center transition-transform active:scale-95"
+                          >
+                              <Home size={20} className="mr-2"/> Zurück zur Übersicht
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      );
+  }
 
   return (
     <div className="h-full relative bg-slate-900 flex flex-col">
