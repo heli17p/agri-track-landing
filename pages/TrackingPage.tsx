@@ -79,7 +79,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [isPaused, setIsPaused] = useState(false);
-  const [loadCount, setLoadCount] = useState(0); // Fuhren Zähler
+  
+  // Load Counting (Detailed per Storage)
+  const [loadCounts, setLoadCounts] = useState<Record<string, number>>({}); 
   
   // Activity Config
   const [activityType, setActivityType] = useState<ActivityType>(ActivityType.FERTILIZATION);
@@ -166,7 +168,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setStartTime(Date.now());
       setTrackingState('TRANSIT');
       setTrackPoints([]);
-      setLoadCount(0);
+      setLoadCounts({});
       setIsPaused(false);
 
       watchIdRef.current = navigator.geolocation.watchPosition(
@@ -320,8 +322,11 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                   setTrackingState('LOADING');
                   activeLoadingStorageRef.current = storage;
                   
-                  // Increment Load Counter when detection is complete
-                  setLoadCount(c => c + 1);
+                  // Increment Load Counter SPECIFIC for this storage
+                  setLoadCounts(prevCounts => ({
+                      ...prevCounts,
+                      [storage.id]: (prevCounts[storage.id] || 0) + 1
+                  }));
                   
                   // Auto-switch subtype to storage type
                   if (storage.type === FertilizerType.MANURE) setSubType('Mist');
@@ -351,8 +356,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           return acc + getDistance(trackPoints[i-1], p);
       }, 0) : 0; // meters
 
-      // Calculate Area (approximate by spread width * distance spreading)
-      // Filter spreading points
+      // Calculate Area
       let spreadDist = 0;
       let lastSpreadPoint: TrackPoint | null = null;
       
@@ -367,49 +371,32 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           }
       });
 
-      // Area in Hectares
       const width = activityType === ActivityType.FERTILIZATION 
           ? (subType === 'Mist' ? settings.manureSpreadWidth : settings.slurrySpreadWidth) 
-          : 6; // Default width
+          : 6; 
       
       const calculatedAreaHa = (spreadDist * (width || 12)) / 10000;
 
-      // Identify Fields
       const fieldIds = new Set<string>();
-      
-      // We just list fields touched by spreading points
       fields.forEach(f => {
           const pointsInField = trackPoints.filter(p => p.isSpreading && isPointInPolygon(p, f.boundary));
-          if (pointsInField.length > 5) { // Threshold to ignore noise
-              fieldIds.add(f.id);
-          }
+          if (pointsInField.length > 5) fieldIds.add(f.id);
       });
       
-      // Calculate detailed distribution (per field and per source)
-      const detailedFieldSources: Record<string, Record<string, number>> = {};
-      const fieldDist: Record<string, number> = {};
+      // --- Calculate Loads & Distribution ---
+      let totalLoadCount = 0;
+      const storageDistribution: Record<string, number> = {};
       
-      trackPoints.forEach(p => {
-          if (!p.isSpreading) return;
+      if (activityType === ActivityType.FERTILIZATION) {
+          const loadSize = subType === 'Mist' ? settings.manureLoadSize : settings.slurryLoadSize;
           
-          fields.forEach(f => {
-              if (isPointInPolygon(p, f.boundary)) {
-                  // It's in this field
-                  // Add minimal amount (approx based on distance between points would be better, but count is ok for ratio)
-                  const fieldId = f.id;
-                  const storageId = p.storageId || 'unknown';
-                  
-                  if (!detailedFieldSources[fieldId]) detailedFieldSources[fieldId] = {};
-                  if (!detailedFieldSources[fieldId][storageId]) detailedFieldSources[fieldId][storageId] = 0;
-                  
-                  // We just count points for distribution ratio
-                  detailedFieldSources[fieldId][storageId]++;
-                  
-                  if (!fieldDist[fieldId]) fieldDist[fieldId] = 0;
-                  fieldDist[fieldId]++;
-              }
+          Object.entries(loadCounts).forEach(([storageId, count]) => {
+              totalLoadCount += count;
+              // Add to distribution (Volume = Count * Size)
+              // If we have precise storage capacity tracking later, this is where it goes
+              storageDistribution[storageId] = count * loadSize;
           });
-      });
+      }
 
       const record: ActivityRecord = {
           id: generateId(),
@@ -418,33 +405,29 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           fertilizerType: activityType === ActivityType.FERTILIZATION ? (subType === 'Mist' ? FertilizerType.MANURE : FertilizerType.SLURRY) : undefined,
           tillageType: activityType === ActivityType.TILLAGE ? (subType as TillageType) : undefined,
           fieldIds: Array.from(fieldIds),
-          amount: 0, // User must verify
+          amount: 0, 
           unit: activityType === ActivityType.HARVEST ? 'Stk' : (activityType === ActivityType.TILLAGE ? 'ha' : 'm³'),
           trackPoints: trackPoints,
-          loadCount: loadCount, // Save the counted loads
+          loadCount: totalLoadCount,
+          storageDistribution: activityType === ActivityType.FERTILIZATION ? storageDistribution : undefined,
           notes: saveNotes + `\nAutomatisch erfasst. Dauer: ${((Date.now() - (startTime||0))/60000).toFixed(0)} min`,
           year: new Date().getFullYear(),
       };
       
       if (activityType === ActivityType.TILLAGE) {
           record.amount = parseFloat(calculatedAreaHa.toFixed(2));
-          // Pre-fill distribution for tillage
           const dist: Record<string, number> = {};
-          fields.forEach(f => {
-              if (fieldIds.has(f.id)) dist[f.id] = f.areaHa; // Simple assumption: full field worked
-          });
+          fields.forEach(f => { if (fieldIds.has(f.id)) dist[f.id] = f.areaHa; });
           record.fieldDistribution = dist;
       } else if (activityType === ActivityType.FERTILIZATION) {
-          // Auto-calculate amount if loads are known and settings exist
+          // Total amount based on total loads
           const loadSize = subType === 'Mist' ? settings.manureLoadSize : settings.slurryLoadSize;
-          if (loadSize && loadCount > 0) {
-              record.amount = loadCount * loadSize;
+          if (loadSize && totalLoadCount > 0) {
+              record.amount = totalLoadCount * loadSize;
           }
       }
 
       await dbService.saveActivity(record);
-      
-      // Sync
       dbService.syncActivities();
 
       alert("Aktivität gespeichert!");
@@ -456,7 +439,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           stopGPS();
           setTrackingState('IDLE');
           setTrackPoints([]);
-          setLoadCount(0);
+          setLoadCounts({});
           setShowSaveModal(false);
           setDetectionCountdown(null);
           pendingStorageIdRef.current = null;
@@ -475,9 +458,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const pendingStorageName = useMemo(() => {
       if (!pendingStorageIdRef.current) return '';
       return storages.find(s => s.id === pendingStorageIdRef.current)?.name || 'Lager';
-  }, [storages, detectionCountdown]); // dependent on countdown state
+  }, [storages, detectionCountdown]);
 
   const detectedStorageName = activeLoadingStorageRef.current?.name || 'Lager';
+
+  // Calculate Total Loads for Display
+  const totalLoadsDisplay = Object.values(loadCounts).reduce((a, b) => a + b, 0);
 
   // --- MANUAL MODE RENDER ---
   if (manualMode) {
@@ -733,13 +719,25 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                                  <span className="text-xs text-slate-400 ml-1">min</span>
                              </div>
                              
-                             {/* Load Counter (New) */}
+                             {/* Load Counter (Enhanced) */}
                              {activityType === ActivityType.FERTILIZATION && (
-                                 <div>
-                                     <span className="text-2xl font-mono font-bold text-blue-600">
-                                         {loadCount}
-                                     </span>
-                                     <span className="text-xs text-blue-400 ml-1">Fuhren</span>
+                                 <div className="flex flex-col">
+                                     {totalLoadsDisplay === 0 ? (
+                                         <div className="text-slate-400 text-sm font-bold mt-1">0 Fuhren</div>
+                                     ) : (
+                                         <div className="flex flex-wrap gap-2 max-w-[150px]">
+                                             {Object.entries(loadCounts).map(([sId, count]) => {
+                                                 const st = storages.find(s => s.id === sId);
+                                                 const color = getStorageColor(sId);
+                                                 return (
+                                                     <div key={sId} className="flex items-center bg-slate-100 px-2 py-0.5 rounded text-xs font-bold text-slate-700 border border-slate-200">
+                                                         <span className="w-2 h-2 rounded-full mr-1.5" style={{backgroundColor: color}}></span>
+                                                         {count} {st ? st.name.substring(0, 5) : 'Unk'}
+                                                     </div>
+                                                 );
+                                             })}
+                                         </div>
+                                     )}
                                  </div>
                              )}
                              
