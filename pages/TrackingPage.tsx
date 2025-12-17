@@ -599,9 +599,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       }
 
       dbService.syncActivities(); // Background
-      alert("Gespeichert!");
+      
+      // Instead of alert, show Summary Overlay
+      setSummaryRecord(record); 
       setManualMode(null);
-      onNavigate('DASHBOARD');
   }
 
   const cycleHistoryMode = () => {
