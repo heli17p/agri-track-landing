@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, Popup } from 'react-leaflet';
-import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban, History, Calendar, CheckCircle, Home, Share2, Loader2 } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, Popup, useMapEvents } from 'react-leaflet';
+import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban, History, Calendar, CheckCircle, Home, Share2, Loader2, ZoomIn, ZoomOut } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { Field, StorageLocation, ActivityRecord, TrackPoint, ActivityType, FertilizerType, AppSettings, DEFAULT_SETTINGS, TillageType, HarvestType, FarmProfile } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
@@ -112,14 +112,13 @@ const farmIcon = createCustomIcon('#2563eb', iconPaths.house);
 
 // --- HELPERS ---
 
-// Map Controller to follow user position
-const MapController = ({ center, zoom, follow }: { center: [number, number] | null, zoom: number, follow: boolean }) => {
+// Map Controller to follow user position and handle Zoom events
+const MapController = ({ center, zoom, follow, onZoomChange }: { center: [number, number] | null, zoom: number, follow: boolean, onZoomChange: (z: number) => void }) => {
     const map = useMap();
     
     // Initial Center Effect
     useEffect(() => {
         if (center) {
-            // If following, animate. If just initial set (no follow yet but center provided), jump there.
             map.setView(center, zoom, { animate: follow });
         }
     }, [center, zoom, follow, map]);
@@ -129,6 +128,13 @@ const MapController = ({ center, zoom, follow }: { center: [number, number] | nu
         const t = setTimeout(() => map.invalidateSize(), 200);
         return () => clearTimeout(t);
     }, [map]);
+
+    // Capture manual zoom interactions
+    useMapEvents({
+        zoomend: () => {
+            onZoomChange(map.getZoom());
+        }
+    });
     
     return null;
 };
@@ -191,6 +197,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveNotes, setSaveNotes] = useState('');
   const [summaryRecord, setSummaryRecord] = useState<ActivityRecord | null>(null);
+  const [currentZoom, setCurrentZoom] = useState(18); // Default closer zoom
   
   // Visual Preferences
   const [vehicleIconType, setVehicleIconType] = useState<VehicleIconType>('tractor');
@@ -245,6 +252,18 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, [trackingState]);
+
+  // Prevent accidental close/refresh when tracking
+  useEffect(() => {
+      const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+          if (trackingState !== 'IDLE') {
+              e.preventDefault();
+              e.returnValue = ''; // Required for Chrome to show prompt
+          }
+      };
+      window.addEventListener('beforeunload', handleBeforeUnload);
+      return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [trackingState]);
 
   // --- WAKE LOCK ---
@@ -413,6 +432,27 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           }
       });
 
+      // Special handling if already LOADING
+      // We want to be "sticky" -> Don't leave loading state just because speed > 3
+      // Only leave if distance > radius + hysteresis
+      if (trackingState === 'LOADING') {
+          if (nearest && minDist <= (detectionRadius + 10)) {
+              // Still close enough, refresh ref if needed, but stay LOADING
+              if (activeLoadingStorageRef.current?.id !== nearest.id) {
+                  // Switched storage without leaving? Unlikely but update.
+                  activeLoadingStorageRef.current = nearest;
+              }
+              return; 
+          } else {
+              // Clearly left the area
+              setTrackingState('TRANSIT');
+              activeLoadingStorageRef.current = null;
+              cancelDetection();
+              setStorageWarning(null);
+              return;
+          }
+      }
+
       if (nearest && minDist <= detectionRadius) {
           const nearestLoc = nearest as StorageLocation;
           
@@ -430,16 +470,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           // We are close to a VALID storage
           const nearestId = nearestLoc.id;
 
-          if (trackingState === 'LOADING' && activeLoadingStorageRef.current?.id === nearestId) {
-              // Already loading from this storage, reset pending check
-              pendingStorageIdRef.current = null;
-              if (detectionCountdown !== null) {
-                  setDetectionCountdown(null);
-                  if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-              }
-              return;
-          }
-
           // If we are moving very slowly or stopped, start countdown to switch to LOADING
           if (speedKmh < 3.0) {
               if (pendingStorageIdRef.current !== nearestId) {
@@ -455,15 +485,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           // Left proximity
           cancelDetection();
           setStorageWarning(null); // Clear warning if we leave the area
-          
-          // If we were LOADING, switch back to TRANSIT
-          if (trackingState === 'LOADING') {
-              // Only switch if we moved significantly away (hysteresis +5m)
-              if (!nearest || minDist > (detectionRadius + 5)) {
-                  setTrackingState('TRANSIT');
-                  activeLoadingStorageRef.current = null;
-              }
-          }
       }
   };
 
@@ -1011,7 +1032,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
         {/* MAP */}
         <div className="flex-1 relative z-0">
-            <MapContainer center={[currentLat, currentLng]} zoom={16} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+            <MapContainer center={[currentLat, currentLng]} zoom={currentZoom} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                 <TileLayer 
                     attribution='&copy; OpenStreetMap'
                     url={mapStyle === 'standard' 
@@ -1020,7 +1041,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                     }
                 />
                 
-                <MapController center={[currentLat, currentLng]} zoom={16} follow={followUser} />
+                <MapController center={[currentLat, currentLng]} zoom={currentZoom} follow={followUser} onZoomChange={setCurrentZoom} />
                 
                 {/* Fields Overlay - Now using synchronized colors */}
                 {fields.map(f => (
@@ -1125,7 +1146,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
             </MapContainer>
             
             {/* Map Controls */}
-            <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400] items-end">
+            <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400] items-end pointer-events-auto">
                  <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white/90 p-3 rounded-xl shadow-lg border border-slate-200"><Layers size={24} className="text-slate-700"/></button>
                  <button onClick={() => setFollowUser(!followUser)} className={`p-3 rounded-xl shadow-lg border border-slate-200 ${followUser ? 'bg-blue-600 text-white' : 'bg-white/90 text-slate-700'}`}><LocateFixed size={24}/></button>
                  
@@ -1151,16 +1172,32 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                  </div>
             </div>
 
+            {/* STORAGE LEGEND (Top Left) */}
+            {activityType === ActivityType.FERTILIZATION && storages.length > 0 && (
+                <div className="absolute top-4 left-4 bg-white/90 backdrop-blur p-2 rounded-lg shadow-lg border border-slate-200 z-[400] max-w-[150px] pointer-events-none">
+                    <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">Lager</div>
+                    {storages.filter(s => s.type === subType).map(s => {
+                        const color = getStorageColor(s.id);
+                        return (
+                            <div key={s.id} className="flex items-center text-[10px] text-slate-700 mb-0.5 last:mb-0">
+                                <span className="w-2.5 h-2.5 rounded-full mr-1.5 shrink-0" style={{backgroundColor: color, border: '1px solid white'}}></span>
+                                <span className="truncate">{s.name}</span>
+                            </div>
+                        )
+                    })}
+                </div>
+            )}
+
             {/* Minimize Button */}
             <button 
                 onClick={onMinimize}
-                className="absolute top-4 left-4 z-[400] bg-white/90 p-2 rounded-lg shadow-lg border border-slate-200 text-slate-600"
+                className="absolute top-20 left-4 z-[400] bg-white/90 p-2 rounded-lg shadow-lg border border-slate-200 text-slate-600 pointer-events-auto"
             >
                 <Minimize2 size={24} />
             </button>
 
             {/* 3. STATUS PILL (FLOATING & ENHANCED) */}
-            <div className="absolute top-20 left-1/2 transform -translate-x-1/2 z-[400] w-full max-w-[90%] flex flex-col items-center pointer-events-none space-y-2">
+            <div className="absolute top-24 left-1/2 transform -translate-x-1/2 z-[400] w-full max-w-[90%] flex flex-col items-center pointer-events-none space-y-2">
                 
                 {/* WARNING BANNER FOR MISMATCHED TYPE */}
                 {storageWarning && (
@@ -1202,8 +1239,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                         } 
                         
                         if (trackingState === 'SPREADING') {
+                            const sourceId = activeSourceId;
+                            const color = getStorageColor(sourceId);
                             return (
-                                <div className="w-10 h-10 flex items-center justify-center rounded-full text-white shadow-sm bg-green-500 animate-pulse border-2 border-white">
+                                <div className="w-10 h-10 flex items-center justify-center rounded-full text-white shadow-sm animate-pulse border-2 border-white" style={{backgroundColor: color}}>
                                     <Droplets size={20} />
                                 </div>
                             );
