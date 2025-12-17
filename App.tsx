@@ -35,7 +35,6 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
             }
 
             try {
-                // Timeout Promise (10 seconds)
                 const timeoutPromise = new Promise((_, reject) => 
                     setTimeout(() => reject(new Error("Zeitüberschreitung (Server antwortet nicht).")), 10000)
                 );
@@ -44,14 +43,11 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
                     ? authService.register(email, cloudPass) 
                     : authService.login(email, cloudPass);
 
-                // Race: Login vs Timeout
                 await Promise.race([authPromise, timeoutPromise]);
-                
-                onLogin(); // Success
+                onLogin(); 
             } catch (e: any) {
                 setErrorMsg(e.message || "Authentifizierung fehlgeschlagen.");
             } finally {
-                // Only set loading false if component is still mounted (implied by execution flow)
                 setLoading(false);
             }
             return;
@@ -81,7 +77,6 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
                 </div>
                 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    {/* Toggle Mode */}
                     <div className="flex items-center justify-center mb-4">
                         <label className="flex items-center cursor-pointer">
                             <input 
@@ -159,63 +154,60 @@ const AdminLoginModal = ({ onLogin, onClose }: { onLogin: () => void, onClose: (
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.HOME);
-  
-  // Auth State
   const [isAdmin, setIsAdmin] = useState(false);
   const [showLoginModal, setShowLoginModal] = useState(false);
-  
-  // User Auth State
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
-
-  // UI State for Tracking Mode
   const [isFullScreen, setIsFullScreen] = useState(false);
-
-  // Admin View State
   const [adminView, setAdminView] = useState<'TICKETS' | 'FARMS'>('TICKETS');
 
   useEffect(() => {
-      // 1. Check Guest Mode Preference
       const guestPref = localStorage.getItem('agritrack_guest_mode');
       if (guestPref === 'true') {
           setIsGuest(true);
       }
 
-      // 2. Listen to Firebase Auth
+      // OFFLINE SAFETY: Force auth loading to finish after 2 seconds
+      // This prevents the "Spinner of Death" when offline
+      const offlineTimeout = setTimeout(() => {
+          if (isLoadingAuth) {
+              console.warn("Auth check timed out (Offline?), forcing app load.");
+              setIsLoadingAuth(false);
+          }
+      }, 2000);
+
       const unsubscribe = authService.onAuthStateChanged((user) => {
+          clearTimeout(offlineTimeout);
           if (user) {
               setIsAuthenticated(true);
-              setIsGuest(false); // Logged in overrides guest
-              localStorage.removeItem('agritrack_guest_mode'); // Clear guest flag
+              setIsGuest(false);
+              localStorage.removeItem('agritrack_guest_mode');
               setCurrentUserEmail(user.email);
               
-              // Trigger sync on startup if logged in (Critical for mobile)
-              syncData().catch(err => console.error("Auto-sync failed on app start:", err));
+              // Non-blocking sync
+              syncData().catch(err => console.log("Background sync failed (Offline?):", err));
           } else {
               setIsAuthenticated(false);
           }
           setIsLoadingAuth(false);
       });
 
-      return () => unsubscribe();
+      return () => {
+          unsubscribe();
+          clearTimeout(offlineTimeout);
+      };
   }, []);
 
-  // --- AUTOMATIC STORAGE GROWTH ---
   useEffect(() => {
-      // 1. Initial check (calculates growth since last open)
       dbService.processStorageGrowth();
-
-      // 2. Periodic check (every minute)
       const interval = setInterval(() => {
           dbService.processStorageGrowth();
-      }, 60000); // 60s
-
+      }, 60000);
       return () => clearInterval(interval);
   }, []);
 
-  // Helper to allow Hero to switch tab
   const launchApp = () => setActiveTab(Tab.APP);
 
   const handleAdminLogin = () => {
@@ -235,21 +227,13 @@ const App: React.FC = () => {
       setIsGuest(false);
       setIsAuthenticated(false);
       localStorage.removeItem('agritrack_guest_mode');
-      
-      // UX Improvement: Redirect logic
-      if (wasGuest) {
-          setActiveTab(Tab.APP); // Back to login screen
-      } else {
-          setActiveTab(Tab.HOME);
-      }
+      if (wasGuest) setActiveTab(Tab.APP); else setActiveTab(Tab.HOME);
   };
 
   const handleGuestAccess = () => {
       setIsGuest(true);
       localStorage.setItem('agritrack_guest_mode', 'true');
   };
-
-  // --- RENDERING ---
 
   if (isLoadingAuth) {
       return (
@@ -264,20 +248,14 @@ const App: React.FC = () => {
 
   return (
     <div className="w-full h-full flex flex-col bg-gray-50 font-sans overflow-hidden">
-      
       {showLoginModal && <AdminLoginModal onLogin={handleAdminLogin} onClose={() => setShowLoginModal(false)} />}
 
-      {/* Guest Banner - Hide when in full screen tracking */}
       {isGuest && !isFullScreen && (
           <div className="bg-slate-800 text-slate-300 text-xs py-1 px-4 text-center flex justify-center items-center relative z-[60] shrink-0">
               <CloudOff size={12} className="mr-2"/>
               <span>Gastmodus: Daten werden nur lokal gespeichert.</span>
               <button 
-                onClick={() => { 
-                    setIsGuest(false); 
-                    localStorage.removeItem('agritrack_guest_mode'); 
-                    setActiveTab(Tab.APP); 
-                }} 
+                onClick={() => { setIsGuest(false); localStorage.removeItem('agritrack_guest_mode'); setActiveTab(Tab.APP); }} 
                 className="ml-4 underline hover:text-white font-bold"
               >
                   Jetzt anmelden
@@ -285,7 +263,6 @@ const App: React.FC = () => {
           </div>
       )}
 
-      {/* Navigation - Hide when in full screen tracking */}
       {!isFullScreen && (
         <nav className="bg-white border-b border-gray-200 sticky top-0 z-50 shrink-0">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -297,103 +274,33 @@ const App: React.FC = () => {
                 
                 <div className="flex items-center">
                     <div className="hidden md:flex space-x-8 items-center mr-8">
-                    <button
-                        onClick={() => setActiveTab(Tab.HOME)}
-                        className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        activeTab === Tab.HOME
-                            ? 'border-agri-500 text-gray-900'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        }`}
-                    >
-                        <LayoutDashboard className="w-4 h-4 mr-2" />
-                        Übersicht
-                    </button>
-                    <button
-                        onClick={() => setActiveTab(Tab.APP)}
-                        className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        activeTab === Tab.APP
-                            ? 'border-agri-500 text-gray-900'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        }`}
-                    >
-                        <Smartphone className="w-4 h-4 mr-2" />
-                        Web App
-                    </button>
+                    <button onClick={() => setActiveTab(Tab.HOME)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.HOME ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}><LayoutDashboard className="w-4 h-4 mr-2" /> Übersicht</button>
+                    <button onClick={() => setActiveTab(Tab.APP)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.APP ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}><Smartphone className="w-4 h-4 mr-2" /> Web App</button>
                     
                     {isAdmin && (
-                        <button
-                            onClick={() => setActiveTab(Tab.ADMIN)}
-                            className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                            activeTab === Tab.ADMIN
-                                ? 'border-red-500 text-red-700'
-                                : 'border-transparent text-gray-500 hover:text-red-600 hover:border-red-200'
-                            }`}
-                        >
-                            <Lock className="w-4 h-4 mr-2" />
-                            Admin Konsole
-                        </button>
+                        <button onClick={() => setActiveTab(Tab.ADMIN)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.ADMIN ? 'border-red-500 text-red-700' : 'border-transparent text-gray-500 hover:text-red-600 hover:border-red-200'}`}><Lock className="w-4 h-4 mr-2" /> Admin Konsole</button>
                     )}
 
-                    <button
-                        onClick={() => setActiveTab(Tab.FEEDBACK)}
-                        className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        activeTab === Tab.FEEDBACK
-                            ? 'border-agri-500 text-gray-900'
-                            : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
-                        }`}
-                    >
-                        <MessageSquarePlus className="w-4 h-4 mr-2" />
-                        Kummerkasten
-                    </button>
+                    <button onClick={() => setActiveTab(Tab.FEEDBACK)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.FEEDBACK ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}><MessageSquarePlus className="w-4 h-4 mr-2" /> Kummerkasten</button>
                     </div>
 
-                    {/* Login/Logout Button Group */}
                     <div className="border-l border-gray-200 pl-4 flex items-center space-x-2">
                         {isAdmin ? (
-                            <button 
-                                onClick={handleAdminLogout}
-                                className="text-xs font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors"
-                                title="Admin Logout"
-                            >
-                                <Lock size={14}/>
-                            </button>
+                            <button onClick={handleAdminLogout} className="text-xs font-bold text-red-600 bg-red-50 px-3 py-1.5 rounded-full hover:bg-red-100 transition-colors" title="Admin Logout"><Lock size={14}/></button>
                         ) : (
-                            <button 
-                                onClick={() => setShowLoginModal(true)}
-                                className="text-gray-300 hover:text-gray-500 p-2 rounded-full hover:bg-gray-100 transition-colors"
-                                title="Admin Login"
-                            >
-                                <Lock size={16} />
-                            </button>
+                            <button onClick={() => setShowLoginModal(true)} className="text-gray-300 hover:text-gray-500 p-2 rounded-full hover:bg-gray-100 transition-colors" title="Admin Login"><Lock size={16} /></button>
                         )}
 
                         {isAuthenticated || isGuest ? (
                             <div className="relative group">
-                                <button 
-                                    onClick={handleUserLogout}
-                                    className={`flex items-center text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${
-                                        isGuest 
-                                        ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' 
-                                        : 'bg-slate-100 text-slate-600 hover:text-slate-900'
-                                    }`}
-                                    title={isGuest ? "Jetzt anmelden" : "Abmelden"}
-                                >
+                                <button onClick={handleUserLogout} className={`flex items-center text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${isGuest ? 'bg-amber-50 text-amber-700 hover:bg-amber-100' : 'bg-slate-100 text-slate-600 hover:text-slate-900'}`} title={isGuest ? "Jetzt anmelden" : "Abmelden"}>
                                     <User size={16} className="mr-2"/>
                                     <span className="max-w-[100px] truncate hidden sm:block">{isAuthenticated ? (currentUserEmail || 'User') : 'Gast'}</span>
-                                    {isGuest ? (
-                                        <ArrowRight size={14} className="ml-2"/>
-                                    ) : (
-                                        <LogOut size={14} className="ml-2 text-slate-400 group-hover:text-red-500"/>
-                                    )}
+                                    {isGuest ? (<ArrowRight size={14} className="ml-2"/>) : (<LogOut size={14} className="ml-2 text-slate-400 group-hover:text-red-500"/>)}
                                 </button>
                             </div>
                         ) : (
-                            <button 
-                                onClick={() => setActiveTab(Tab.APP)}
-                                className="text-sm font-bold text-agri-600 hover:text-agri-700 px-3 py-1"
-                            >
-                                Anmelden
-                            </button>
+                            <button onClick={() => setActiveTab(Tab.APP)} className="text-sm font-bold text-agri-600 hover:text-agri-700 px-3 py-1">Anmelden</button>
                         )}
                     </div>
                 </div>
@@ -402,7 +309,6 @@ const App: React.FC = () => {
         </nav>
       )}
 
-      {/* Main Content */}
       <main className={`flex-1 relative overflow-hidden flex flex-col w-full h-full`}>
         {activeTab === Tab.HOME && !isFullScreen && (
           <div className="h-full overflow-y-auto">
@@ -416,27 +322,19 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
-            {/* Kummerkasten removed from Home as it now has its own tab */}
-            
-            {/* Footer inside scrollable area for Home */}
             <footer className="bg-white border-t border-gray-200 mt-auto shrink-0">
                 <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
                 <div className="flex flex-col md:flex-row justify-between items-center">
                     <div className="mb-4 md:mb-0">
-                    <p className="text-sm text-gray-500">
-                        &copy; {new Date().getFullYear()} AgriTrack Austria. Open Source & Forever Live.
-                    </p>
+                    <p className="text-sm text-gray-500">&copy; {new Date().getFullYear()} AgriTrack Austria. Open Source & Forever Live.</p>
                     </div>
-                    <div className="flex space-x-6 text-sm text-gray-500">
-                    <a href="#" className="hover:text-agri-600 transition-colors">Impressum</a>
-                    </div>
+                    <div className="flex space-x-6 text-sm text-gray-500"><a href="#" className="hover:text-agri-600 transition-colors">Impressum</a></div>
                 </div>
                 </div>
             </footer>
           </div>
         )}
 
-        {/* --- PROTECTED APP TAB --- */}
         {activeTab === Tab.APP && (
           <div className="absolute inset-0 bg-gray-100 flex flex-col">
             {isAuthenticated || isGuest ? (
@@ -449,51 +347,29 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {/* --- ADMIN TAB --- */}
         {activeTab === Tab.ADMIN && isAdmin && !isFullScreen && (
           <div className="h-full bg-slate-900 flex flex-col">
-              {/* Admin Sub-Nav */}
               <div className="bg-slate-800 p-2 flex justify-center space-x-4 border-b border-slate-700">
-                  <button 
-                    onClick={() => setAdminView('TICKETS')}
-                    className={`px-4 py-2 rounded-lg font-bold transition-colors ${adminView === 'TICKETS' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
-                  >
-                      <MessageSquarePlus className="inline mr-2 h-4 w-4"/> Tickets & Chat
-                  </button>
-                  <button 
-                    onClick={() => setAdminView('FARMS')}
-                    className={`px-4 py-2 rounded-lg font-bold transition-colors ${adminView === 'FARMS' ? 'bg-green-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}
-                  >
-                      <Database className="inline mr-2 h-4 w-4"/> Hof Manager
-                  </button>
+                  <button onClick={() => setAdminView('TICKETS')} className={`px-4 py-2 rounded-lg font-bold transition-colors ${adminView === 'TICKETS' ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}><MessageSquarePlus className="inline mr-2 h-4 w-4"/> Tickets & Chat</button>
+                  <button onClick={() => setAdminView('FARMS')} className={`px-4 py-2 rounded-lg font-bold transition-colors ${adminView === 'FARMS' ? 'bg-green-600 text-white' : 'text-slate-400 hover:bg-slate-700'}`}><Database className="inline mr-2 h-4 w-4"/> Hof Manager</button>
               </div>
-
-              {/* Admin Content */}
               <div className="flex-1 overflow-y-auto">
                   {adminView === 'TICKETS' ? (
                       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-                        <div className="mb-8 text-center">
-                            <h2 className="text-3xl font-bold text-white">Admin Konsole</h2>
-                        </div>
+                        <div className="mb-8 text-center"><h2 className="text-3xl font-bold text-white">Admin Konsole</h2></div>
                         <FeedbackBoard isAdmin={true} />
                       </div>
-                  ) : (
-                      <AdminFarmManager />
-                  )}
+                  ) : (<AdminFarmManager />)}
               </div>
           </div>
         )}
 
-        {/* --- KUMMERKASTEN TAB (Replaces Version History) --- */}
         {activeTab === Tab.FEEDBACK && !isFullScreen && (
           <div className="h-full overflow-y-auto bg-slate-50">
-            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-                <FeedbackBoard isAdmin={false} />
-            </div>
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12"><FeedbackBoard isAdmin={false} /></div>
           </div>
         )}
       </main>
-
     </div>
   );
 };

@@ -27,8 +27,7 @@ const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
 const MANURE_PALETTE = ['#d97706', '#ea580c', '#f59e0b', '#c2410c', '#fb923c'];
 
 const getStorageColor = (storageId: string | undefined, allStorages: StorageLocation[]) => {
-    if (!storageId) return '#3b82f6'; // Default Blue (No Storage / Transit)
-    
+    if (!storageId) return '#3b82f6'; // Default Blue
     const storage = allStorages.find(s => s.id === storageId);
     if (!storage) return '#64748b'; 
 
@@ -146,7 +145,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [loadCounts, setLoadCounts] = useState<Record<string, number>>({}); 
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   
-  // NEW: Per-Load Tracking Logic (Starts at 1, increments on every load)
+  // NEW: Per-Load Tracking Logic
   const currentLoadIndexRef = useRef<number>(1);
   const activeSourceIdRef = useRef<string | null>(null);
 
@@ -179,7 +178,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [historyMode, setHistoryMode] = useState<HistoryMode>('OFF');
   const [allHistoryTracks, setAllHistoryTracks] = useState<ActivityRecord[]>([]);
   
-  // Manual Forms
+  // Manual Forms (Imported Components)
   const [manualMode, setManualMode] = useState<ActivityType | null>(null);
 
   // System Refs
