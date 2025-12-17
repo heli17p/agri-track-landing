@@ -200,8 +200,18 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [profile, setProfile] = useState<FarmProfile | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
+  // REFS FOR LIVE TRACKING (Crucial for live updates without restarting GPS)
+  const settingsRef = useRef<AppSettings>(DEFAULT_SETTINGS);
+  const fieldsRef = useRef<Field[]>([]);
+  const storagesRef = useRef<StorageLocation[]>([]);
+  const activityTypeRef = useRef<ActivityType>(ActivityType.FERTILIZATION);
+  const subTypeRef = useRef<string>('Gülle');
+
   // Tracking Core
   const [trackingState, setTrackingState] = useState<TrackingState>('IDLE');
+  // State Ref to allow access inside GPS callback without closure staleness
+  const trackingStateRef = useRef<TrackingState>('IDLE');
+
   const [currentLocation, setCurrentLocation] = useState<GeolocationPosition | null>(null);
   const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
   const [startTime, setStartTime] = useState<number | null>(null);
@@ -247,12 +257,23 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const countdownIntervalRef = useRef<any>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
+  // --- SYNC REFS WITH STATE ---
+  useEffect(() => { settingsRef.current = settings; }, [settings]);
+  useEffect(() => { fieldsRef.current = fields; }, [fields]);
+  useEffect(() => { storagesRef.current = storages; }, [storages]);
+  useEffect(() => { activityTypeRef.current = activityType; }, [activityType]);
+  useEffect(() => { subTypeRef.current = subType; }, [subType]);
+  useEffect(() => { trackingStateRef.current = trackingState; }, [trackingState]);
+
   // --- INIT ---
   useEffect(() => {
     const init = async () => {
-        setFields(await dbService.getFields());
-        setStorages(await dbService.getStorageLocations());
-        setSettings(await dbService.getSettings());
+        const loadedFields = await dbService.getFields();
+        setFields(loadedFields);
+        const loadedStorages = await dbService.getStorageLocations();
+        setStorages(loadedStorages);
+        const loadedSettings = await dbService.getSettings();
+        setSettings(loadedSettings);
         
         const profiles = await dbService.getFarmProfile();
         if (profiles.length > 0) setProfile(profiles[0]);
@@ -265,9 +286,16 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         setAllHistoryTracks(pastTracks);
     };
     init();
+
+    // Listen to Database Changes (Updates Settings & Data Live while tracking)
+    const unsub = dbService.onDatabaseChange(() => {
+        init(); // Re-fetch data to keep Refs up to date
+    });
+
     return () => {
         stopGPS();
         releaseWakeLock();
+        unsub();
     };
   }, []);
 
@@ -390,6 +418,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setCurrentLocation(pos);
       if (isPaused) return;
 
+      // USE REFS TO GET LATEST DATA INSIDE CALLBACK (Crucial for background/tab switching)
+      const currentFields = fieldsRef.current;
+      const currentSettings = settingsRef.current;
+      const currentActivity = activityTypeRef.current;
+      const currentState = trackingStateRef.current;
+
       const { latitude, longitude, speed, accuracy } = pos.coords;
       
       // Filter poor accuracy points (> 30m)
@@ -407,23 +441,23 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       };
 
       // 1. STORAGE DETECTION (Only if Fertilization)
-      if (activityType === ActivityType.FERTILIZATION) {
+      if (currentActivity === ActivityType.FERTILIZATION) {
           checkStorageProximity(point, speedKmh);
       }
 
       // 2. STATE MACHINE
-      if (trackingState !== 'LOADING') {
+      if (currentState !== 'LOADING') {
           // Detect Spreading vs Transit based on Speed & Field Proximity
           
           // Check if inside any field
-          const inField = fields.some(f => isPointInPolygon(point, f.boundary));
+          const inField = currentFields.some(f => isPointInPolygon(point, f.boundary));
           
           // Determine if spreading
           let isSpreading = false;
           
-          if (activityType === ActivityType.FERTILIZATION || activityType === ActivityType.TILLAGE) {
-             const minSpeed = settings.minSpeed || 2.0;
-             const maxSpeed = settings.maxSpeed || 15.0;
+          if (currentActivity === ActivityType.FERTILIZATION || currentActivity === ActivityType.TILLAGE) {
+             const minSpeed = currentSettings.minSpeed || 2.0;
+             const maxSpeed = currentSettings.maxSpeed || 15.0;
              
              if (inField && speedKmh >= minSpeed && speedKmh <= maxSpeed) {
                  isSpreading = true;
@@ -431,7 +465,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           }
 
           const newState = isSpreading ? 'SPREADING' : 'TRANSIT';
-          if (newState !== trackingState) setTrackingState(newState);
+          if (newState !== currentState) setTrackingState(newState);
           
           point.isSpreading = isSpreading;
       } else {
@@ -448,16 +482,22 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   };
 
   const checkStorageProximity = (point: TrackPoint, speedKmh: number) => {
-      // Only for Fertilization
-      if (activityType !== ActivityType.FERTILIZATION) return;
+      const currentStorages = storagesRef.current;
+      const currentSettings = settingsRef.current;
+      const currentActivity = activityTypeRef.current;
+      const currentSubType = subTypeRef.current;
+      const currentState = trackingStateRef.current;
 
-      const detectionRadius = settings.storageRadius || 20; // meters
+      // Only for Fertilization
+      if (currentActivity !== ActivityType.FERTILIZATION) return;
+
+      const detectionRadius = currentSettings.storageRadius || 20; // meters (Live Value)
       
       // Find nearest storage
       let nearest: StorageLocation | null = null;
       let minDist = Infinity;
 
-      storages.forEach(s => {
+      currentStorages.forEach(s => {
           const dist = getDistance(point, s.geo);
           if (dist < minDist) {
               minDist = dist;
@@ -468,7 +508,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       // Special handling if already LOADING
       // We want to be "sticky" -> Don't leave loading state just because speed > 3
       // Only leave if distance > radius + hysteresis
-      if (trackingState === 'LOADING') {
+      if (currentState === 'LOADING') {
           if (nearest && minDist <= (detectionRadius + 10)) {
               // Still close enough, refresh ref if needed, but stay LOADING
               if (activeLoadingStorageRef.current?.id !== nearest.id) {
@@ -491,7 +531,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           
           // 1. CHECK TYPE MISMATCH (New Requirement)
           // `subType` matches `FertilizerType` values ('Gülle' or 'Mist')
-          if (nearestLoc.type !== subType) {
+          if (nearestLoc.type !== currentSubType) {
               setStorageWarning(`${nearestLoc.name} erkannt, aber falscher Typ (${nearestLoc.type})!`);
               cancelDetection(); // Ensure we don't accidentally start counting
               return; 
@@ -622,6 +662,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       let totalAmount = 0;
       
       if (activityType === ActivityType.FERTILIZATION) {
+          // Use current settings for final calculation
           const loadSize = subType === 'Mist' ? settings.manureLoadSize : settings.slurryLoadSize;
           
           Object.entries(loadCounts).forEach(([storageId, count]) => {
