@@ -141,7 +141,10 @@ export interface ActivityRecord {
   
   // Advanced Traceability
   fieldSources?: Record<string, string[]>; // FieldID -> Array of StorageIDs used on this field
-  detailedFieldSources?: Record<string, Record<string, number>>; // FieldID -> { StorageID: Amount }
+  
+  // NEW: Precise mapping of Amount per Source per Field
+  // Structure: { "field_id": { "storage_id_A": 10.5, "storage_id_B": 5.0 } }
+  detailedFieldSources?: Record<string, Record<string, number>>; 
   
   // Sync Meta
   farmId?: string; // The Farm Group ID

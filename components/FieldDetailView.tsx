@@ -428,12 +428,9 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
                   let storageNames = null;
 
                   // 1. Precise tracking (New)
-                  if (act.fieldSources && act.fieldSources[field.id]) {
-                      const sourceIds = act.fieldSources[field.id];
-                      storageNames = sourceIds
-                          .map(sid => storages.find(s => s.id === sid)?.name)
-                          .filter(Boolean)
-                          .join(', ');
+                  if (act.detailedFieldSources && act.detailedFieldSources[field.id]) {
+                      // Do not just join names, keep full info for detailed rendering below
+                      // Only join names for summary line if needed, but we render details separately now
                   }
                   // 2. Legacy fallback
                   else if (act.storageDistribution) {
@@ -458,8 +455,8 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
                                <div className="text-xs text-slate-500">
                                   {new Date(act.date).toLocaleDateString('de-AT')}
                                </div>
-                               {/* Display Storage Source if available */}
-                               {storageNames && (
+                               {/* Display Storage Source if available (Legacy fallback) */}
+                               {storageNames && !act.detailedFieldSources && (
                                    <div className="text-[10px] text-slate-500 flex items-center mt-1">
                                        <Database size={10} className="mr-1 opacity-70"/>
                                        <span className="truncate max-w-[140px]">Von: {storageNames}</span>

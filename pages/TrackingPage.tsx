@@ -693,11 +693,13 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                       finalDetailedSources[fId] = {};
                       Object.keys(fieldSourceMap[fId]).forEach(sId => {
                           const sDist = fieldSourceMap[fId][sId];
-                          // Assuming constant flow rate:
                           // Amount from Source X to Field Y = (Distance with Source X in Field Y / Total Spreading Distance) * Total Amount
-                          // This normalizes everything to the total amount.
-                          const amountShare = (sDist / spreadDist) * totalAmount;
-                          finalDetailedSources[fId][sId] = parseFloat(amountShare.toFixed(2));
+                          // Note: This logic assumes a constant flow rate regardless of source or speed (simplified)
+                          // Refined Logic: Share of this field's total allocated amount
+                          const sourceRatioInField = sDist / fieldDistMap[fId];
+                          const amountFromSource = allocatedAmount * sourceRatioInField;
+                          
+                          finalDetailedSources[fId][sId] = parseFloat(amountFromSource.toFixed(2));
                       });
                   }
               }
@@ -723,19 +725,13 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           notes: saveNotes + `\nAutomatisch erfasst. Dauer: ${durationMin} min`,
           year: new Date().getFullYear(),
           fieldDistribution: finalFieldDistribution, // Smart Distribution
-          detailedFieldSources: finalDetailedSources // Smart Sources
+          detailedFieldSources: finalDetailedSources // Precise Source Tracking
       };
       
       // Special override for Tillage (Area based)
       if (activityType === ActivityType.TILLAGE) {
           // If Tillage, the "Amount" IS the area.
           // Distribution is already Area based above.
-          // But fallback if GPS tracking didn't catch fields well:
-          if (Object.keys(finalFieldDistribution).length === 0) {
-               // Fallback: If minimal points in field, assume full field area? 
-               // Or just use the calculated split above.
-               // Let's stick to what we calculated.
-          }
       }
 
       await dbService.saveActivity(record);

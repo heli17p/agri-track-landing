@@ -307,11 +307,11 @@ export const StorageDetailView: React.FC<Props> = ({ storage, onClose }) => {
                                 <Polyline 
                                     key={`track-${i}`}
                                     positions={segment}
-                                    pathOptions={{ 
+                                    {...{ pathOptions: { 
                                         color: storageColor, 
                                         weight: 4, 
                                         opacity: 0.8 
-                                    }}
+                                    }} as any}
                                 />
                             ))}
 
