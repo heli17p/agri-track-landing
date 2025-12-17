@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, Popup, useMapEvents } from 'react-leaflet';
-import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban, History, Calendar, CheckCircle, Home, Share2, Loader2, ZoomIn, ZoomOut } from 'lucide-react';
+import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban, History, Calendar, CheckCircle, Home, Share2, Loader2, ZoomIn, ZoomOut, Plus, Minus } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { Field, StorageLocation, ActivityRecord, TrackPoint, ActivityType, FertilizerType, AppSettings, DEFAULT_SETTINGS, TillageType, HarvestType, FarmProfile } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
@@ -223,6 +223,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null); // The storage we currently "have in the tank"
   // Ref for activeSourceId to ensure track points get the correct color instantly
   const activeSourceIdRef = useRef<string | null>(null);
+  
+  // NEW: Per-Load Tracking Index (Starts at 1, increments on every load)
+  const currentLoadIndexRef = useRef<number>(1);
 
   // Activity Config
   const [activityType, setActivityType] = useState<ActivityType>(ActivityType.FERTILIZATION);
@@ -398,6 +401,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setStorageWarning(null);
       setSummaryRecord(null); // Clear previous summary
       setGpsLoading(false);
+      
+      // Reset Load Index
+      currentLoadIndexRef.current = 1;
 
       watchIdRef.current = navigator.geolocation.watchPosition(
           (pos) => handleNewPosition(pos),
@@ -441,7 +447,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           timestamp: pos.timestamp,
           speed: speedKmh,
           isSpreading: false,
-          storageId: activeSourceIdRef.current || undefined // Use Ref to tag with LIVE active source
+          storageId: activeSourceIdRef.current || undefined, // Use Ref to tag with LIVE active source
+          loadIndex: currentLoadIndexRef.current // NEW: Tag point with current load ID
       };
 
       // 1. STORAGE DETECTION (Only if Fertilization)
@@ -587,6 +594,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                       [storage.id]: (prevCounts[storage.id] || 0) + 1
                   }));
                   
+                  // NEW: Increment Load Index (start next load session)
+                  currentLoadIndexRef.current += 1;
+                  
                   // SET CURRENT SOURCE -> All future track points will have this color
                   setActiveSourceId(storage.id);
                   
@@ -686,28 +696,81 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       const finalFieldDistribution: Record<string, number> = {};
       const finalDetailedSources: Record<string, Record<string, number>> = {};
 
-      if (totalAmount > 0 && spreadDist > 0) {
-          Object.keys(fieldDistMap).forEach(fId => {
-              // Share of this field = (Distance in Field / Total Spreading Distance)
-              const ratio = fieldDistMap[fId] / spreadDist;
-              const allocatedAmount = parseFloat((totalAmount * ratio).toFixed(2));
+      // NEW: Per-Load Calculation Logic for precise field splits
+      // This runs alongside the distance-based logic to handle discrete load distribution
+      if (activityType === ActivityType.FERTILIZATION) {
+          const loadSize = subType === 'Mist' ? settings.manureLoadSize : settings.slurryLoadSize;
+          
+          // 1. Group points by loadIndex
+          const pointsByLoad: Record<number, TrackPoint[]> = {};
+          const uniqueLoads = new Set<number>();
+          
+          trackPoints.forEach(p => {
+              const idx = p.loadIndex || 1; // Default to 1 if legacy
+              if (!pointsByLoad[idx]) pointsByLoad[idx] = [];
+              pointsByLoad[idx].push(p);
+              uniqueLoads.add(idx);
+          });
+
+          const fieldLoadShares: Record<string, number> = {};
+
+          // 2. Iterate each load separately
+          uniqueLoads.forEach(loadIdx => {
+              const points = pointsByLoad[loadIdx];
+              let distInLoad = 0;
+              const distPerFieldInLoad: Record<string, number> = {};
               
-              if (allocatedAmount > 0) {
-                  finalFieldDistribution[fId] = allocatedAmount;
-                  
-                  // Detailed Sources Distribution
-                  if (fieldSourceMap[fId]) {
-                      finalDetailedSources[fId] = {};
-                      Object.keys(fieldSourceMap[fId]).forEach(sId => {
-                          const sDist = fieldSourceMap[fId][sId];
-                          // Amount from Source X to Field Y = (Distance with Source X in Field Y / Total Spreading Distance) * Total Amount
-                          // This normalizes everything to the total amount.
-                          const amountShare = (sDist / spreadDist) * totalAmount;
-                          finalDetailedSources[fId][sId] = parseFloat(amountShare.toFixed(2));
-                      });
+              // Calculate distances for THIS load
+              for (let i = 1; i < points.length; i++) {
+                  if (points[i].isSpreading) {
+                      const d = getDistance(points[i-1], points[i]);
+                      distInLoad += d;
+                      const f = fields.find(field => isPointInPolygon(points[i], field.boundary));
+                      if (f) distPerFieldInLoad[f.id] = (distPerFieldInLoad[f.id] || 0) + d;
                   }
               }
+
+              // Distribute 1 Load (or partial load logic if needed) based on distance share in THIS trip
+              if (distInLoad > 0) {
+                  Object.keys(distPerFieldInLoad).forEach(fId => {
+                      const share = distPerFieldInLoad[fId] / distInLoad;
+                      // Add proportion of 1 load to the total count for this field
+                      fieldLoadShares[fId] = (fieldLoadShares[fId] || 0) + share;
+                  });
+              }
           });
+
+          // 3. Convert Load Shares to Amount
+          Object.keys(fieldLoadShares).forEach(fId => {
+               // Load Share * Load Size = Amount
+               const amount = parseFloat((fieldLoadShares[fId] * loadSize).toFixed(2));
+               if (amount > 0) finalFieldDistribution[fId] = amount;
+          });
+
+          // 4. Fill detailed sources (Approximate based on total mix for now, or use load-specific source ID)
+          if (fieldSourceMap) {
+               Object.keys(fieldSourceMap).forEach(fId => {
+                   if (finalFieldDistribution[fId]) {
+                       finalDetailedSources[fId] = {};
+                       // Normalize detailed sources to match the new per-load total
+                       const fieldTotalDist = Object.values(fieldSourceMap[fId]).reduce((a,b) => a+b, 0);
+                       Object.keys(fieldSourceMap[fId]).forEach(sId => {
+                           const ratio = fieldSourceMap[fId][sId] / fieldTotalDist;
+                           finalDetailedSources[fId][sId] = parseFloat((finalFieldDistribution[fId] * ratio).toFixed(2));
+                       });
+                   }
+               });
+          }
+
+      } else {
+          // Fallback for Tillage/Harvest (Area/Count based on Distance)
+          if (totalAmount > 0 && spreadDist > 0) {
+              Object.keys(fieldDistMap).forEach(fId => {
+                  const ratio = fieldDistMap[fId] / spreadDist;
+                  const allocatedAmount = parseFloat((totalAmount * ratio).toFixed(2));
+                  if (allocatedAmount > 0) finalFieldDistribution[fId] = allocatedAmount;
+              });
+          }
       }
 
       // Calculate Duration
@@ -728,7 +791,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           storageDistribution: activityType === ActivityType.FERTILIZATION ? storageDistribution : undefined,
           notes: saveNotes + `\nAutomatisch erfasst. Dauer: ${durationMin} min`,
           year: new Date().getFullYear(),
-          fieldDistribution: finalFieldDistribution, // Smart Distribution
+          fieldDistribution: finalFieldDistribution, // Smart Per-Load Distribution
           detailedFieldSources: finalDetailedSources // Precise Source Tracking
       };
       

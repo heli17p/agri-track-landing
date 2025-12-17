@@ -82,6 +82,7 @@ export interface TrackPoint extends GeoPoint {
   speed: number;
   isSpreading: boolean;
   storageId?: string; // ID of the storage this segment originated from
+  loadIndex?: number; // Sequential ID of the load (1, 2, 3...) for precise splitting
 }
 
 export interface Field {
