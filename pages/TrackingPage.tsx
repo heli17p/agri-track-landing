@@ -900,7 +900,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
               </div>
 
               {/* Summary Card */}
-              <div className="absolute inset-0 flex flex-col items-center justify-center p-4 z-50">
+              <div className="absolute inset-0 flex flex-col items-center justify-center p-4 z-[60]">
                   <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
                       
                       {/* Success Header (Fixed) */}
