@@ -1,28 +1,23 @@
-import { 
-    signInWithEmailAndPassword, 
-    createUserWithEmailAndPassword, 
-    signOut as firebaseSignOut, 
-    onAuthStateChanged,
-    sendPasswordResetEmail,
-    User
-} from 'firebase/auth';
+
 import { auth } from './storage';
 import { dbService } from './db';
+import firebase from 'firebase/app';
+import 'firebase/auth';
 
 export const authService = {
     // Beobachter für Login-Status
-    onAuthStateChanged: (callback: (user: User | null) => void) => {
+    onAuthStateChanged: (callback: (user: firebase.User | null) => void) => {
         if (!auth) {
             callback(null);
             return () => {};
         }
-        return onAuthStateChanged(auth, callback);
+        return auth.onAuthStateChanged(callback);
     },
 
     login: async (email: string, pass: string) => {
         if (!auth) throw new Error("Cloud nicht verfügbar.");
         try {
-            const result = await signInWithEmailAndPassword(auth, email, pass);
+            const result = await auth.signInWithEmailAndPassword(email, pass);
             
             // NON-BLOCKING MIGRATION:
             // Wir warten NICHT auf die Migration, damit der Login sofort durchgeht.
@@ -41,7 +36,7 @@ export const authService = {
     register: async (email: string, pass: string) => {
         if (!auth) throw new Error("Cloud nicht verfügbar.");
         try {
-            const result = await createUserWithEmailAndPassword(auth, email, pass);
+            const result = await auth.createUserWithEmailAndPassword(email, pass);
             
             // Auch hier: Non-blocking
             dbService.migrateGuestDataToCloud().catch(err => {
@@ -58,7 +53,7 @@ export const authService = {
     logout: async () => {
         if (!auth) return;
         try {
-            await firebaseSignOut(auth);
+            await auth.signOut();
             // Optional: Lokale Daten löschen bei Logout? 
             // Fürs erste behalten wir sie, damit man offline weiterarbeiten kann.
         } catch (error) {
@@ -69,7 +64,7 @@ export const authService = {
     resetPassword: async (email: string) => {
         if (!auth) throw new Error("Cloud nicht verfügbar.");
         try {
-            await sendPasswordResetEmail(auth, email);
+            await auth.sendPasswordResetEmail(email);
         } catch (error: any) {
             throw translateAuthError(error.code);
         }
@@ -91,3 +86,4 @@ const translateAuthError = (code: string): Error => {
         default: return new Error(`Fehler: ${code}`); // Zeigt den echten Code an, falls unbekannt
     }
 };
+

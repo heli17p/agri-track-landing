@@ -558,6 +558,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       }
 
       await dbService.saveActivity(record);
+      
+      // NEW: Update Storage Levels (Deduct amounts)
+      if (activityType === ActivityType.FERTILIZATION && Object.keys(storageDistribution).length > 0) {
+          await dbService.updateStorageLevels(storageDistribution);
+      }
+
       dbService.syncActivities();
 
       // Show Summary instead of Alert

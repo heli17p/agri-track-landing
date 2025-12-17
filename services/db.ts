@@ -1,7 +1,6 @@
-import { 
-    getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, 
-    deleteDoc, updateDoc, Timestamp, writeBatch, getDocsFromServer 
-} from 'firebase/firestore';
+
+import firebase from 'firebase/app';
+import 'firebase/firestore';
 import { auth, db, isCloudConfigured, saveData, loadLocalData, fetchCloudData, loadSettings, saveSettings as saveStorageSettings, fetchCloudSettings, hardReset as storageHardReset } from './storage';
 import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, FeedbackTicket, DEFAULT_SETTINGS } from '../types';
 
@@ -56,7 +55,7 @@ export const dbService = {
         
         if (isCloudConfigured()) {
             try {
-                await deleteDoc(doc(db, "activities", id));
+                await db.collection("activities").doc(id).delete();
             } catch (e) {
                 console.error("Cloud delete failed", e);
             }
@@ -85,7 +84,7 @@ export const dbService = {
         localStorage.setItem('agritrack_fields', JSON.stringify(fields));
         
         if (isCloudConfigured()) {
-            try { await deleteDoc(doc(db, "fields", id)); } catch(e) {}
+            try { await db.collection("fields").doc(id).delete(); } catch(e) {}
         }
         notifyDbChange();
     },
@@ -100,13 +99,39 @@ export const dbService = {
         notifyDbChange();
     },
 
+    updateStorageLevels: async (distribution: Record<string, number>) => {
+        const storages = await dbService.getStorageLocations();
+        let changed = false;
+
+        // Iterate through all storages and deduct amount if present in distribution
+        const updatedStorages = storages.map(s => {
+            if (distribution[s.id] && distribution[s.id] > 0) {
+                // Deduct amount, prevent negative values
+                const newLevel = Math.max(0, s.currentLevel - distribution[s.id]);
+                if (newLevel !== s.currentLevel) {
+                    changed = true;
+                    return { ...s, currentLevel: newLevel };
+                }
+            }
+            return s;
+        });
+
+        if (changed) {
+            // Save updates
+            for (const s of updatedStorages) {
+                await saveData('storage', s);
+            }
+            notifyDbChange();
+        }
+    },
+
     deleteStorage: async (id: string) => {
         let items = loadLocalData('storage');
         items = items.filter((s: any) => s.id !== id);
         localStorage.setItem('agritrack_storage', JSON.stringify(items));
         
         if(isCloudConfigured()) {
-            try { await deleteDoc(doc(db, "storages", id)); } catch(e) {}
+            try { await db.collection("storages").doc(id).delete(); } catch(e) {}
         }
         notifyDbChange();
     },
@@ -173,8 +198,7 @@ export const dbService = {
     getFeedback: async (): Promise<FeedbackTicket[]> => {
         if (!isCloudConfigured()) return [];
         try {
-            const q = query(collection(db, "feedback"));
-            const snapshot = await getDocs(q);
+            const snapshot = await db.collection("feedback").get();
             return snapshot.docs.map(d => d.data() as FeedbackTicket);
         } catch (e) {
             console.error("Feedback fetch error", e);
@@ -184,12 +208,12 @@ export const dbService = {
 
     saveFeedback: async (ticket: FeedbackTicket) => {
         if (!isCloudConfigured()) return;
-        await setDoc(doc(db, "feedback", ticket.id), ticket);
+        await db.collection("feedback").doc(ticket.id).set(ticket);
     },
 
     deleteFeedback: async (id: string) => {
         if (!isCloudConfigured()) return;
-        await deleteDoc(doc(db, "feedback", id));
+        await db.collection("feedback").doc(id).delete();
     },
 
     // --- Sync & Cloud Utils ---
@@ -226,8 +250,7 @@ export const dbService = {
         let allMatches: any[] = [];
 
         for (const id of idsToCheck) {
-            const q = query(collection(db, "settings"), where("farmId", "==", id));
-            const snap = await getDocs(q);
+            const snap = await db.collection("settings").where("farmId", "==", id).get();
             snap.docs.forEach(d => allMatches.push(d.data()));
         }
         
@@ -331,9 +354,9 @@ export const dbService = {
 
     testCloudConnection: async () => {
         if (!isCloudConfigured()) throw new Error("Nicht eingeloggt.");
-        const ref = doc(collection(db, "_ping_"));
-        await setDoc(ref, { time: Date.now() });
-        await deleteDoc(ref);
+        const ref = db.collection("_ping_").doc();
+        await ref.set({ time: Date.now() });
+        await ref.delete();
         return { message: "Verbindung OK (Write/Delete)" };
     },
 
@@ -355,10 +378,9 @@ export const dbService = {
             progressCb(`Lösche ${col}...`);
             
             for (const id of idsToCheck) {
-                const q = query(collection(db, col), where("farmId", "==", id));
-                const snap = await getDocs(q); // Use getDocs (cached/server) not forced server to avoid perm errors blocking
+                const snap = await db.collection(col).where("farmId", "==", id).get();
                 
-                const batch = writeBatch(db);
+                const batch = db.batch();
                 let i = 0;
                 
                 for (const d of snap.docs) {
@@ -390,10 +412,10 @@ export const dbService = {
             // Execute parallel queries for speed
             await Promise.all(idsToCheck.map(async (id) => {
                 const [a, f, s, p] = await Promise.all([
-                    getDocs(query(collection(db, "activities"), where("farmId", "==", id))),
-                    getDocs(query(collection(db, "fields"), where("farmId", "==", id))),
-                    getDocs(query(collection(db, "storages"), where("farmId", "==", id))),
-                    getDocs(query(collection(db, "profiles"), where("farmId", "==", id)))
+                    db.collection("activities").where("farmId", "==", id).get(),
+                    db.collection("fields").where("farmId", "==", id).get(),
+                    db.collection("storages").where("farmId", "==", id).get(),
+                    db.collection("profiles").where("farmId", "==", id).get()
                 ]);
 
                 a.docs.forEach(d => res.activities.push({id: d.id, ...d.data(), farmIdType: typeof d.data().farmId}));
@@ -427,10 +449,10 @@ export const dbService = {
 
             await Promise.all(idsToCheck.map(async (id) => {
                 const [a, f, s, p] = await Promise.all([
-                    getDocs(query(collection(db, "activities"), where("farmId", "==", id))),
-                    getDocs(query(collection(db, "fields"), where("farmId", "==", id))),
-                    getDocs(query(collection(db, "storages"), where("farmId", "==", id))),
-                    getDocs(query(collection(db, "profiles"), where("farmId", "==", id)))
+                    db.collection("activities").where("farmId", "==", id).get(),
+                    db.collection("fields").where("farmId", "==", id).get(),
+                    db.collection("storages").where("farmId", "==", id).get(),
+                    db.collection("profiles").where("farmId", "==", id).get()
                 ]);
                 aCount += a.size;
                 fCount += f.size;
@@ -467,15 +489,15 @@ export const dbService = {
         const results = { stringIdCount: 0, numberIdCount: 0, details: [] as string[] };
         
         // Check String
-        const qStr = query(collection(db, "activities"), where("farmId", "==", String(farmId)));
-        const snapStr = await getDocs(qStr);
+        const qStr = db.collection("activities").where("farmId", "==", String(farmId));
+        const snapStr = await qStr.get();
         results.stringIdCount = snapStr.size;
         
         // Check Number
         const numId = Number(farmId);
         if (!isNaN(numId)) {
-            const qNum = query(collection(db, "activities"), where("farmId", "==", numId));
-            const snapNum = await getDocs(qNum);
+            const qNum = db.collection("activities").where("farmId", "==", numId);
+            const snapNum = await qNum.get();
             results.numberIdCount = snapNum.size;
         }
         
@@ -492,11 +514,11 @@ export const dbService = {
         let totalFixed = 0;
 
         for (const col of collections) {
-            const qNum = query(collection(db, col), where("farmId", "==", numId));
-            const snap = await getDocs(qNum);
+            const qNum = db.collection(col).where("farmId", "==", numId);
+            const snap = await qNum.get();
             
             if (!snap.empty) {
-                const batch = writeBatch(db);
+                const batch = db.batch();
                 snap.docs.forEach(d => {
                     batch.update(d.ref, { farmId: String(farmId) });
                     totalFixed++;
@@ -523,8 +545,7 @@ export const dbService = {
             // We use try-catch here because accessing settings of others might be restricted
             // But usually settings collection is readable if knowing the ID
             try {
-                const q = query(collection(db, "settings"), where("farmId", "==", id));
-                const snap = await getDocs(q);
+                const snap = await db.collection("settings").where("farmId", "==", id).get();
                 snap.docs.forEach(d => {
                     const data = d.data();
                     allDocs.push({
@@ -545,7 +566,7 @@ export const dbService = {
 
     deleteSettingsDoc: async (docId: string) => {
         if (!isCloudConfigured()) throw new Error("Offline");
-        await deleteDoc(doc(db, "settings", docId));
+        await db.collection("settings").doc(docId).delete();
     },
 
     forceDeleteSettings: async (farmId: string) => {
@@ -555,15 +576,15 @@ export const dbService = {
         const numId = Number(farmId);
         if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
 
-        const batch = writeBatch(db);
+        const batch = db.batch();
         let count = 0;
         let permissionErrors = 0;
 
         for(const id of idsToCheck) {
             try {
                 // IMPORTANT: Use getDocsFromServer to ensure we are not checking an empty cache
-                const q = query(collection(db, 'settings'), where("farmId", "==", id));
-                const snap = await getDocsFromServer(q);
+                const q = db.collection('settings').where("farmId", "==", id);
+                const snap = await q.get({ source: 'server' });
                 
                 snap.docs.forEach(d => {
                     try {
@@ -596,8 +617,7 @@ export const dbService = {
         if (!isCloudConfigured()) return [];
         // Note: This query usually requires Admin SDK or open rules.
         // It will likely fail for normal users, which is expected.
-        const q = query(collection(db, "settings"));
-        const snap = await getDocs(q);
+        const snap = await db.collection("settings").get();
         return snap.docs.map(d => {
             const data = d.data();
             return {
@@ -611,3 +631,4 @@ export const dbService = {
         });
     }
 };
+

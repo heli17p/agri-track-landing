@@ -1,7 +1,8 @@
+
 import { Activity, AppSettings, Trip, DEFAULT_SETTINGS, Field, StorageLocation, FarmProfile } from '../types';
-import { initializeApp } from 'firebase/app';
-import { getFirestore, collection, addDoc, getDocs, query, where, doc, setDoc, getDoc, Timestamp, enableIndexedDbPersistence, terminate, clearIndexedDbPersistence, getDocsFromServer } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth';
+import firebase from 'firebase/app';
+import 'firebase/firestore';
+import 'firebase/auth';
 import { dbService } from './db';
 
 /* 
@@ -20,16 +21,22 @@ const FIREBASE_CONFIG = {
 };
 
 // Initialize Firebase
-let db: any = null;
-let auth: any = null;
+let db: firebase.firestore.Firestore = null as any;
+let auth: firebase.auth.Auth = null as any;
 
 try {
-    const app = initializeApp(FIREBASE_CONFIG);
-    db = getFirestore(app);
-    auth = getAuth(app);
+    // Check if apps already initialized (prevent duplicate init in strict mode)
+    if (!firebase.apps.length) {
+        firebase.initializeApp(FIREBASE_CONFIG);
+    } else {
+        firebase.app(); // Use existing default app
+    }
+    
+    db = firebase.firestore();
+    auth = firebase.auth();
     
     // ENABLE OFFLINE PERSISTENCE
-    enableIndexedDbPersistence(db).catch((err) => {
+    db.enablePersistence().catch((err) => {
         if (err.code == 'failed-precondition') {
             console.warn('[AgriCloud] Persistence failed: Multiple tabs open.');
         } else if (err.code == 'unimplemented') {
@@ -66,8 +73,8 @@ export const hardReset = async () => {
         
         // 2. Clear Firestore Persistence (Deep Clean)
         if (db) {
-            await terminate(db);
-            await clearIndexedDbPersistence(db);
+            await db.terminate();
+            await db.clearPersistence();
             console.log("[System] Datenbank bereinigt.");
         }
         
@@ -104,15 +111,15 @@ export const saveSettings = async (settings: AppSettings) => {
   // 2. Cloud Save (if logged in)
   if (isCloudConfigured()) {
       try {
-          const userId = auth.currentUser.uid;
+          const userId = auth.currentUser!.uid;
           // IMPORTANT: If farmId is empty, we don't sync this properly or it goes to 'undefined'
           if (!cleanSettings.farmId) {
              dbService.logEvent("Warnung: Keine Farm-ID beim Speichern gesetzt.");
           }
 
-          await setDoc(doc(db, "settings", userId), {
+          await db.collection("settings").doc(userId).set({
               ...cleanSettings,
-              updatedAt: Timestamp.now(),
+              updatedAt: firebase.firestore.Timestamp.now(),
               userId: userId
           });
           dbService.logEvent("[Cloud] Einstellungen gespeichert.");
@@ -128,11 +135,10 @@ export const saveSettings = async (settings: AppSettings) => {
 export const fetchCloudSettings = async (): Promise<AppSettings | null> => {
     if (!isCloudConfigured()) return null;
     try {
-        const userId = auth.currentUser.uid;
-        const docRef = doc(db, "settings", userId);
-        const docSnap = await getDoc(docRef);
+        const userId = auth.currentUser!.uid;
+        const docSnap = await db.collection("settings").doc(userId).get();
 
-        if (docSnap.exists()) {
+        if (docSnap.exists) {
             const cloudData = docSnap.data();
             // Merge with defaults to ensure type safety
             const mergedSettings = { ...DEFAULT_SETTINGS, ...cloudData } as AppSettings;
@@ -178,7 +184,7 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
       const settings = loadSettings();
       // Target Farm ID: Either from settings OR private user ID
       // FORCE STRING to prevent type mismatch issues
-      let farmId = settings.farmId ? String(settings.farmId).trim() : ('PERSONAL_' + auth.currentUser.uid);
+      let farmId = settings.farmId ? String(settings.farmId).trim() : ('PERSONAL_' + auth.currentUser!.uid);
       const farmPin = settings.farmPin || '';
 
       try {
@@ -191,8 +197,8 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
           // Deep clone to safely remove undefined values before Firestore
           const payload = JSON.parse(JSON.stringify(data)); 
           
-          payload.syncedAt = Timestamp.now();
-          payload.userId = auth.currentUser.uid; 
+          payload.syncedAt = firebase.firestore.Timestamp.now();
+          payload.userId = auth.currentUser!.uid; 
           payload.farmId = farmId;               
           payload.farmPin = farmPin;             
           
@@ -202,7 +208,7 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
           if (type === 'profile') docId = farmId;
 
           if (docId) {
-              await setDoc(doc(db, colName, docId), payload);
+              await db.collection(colName).doc(docId).set(payload);
               
               // Only log sometimes to avoid spam, or log critical ones
               if (Math.random() > 0.8 || type === 'field' || type === 'storage' || type === 'profile') {
@@ -234,7 +240,7 @@ export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'stor
     if (!isCloudConfigured()) return [];
     
     const settings = loadSettings();
-    const rawFarmId = settings.farmId || 'PERSONAL_' + auth.currentUser.uid;
+    const rawFarmId = settings.farmId || 'PERSONAL_' + auth.currentUser!.uid;
     const targetPin = settings.farmPin || '';
 
     // DUAL QUERY STRATEGY: Try both String and Number representation of ID to handle legacy data type mismatches
@@ -253,12 +259,11 @@ export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'stor
         if (type === 'profile') colName = 'profiles';
         
         // Use getDocsFromServer if forceServer is true to bypass stuck cache
-        const fetchFn = forceServer ? getDocsFromServer : getDocs;
-
-        // We execute multiple queries in parallel for robustness
-        const queries = idsToQuery.map(id => 
-            fetchFn(query(collection(db, colName), where("farmId", "==", id)))
-        );
+        // In v8 we use get({ source: 'server' })
+        const queries = idsToQuery.map(id => {
+            let q = db.collection(colName).where("farmId", "==", id);
+            return forceServer ? q.get({ source: 'server' }) : q.get();
+        });
         
         const snapshots = await Promise.all(queries);
         
@@ -295,3 +300,4 @@ export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'stor
         return [];
     }
 }
+
