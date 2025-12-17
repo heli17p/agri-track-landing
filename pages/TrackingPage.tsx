@@ -221,6 +221,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   // Load Counting & Source Tracking
   const [loadCounts, setLoadCounts] = useState<Record<string, number>>({}); 
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null); // The storage we currently "have in the tank"
+  // Ref for activeSourceId to ensure track points get the correct color instantly
+  const activeSourceIdRef = useRef<string | null>(null);
 
   // Activity Config
   const [activityType, setActivityType] = useState<ActivityType>(ActivityType.FERTILIZATION);
@@ -264,6 +266,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   useEffect(() => { activityTypeRef.current = activityType; }, [activityType]);
   useEffect(() => { subTypeRef.current = subType; }, [subType]);
   useEffect(() => { trackingStateRef.current = trackingState; }, [trackingState]);
+  useEffect(() => { activeSourceIdRef.current = activeSourceId; }, [activeSourceId]);
 
   // --- INIT ---
   useEffect(() => {
@@ -410,6 +413,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       }
       if (countdownIntervalRef.current) {
           clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
       }
       releaseWakeLock();
   };
@@ -437,7 +441,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           timestamp: pos.timestamp,
           speed: speedKmh,
           isSpreading: false,
-          storageId: activeSourceId || undefined // Tag every point with current source
+          storageId: activeSourceIdRef.current || undefined // Use Ref to tag with LIVE active source
       };
 
       // 1. STORAGE DETECTION (Only if Fertilization)
@@ -559,7 +563,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   };
 
   const startDetectionCountdown = (storage: StorageLocation) => {
-      if (detectionCountdown !== null) return; // Already counting
+      // Use REF to check if running, avoiding stale state issues in GPS callback
+      if (countdownIntervalRef.current) return; 
       
       setDetectionCountdown(60); // 60 seconds (USER REQUEST)
       
@@ -570,7 +575,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
               if (prev === null) return null;
               if (prev <= 1) {
                   // Countdown finished -> Switch to LOADING
-                  clearInterval(countdownIntervalRef.current);
+                  if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+                  countdownIntervalRef.current = null; // Important: Clear ref so new detection can start later
+
                   setTrackingState('LOADING');
                   activeLoadingStorageRef.current = storage;
                   
@@ -593,7 +600,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const cancelDetection = () => {
       pendingStorageIdRef.current = null;
       setDetectionCountdown(null);
-      if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
+      if (countdownIntervalRef.current) {
+          clearInterval(countdownIntervalRef.current);
+          countdownIntervalRef.current = null;
+      }
   };
 
   // --- SAVE ---
