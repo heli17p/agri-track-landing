@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { Hero } from './components/Hero';
 import { FeedbackBoard } from './components/FeedbackBoard';
@@ -336,15 +335,15 @@ const App: React.FC = () => {
                     )}
 
                     <button
-                        onClick={() => setActiveTab(Tab.CHANGELOG)}
+                        onClick={() => setActiveTab(Tab.FEEDBACK)}
                         className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${
-                        activeTab === Tab.CHANGELOG
+                        activeTab === Tab.FEEDBACK
                             ? 'border-agri-500 text-gray-900'
                             : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
                         }`}
                     >
-                        <History className="w-4 h-4 mr-2" />
-                        Versionen
+                        <MessageSquarePlus className="w-4 h-4 mr-2" />
+                        Kummerkasten
                     </button>
                     </div>
 
@@ -417,17 +416,7 @@ const App: React.FC = () => {
                 </div>
               </div>
             </div>
-            {!isAdmin && (
-                <div className="bg-slate-900 py-16">
-                    <div className="max-w-4xl mx-auto px-4">
-                        <div className="text-center mb-8">
-                            <h2 className="text-2xl font-bold text-white">Deine Meinung zählt!</h2>
-                            <p className="text-gray-400">Hast du eine Idee für die App? Wirf sie in den Kummerkasten.</p>
-                        </div>
-                        <FeedbackBoard isAdmin={false} />
-                    </div>
-                </div>
-            )}
+            {/* Kummerkasten removed from Home as it now has its own tab */}
             
             {/* Footer inside scrollable area for Home */}
             <footer className="bg-white border-t border-gray-200 mt-auto shrink-0">
@@ -495,10 +484,11 @@ const App: React.FC = () => {
           </div>
         )}
 
-        {activeTab === Tab.CHANGELOG && !isFullScreen && (
-          <div className="h-full overflow-y-auto">
+        {/* --- KUMMERKASTEN TAB (Replaces Version History) --- */}
+        {activeTab === Tab.FEEDBACK && !isFullScreen && (
+          <div className="h-full overflow-y-auto bg-slate-50">
             <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
-                <VersionHistory />
+                <FeedbackBoard isAdmin={false} />
             </div>
           </div>
         )}
@@ -509,4 +499,3 @@ const App: React.FC = () => {
 };
 
 export default App;
-

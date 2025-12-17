@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect } from 'react';
 import { MessageSquarePlus, ThumbsUp, CheckCircle2, Circle, Clock, MessageCircle, Send, User, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
 import { FeedbackTicket, FeedbackComment } from '../types';
@@ -68,13 +67,7 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
 
       await dbService.saveFeedback(ticket);
       
-      // WhatsApp Notification Logic
-      const settings = await dbService.getSettings();
-      if (settings.enableWhatsApp && settings.adminPhone && !isAdmin) {
-          const text = `*Neuer Wunsch für AgriTrack* 🚜\n\n*Von:* ${ticket.author}\n*Titel:* ${ticket.title}\n*Beschreibung:* ${ticket.description}`;
-          const waUrl = `https://wa.me/${settings.adminPhone.replace('+', '')}?text=${encodeURIComponent(text)}`;
-          window.open(waUrl, '_blank');
-      }
+      // WhatsApp Logic REMOVED per request
 
       setNewTitle('');
       setNewDesc('');
@@ -119,7 +112,7 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
         {/* Header Section */}
         <div className="flex flex-col md:flex-row justify-between items-center bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
             <div className="mb-4 md:mb-0">
-                <h2 className="text-2xl font-bold text-slate-800">Wunschliste & Feedback</h2>
+                <h2 className="text-2xl font-bold text-slate-800">Kummerkasten & Wünsche</h2>
                 <p className="text-slate-500 text-sm mt-1">
                     Gestalte AgriTrack mit! Hier sammeln wir Ideen für neue Funktionen.
                 </p>
@@ -311,4 +304,3 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
     </div>
   );
 };
-
