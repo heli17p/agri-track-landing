@@ -484,43 +484,96 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           return acc + getDistance(trackPoints[i-1], p);
       }, 0) : 0; // meters
 
-      // Calculate Area
+      // Calculate Area & SMART DISTRIBUTION
       let spreadDist = 0;
       let lastSpreadPoint: TrackPoint | null = null;
       
-      trackPoints.forEach(p => {
-          if (p.isSpreading) {
-              if (lastSpreadPoint) {
-                  spreadDist += getDistance(lastSpreadPoint, p);
+      // Smart Distribution Tracking
+      // Stores meters driven active per field ID
+      const fieldDistMap: Record<string, number> = {}; 
+      // Stores meters driven active per field ID per Storage Source
+      const fieldSourceMap: Record<string, Record<string, number>> = {};
+      
+      // Simple Set for compatibility with old logic
+      const fieldIds = new Set<string>();
+
+      for (let i = 1; i < trackPoints.length; i++) {
+          const p1 = trackPoints[i-1];
+          const p2 = trackPoints[i];
+
+          if (p2.isSpreading) {
+              const dist = getDistance(p1, p2);
+              spreadDist += dist;
+              
+              const storageId = p2.storageId || 'unknown';
+
+              // Check which field this segment belongs to
+              // We check p2 (current point)
+              const f = fields.find(field => isPointInPolygon(p2, field.boundary));
+              
+              if (f) {
+                  fieldIds.add(f.id);
+                  
+                  // Add to total field distance
+                  fieldDistMap[f.id] = (fieldDistMap[f.id] || 0) + dist;
+                  
+                  // Add to detailed source map
+                  if (!fieldSourceMap[f.id]) fieldSourceMap[f.id] = {};
+                  fieldSourceMap[f.id][storageId] = (fieldSourceMap[f.id][storageId] || 0) + dist;
               }
-              lastSpreadPoint = p;
-          } else {
-              lastSpreadPoint = null;
           }
-      });
+      }
 
       const width = activityType === ActivityType.FERTILIZATION 
           ? (subType === 'Mist' ? settings.manureSpreadWidth : settings.slurrySpreadWidth) 
           : 6; 
       
       const calculatedAreaHa = (spreadDist * (width || 12)) / 10000;
-
-      const fieldIds = new Set<string>();
-      fields.forEach(f => {
-          const pointsInField = trackPoints.filter(p => p.isSpreading && isPointInPolygon(p, f.boundary));
-          if (pointsInField.length > 5) fieldIds.add(f.id);
-      });
       
       // --- Calculate Loads & Distribution ---
       let totalLoadCount = 0;
       const storageDistribution: Record<string, number> = {};
+      let totalAmount = 0;
       
       if (activityType === ActivityType.FERTILIZATION) {
           const loadSize = subType === 'Mist' ? settings.manureLoadSize : settings.slurryLoadSize;
           
           Object.entries(loadCounts).forEach(([storageId, count]) => {
               totalLoadCount += count;
-              storageDistribution[storageId] = count * loadSize;
+              const vol = count * loadSize;
+              storageDistribution[storageId] = vol;
+              totalAmount += vol;
+          });
+      } else if (activityType === ActivityType.TILLAGE) {
+          totalAmount = parseFloat(calculatedAreaHa.toFixed(2));
+      }
+
+      // --- CALCULATE SMART DISTRIBUTION (PROPORTIONS) ---
+      const finalFieldDistribution: Record<string, number> = {};
+      const finalDetailedSources: Record<string, Record<string, number>> = {};
+
+      if (totalAmount > 0 && spreadDist > 0) {
+          Object.keys(fieldDistMap).forEach(fId => {
+              // Share of this field = (Distance in Field / Total Spreading Distance)
+              const ratio = fieldDistMap[fId] / spreadDist;
+              const allocatedAmount = parseFloat((totalAmount * ratio).toFixed(2));
+              
+              if (allocatedAmount > 0) {
+                  finalFieldDistribution[fId] = allocatedAmount;
+                  
+                  // Detailed Sources Distribution
+                  if (fieldSourceMap[fId]) {
+                      finalDetailedSources[fId] = {};
+                      Object.keys(fieldSourceMap[fId]).forEach(sId => {
+                          const sDist = fieldSourceMap[fId][sId];
+                          // Assuming constant flow rate:
+                          // Amount from Source X to Field Y = (Distance with Source X in Field Y / Total Spreading Distance) * Total Amount
+                          // This normalizes everything to the total amount.
+                          const amountShare = (sDist / spreadDist) * totalAmount;
+                          finalDetailedSources[fId][sId] = parseFloat(amountShare.toFixed(2));
+                      });
+                  }
+              }
           });
       }
 
@@ -535,25 +588,26 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           fertilizerType: activityType === ActivityType.FERTILIZATION ? (subType === 'Mist' ? FertilizerType.MANURE : FertilizerType.SLURRY) : undefined,
           tillageType: activityType === ActivityType.TILLAGE ? (subType as TillageType) : undefined,
           fieldIds: Array.from(fieldIds),
-          amount: 0, 
+          amount: totalAmount, 
           unit: activityType === ActivityType.HARVEST ? 'Stk' : (activityType === ActivityType.TILLAGE ? 'ha' : 'm³'),
           trackPoints: trackPoints,
           loadCount: totalLoadCount,
           storageDistribution: activityType === ActivityType.FERTILIZATION ? storageDistribution : undefined,
           notes: saveNotes + `\nAutomatisch erfasst. Dauer: ${durationMin} min`,
           year: new Date().getFullYear(),
+          fieldDistribution: finalFieldDistribution, // Smart Distribution
+          detailedFieldSources: finalDetailedSources // Smart Sources
       };
       
+      // Special override for Tillage (Area based)
       if (activityType === ActivityType.TILLAGE) {
-          record.amount = parseFloat(calculatedAreaHa.toFixed(2));
-          const dist: Record<string, number> = {};
-          fields.forEach(f => { if (fieldIds.has(f.id)) dist[f.id] = f.areaHa; });
-          record.fieldDistribution = dist;
-      } else if (activityType === ActivityType.FERTILIZATION) {
-          // Total amount based on total loads
-          const loadSize = subType === 'Mist' ? settings.manureLoadSize : settings.slurryLoadSize;
-          if (loadSize && totalLoadCount > 0) {
-              record.amount = totalLoadCount * loadSize;
+          // If Tillage, the "Amount" IS the area.
+          // Distribution is already Area based above.
+          // But fallback if GPS tracking didn't catch fields well:
+          if (Object.keys(finalFieldDistribution).length === 0) {
+               // Fallback: If minimal points in field, assume full field area? 
+               // Or just use the calculated split above.
+               // Let's stick to what we calculated.
           }
       }
 
@@ -784,9 +838,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                                   ) : (
                                       summaryRecord.fieldIds.slice(0, 5).map(fid => {
                                           const f = fields.find(field => field.id === fid);
+                                          const amount = summaryRecord.fieldDistribution?.[fid];
                                           return f ? (
                                               <span key={fid} className="bg-slate-100 text-slate-600 px-2 py-1 rounded text-xs font-bold border border-slate-200">
-                                                  {f.name}
+                                                  {f.name} {amount ? `(${amount} ${summaryRecord.unit})` : ''}
                                               </span>
                                           ) : null;
                                       })
