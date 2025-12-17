@@ -126,6 +126,13 @@ const translateError = (e: any): string => {
     return msg; // Fallback to original
 };
 
+// Helper: Shared Setting Badge
+const SharedBadge = () => (
+    <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded ml-1 flex items-center inline-flex" title="Diese Einstellung wird mit allen Geräten synchronisiert">
+        <Cloud size={10} className="mr-1"/> Sync
+    </span>
+);
+
 // --- MAIN COMPONENT ---
 interface Props {
     initialTab?: 'profile' | 'storage' | 'general' | 'sync';
@@ -449,7 +456,6 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
           alert("Fehler: " + translateError(e));
       } finally {
           setIsUploading(false);
-          setShowDangerZone(false);
       }
   };
 
@@ -655,11 +661,11 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                         <h3 className="font-bold text-slate-800 mb-4 flex items-center"><Database size={18} className="mr-2 text-blue-600"/> Standard Fuhrengrößen</h3>
                         <div className="grid grid-cols-2 gap-4">
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Güllefass (m³)</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Güllefass (m³) <SharedBadge/></label>
                                 <input type="number" value={settings.slurryLoadSize} onChange={e => setSettings({...settings, slurryLoadSize: parseFloat(e.target.value)})} className="w-full p-2 border rounded font-bold" />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Miststreuer (m³)</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Miststreuer (m³) <SharedBadge/></label>
                                 <input type="number" value={settings.manureLoadSize} onChange={e => setSettings({...settings, manureLoadSize: parseFloat(e.target.value)})} className="w-full p-2 border rounded font-bold" />
                             </div>
                         </div>
@@ -669,25 +675,25 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                         <h3 className="font-bold text-slate-800 mb-4 flex items-center"><Terminal size={18} className="mr-2 text-purple-600"/> GPS & Automatik</h3>
                         <div className="space-y-3">
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Arbeitsbreite Gülle (m)</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Arbeitsbreite Gülle (m) <SharedBadge/></label>
                                 <input type="number" value={settings.slurrySpreadWidth || 12} onChange={e => setSettings({...settings, slurrySpreadWidth: parseFloat(e.target.value)})} className="w-full p-2 border rounded" />
                             </div>
                             <div>
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Arbeitsbreite Mist (m)</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Arbeitsbreite Mist (m) <SharedBadge/></label>
                                 <input type="number" value={settings.manureSpreadWidth || 10} onChange={e => setSettings({...settings, manureSpreadWidth: parseFloat(e.target.value)})} className="w-full p-2 border rounded" />
                             </div>
                             <div className="grid grid-cols-2 gap-4 pt-2">
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Min. Speed (km/h)</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Min. Speed (km/h) <SharedBadge/></label>
                                     <input type="number" value={settings.minSpeed} onChange={e => setSettings({...settings, minSpeed: parseFloat(e.target.value)})} className="w-full p-2 border rounded text-sm" />
                                 </div>
                                 <div>
-                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Max. Speed (km/h)</label>
+                                    <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Max. Speed (km/h) <SharedBadge/></label>
                                     <input type="number" value={settings.maxSpeed} onChange={e => setSettings({...settings, maxSpeed: parseFloat(e.target.value)})} className="w-full p-2 border rounded text-sm" />
                                 </div>
                             </div>
                             <div className="pt-2">
-                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Lager Radius (m)</label>
+                                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Lager Radius (m) <SharedBadge/></label>
                                 <input type="number" value={settings.storageRadius} onChange={e => setSettings({...settings, storageRadius: parseFloat(e.target.value)})} className="w-full p-2 border rounded text-sm" />
                             </div>
                         </div>
@@ -695,6 +701,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
                     <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
                         <h3 className="font-bold text-slate-800 mb-4">App Design (Traktor Marke)</h3>
+                        <p className="text-xs text-slate-400 mb-3">Diese Einstellung ist persönlich und wird nicht synchronisiert.</p>
                         <div className="grid grid-cols-4 gap-2">
                             {ICON_THEMES.map(theme => (
                                 <button 
@@ -1488,4 +1495,3 @@ service cloud.firestore {
     </div>
   );
 };
-

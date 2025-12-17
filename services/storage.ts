@@ -154,6 +154,40 @@ export const fetchCloudSettings = async (): Promise<AppSettings | null> => {
     return null;
 };
 
+// NEW: Fetch Master Settings for the whole Farm (Shared Config)
+export const fetchFarmMasterSettings = async (farmId: string): Promise<AppSettings | null> => {
+    if (!isCloudConfigured()) return null;
+    try {
+        // Query all settings documents for this farm ID
+        // Note: Using String(farmId) to ensure type match
+        const q = db.collection("settings").where("farmId", "==", String(farmId));
+        const snap = await q.get();
+        
+        if (snap.empty) return null;
+
+        const docs = snap.docs.map(d => d.data() as any);
+        
+        // Filter for valid farm members (must have the PIN set)
+        const validConfigs = docs.filter(d => !!d.farmPin);
+        
+        if (validConfigs.length === 0) return null;
+
+        // Sort by 'updatedAt' descending (Newest first)
+        // This implements "Last Edit Wins" for shared settings
+        validConfigs.sort((a, b) => {
+            const tA = a.updatedAt?.seconds || 0;
+            const tB = b.updatedAt?.seconds || 0;
+            return tB - tA;
+        });
+
+        // Return the most recent config as the master
+        return validConfigs[0] as AppSettings;
+    } catch (e) {
+        console.error("[AgriCloud] Error fetching master settings:", e);
+        return null;
+    }
+};
+
 // --- DATA HANDLING (HYBRID) ---
 
 export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile', data: any) => {

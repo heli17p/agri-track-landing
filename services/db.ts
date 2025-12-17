@@ -1,7 +1,7 @@
 
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
-import { auth, db, isCloudConfigured, saveData, loadLocalData, fetchCloudData, loadSettings, saveSettings as saveStorageSettings, fetchCloudSettings, hardReset as storageHardReset } from './storage';
+import { auth, db, isCloudConfigured, saveData, loadLocalData, fetchCloudData, loadSettings, saveSettings as saveStorageSettings, fetchCloudSettings, hardReset as storageHardReset, fetchFarmMasterSettings } from './storage';
 import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, FeedbackTicket, DEFAULT_SETTINGS } from '../types';
 
 export const generateId = () => {
@@ -239,6 +239,7 @@ export const dbService = {
              settings.ownerEmail = currentUser.email || 'Unbekannt';
         }
         await saveStorageSettings(settings);
+        notifyDbChange(); // Update UI immediately
     },
 
     // --- Feedback ---
@@ -267,6 +268,7 @@ export const dbService = {
     syncActivities: async () => {
         if (!isCloudConfigured()) return;
         
+        // 1. Data Sync
         const cloudActivities = await fetchCloudData('activity', true); 
         const cloudFields = await fetchCloudData('field', true);
         const cloudStorages = await fetchCloudData('storage', true);
@@ -276,6 +278,38 @@ export const dbService = {
         if (cloudFields.length > 0) localStorage.setItem('agritrack_fields', JSON.stringify(cloudFields));
         if (cloudStorages.length > 0) localStorage.setItem('agritrack_storage', JSON.stringify(cloudStorages));
         if (cloudProfiles.length > 0) localStorage.setItem('agritrack_profile', JSON.stringify(cloudProfiles[0]));
+
+        // 2. Settings Sync (SHARED CONFIGURATION)
+        const currentLocalSettings = loadSettings();
+        if (currentLocalSettings.farmId) {
+            const masterSettings = await fetchFarmMasterSettings(currentLocalSettings.farmId);
+            
+            if (masterSettings) {
+                // We ONLY override Shared technical fields.
+                // We keep local preferences (like appIcon) intact.
+                const sharedKeys: (keyof AppSettings)[] = [
+                    'slurryLoadSize', 'manureLoadSize', 
+                    'spreadWidth', 'slurrySpreadWidth', 'manureSpreadWidth',
+                    'minSpeed', 'maxSpeed', 'storageRadius'
+                ];
+                
+                let settingsChanged = false;
+                const newSettings = { ...currentLocalSettings };
+
+                sharedKeys.forEach(key => {
+                    // Check if master value exists and is different from local
+                    if (masterSettings[key] !== undefined && masterSettings[key] !== newSettings[key]) {
+                        (newSettings as any)[key] = masterSettings[key];
+                        settingsChanged = true;
+                    }
+                });
+
+                if (settingsChanged) {
+                    localStorage.setItem('agritrack_settings_full', JSON.stringify(newSettings));
+                    addLog("[Sync] Globale Hof-Einstellungen aktualisiert.");
+                }
+            }
+        }
 
         notifySync();
     },
