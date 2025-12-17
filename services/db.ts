@@ -49,9 +49,42 @@ export const dbService = {
     },
 
     deleteActivity: async (id: string) => {
-        let activities = loadLocalData('activity');
-        activities = activities.filter((a: any) => a.id !== id);
-        localStorage.setItem('agritrack_activities', JSON.stringify(activities));
+        // 1. Get the activity to restore storage levels BEFORE deleting
+        const allActivities = loadLocalData('activity');
+        const target = allActivities.find((a: any) => a.id === id);
+
+        // 2. Restore Storage Levels (Undo Deduction)
+        if (target && target.storageDistribution) {
+            const storages = loadLocalData('storage');
+            let storageChanged = false;
+
+            Object.entries(target.storageDistribution).forEach(([storageId, amount]) => {
+                const storeIndex = storages.findIndex((s: any) => s.id === storageId);
+                if (storeIndex >= 0) {
+                    // Add amount back, but don't exceed capacity
+                    const current = storages[storeIndex].currentLevel;
+                    const capacity = storages[storeIndex].capacity;
+                    // We interpret amount as positive number here
+                    const amountToAdd = Number(amount); 
+                    if (!isNaN(amountToAdd)) {
+                        storages[storeIndex].currentLevel = Math.min(capacity, current + amountToAdd);
+                        storageChanged = true;
+                    }
+                }
+            });
+
+            if (storageChanged) {
+                localStorage.setItem('agritrack_storage', JSON.stringify(storages));
+                if (isCloudConfigured()) {
+                    // Sync updated storages to cloud
+                    storages.forEach((s: any) => saveData('storage', s));
+                }
+            }
+        }
+
+        // 3. Delete Activity
+        const remainingActivities = allActivities.filter((a: any) => a.id !== id);
+        localStorage.setItem('agritrack_activities', JSON.stringify(remainingActivities));
         
         if (isCloudConfigured()) {
             try {
