@@ -696,108 +696,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       return segments;
   }, [trackPoints, storages]); // Recalc when points change
 
-  // --- MANUAL MODE RENDER ---
-  if (manualMode) {
-      if (manualMode === ActivityType.FERTILIZATION) return <ManualFertilizationForm fields={fields} storages={storages} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
-      if (manualMode === ActivityType.HARVEST) return <HarvestForm fields={fields} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
-      if (manualMode === ActivityType.TILLAGE) return <TillageForm fields={fields} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
-  }
-
-  // --- SELECTION SCREEN (IDLE) ---
-  if (trackingState === 'IDLE') {
-      return (
-          <div className="h-full bg-white flex flex-col overflow-y-auto">
-              {/* Header */}
-              <div className="bg-slate-900 text-white p-6 shrink-0">
-                  <h1 className="text-2xl font-bold mb-2">Neue Tätigkeit</h1>
-                  <p className="text-slate-400 text-sm">Wähle eine Methode um zu starten.</p>
-              </div>
-
-              {/* Quick Start Tracking */}
-              <div className="p-6 space-y-6">
-                  <div className="bg-green-50 border border-green-200 rounded-2xl p-5 shadow-sm">
-                      <h2 className="text-lg font-bold text-green-900 mb-4 flex items-center">
-                          <Navigation className="mr-2 fill-green-600 text-green-600"/> GPS Aufzeichnung starten
-                      </h2>
-                      
-                      <div className="space-y-4">
-                          <div>
-                              <label className="block text-xs font-bold text-green-800 uppercase mb-2">Tätigkeit</label>
-                              <div className="grid grid-cols-2 gap-2">
-                                  <button onClick={() => { setActivityType(ActivityType.FERTILIZATION); setSubType('Gülle'); }} className={`py-3 rounded-lg border-2 text-base font-bold transition-all ${activityType === ActivityType.FERTILIZATION ? 'border-green-600 bg-white text-green-700 shadow' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>
-                                      Düngung
-                                  </button>
-                                  <button onClick={() => { setActivityType(ActivityType.TILLAGE); setSubType('Wiesenegge'); }} className={`py-3 rounded-lg border-2 text-base font-bold transition-all ${activityType === ActivityType.TILLAGE ? 'border-green-600 bg-white text-green-700 shadow' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>
-                                      Bodenbearbeitung
-                                  </button>
-                              </div>
-                          </div>
-                          
-                          {/* Subtype Selector */}
-                          <div>
-                              <label className="block text-xs font-bold text-green-800 uppercase mb-2">Art</label>
-                              <select 
-                                value={subType} 
-                                onChange={(e) => setSubType(e.target.value)}
-                                className="w-full p-3 rounded-xl border border-green-200 bg-white font-bold text-slate-700 outline-none focus:ring-2 focus:ring-green-500"
-                              >
-                                  {activityType === ActivityType.FERTILIZATION && (
-                                      <>
-                                          <option value="Gülle">Gülle</option>
-                                          <option value="Mist">Mist</option>
-                                      </>
-                                  )}
-                                  {activityType === ActivityType.TILLAGE && (
-                                      <>
-                                          <option value="Wiesenegge">Wiesenegge</option>
-                                          <option value="Schlegeln">Schlegeln</option>
-                                          <option value="Striegel">Striegel</option>
-                                          <option value="Nachsaat">Nachsaat</option>
-                                          <option value="Pflug">Pflug</option>
-                                      </>
-                                  )}
-                              </select>
-                          </div>
-
-                          <button 
-                            onClick={startGPS}
-                            className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-900/20 flex items-center justify-center text-lg active:scale-[0.98] transition-all"
-                          >
-                              <Play size={24} className="mr-2 fill-white"/> Start
-                          </button>
-                      </div>
-                  </div>
-
-                  {/* Manual Entry Options */}
-                  <div>
-                      <h3 className="font-bold text-slate-700 mb-3">Oder manuell erfassen</h3>
-                      <div className="grid grid-cols-1 gap-3">
-                          <button onClick={() => setManualMode(ActivityType.FERTILIZATION)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 shadow-sm group">
-                              <div className="p-2 bg-amber-100 text-amber-700 rounded-lg mr-4 group-hover:bg-amber-200"><Truck size={20}/></div>
-                              <span className="font-bold text-slate-600">Düngung nachtragen</span>
-                          </button>
-                          <button onClick={() => setManualMode(ActivityType.HARVEST)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 shadow-sm group">
-                              <div className="p-2 bg-lime-100 text-lime-700 rounded-lg mr-4 group-hover:bg-lime-200"><Wheat size={20}/></div>
-                              <span className="font-bold text-slate-600">Ernte nachtragen</span>
-                          </button>
-                          <button onClick={() => setManualMode(ActivityType.TILLAGE)} className="flex items-center p-4 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm group">
-                              <div className="p-2 bg-blue-100 text-blue-700 rounded-lg mr-4 group-hover:bg-blue-200"><Hammer size={20}/></div>
-                              <span className="font-bold text-slate-600">Bodenbearbeitung nachtragen</span>
-                          </button>
-                      </div>
-                  </div>
-              </div>
-          </div>
-      );
-  }
-
-  // --- TRACKING UI ---
-
   // Determine initial center: 1. Current GPS, 2. Farm Location, 3. Austria Default
   const currentLat = currentLocation?.coords.latitude || profile?.addressGeo?.lat || 47.5;
   const currentLng = currentLocation?.coords.longitude || profile?.addressGeo?.lng || 14.5;
 
-  // --- SUMMARY OVERLAY (New Feature) ---
+  // --- 1. RENDER PRIORITY: SUMMARY OVERLAY ---
+  // Fix: This must be checked BEFORE the IDLE check, otherwise IDLE screen shadows it.
   if (summaryRecord) {
       return (
           <div className="h-full relative bg-slate-900 overflow-hidden">
@@ -906,6 +810,102 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       );
   }
 
+  // --- 2. MANUAL MODE RENDER ---
+  if (manualMode) {
+      if (manualMode === ActivityType.FERTILIZATION) return <ManualFertilizationForm fields={fields} storages={storages} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
+      if (manualMode === ActivityType.HARVEST) return <HarvestForm fields={fields} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
+      if (manualMode === ActivityType.TILLAGE) return <TillageForm fields={fields} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
+  }
+
+  // --- 3. SELECTION SCREEN (IDLE) ---
+  if (trackingState === 'IDLE') {
+      return (
+          <div className="h-full bg-white flex flex-col overflow-y-auto">
+              {/* Header */}
+              <div className="bg-slate-900 text-white p-6 shrink-0">
+                  <h1 className="text-2xl font-bold mb-2">Neue Tätigkeit</h1>
+                  <p className="text-slate-400 text-sm">Wähle eine Methode um zu starten.</p>
+              </div>
+
+              {/* Quick Start Tracking */}
+              <div className="p-6 space-y-6">
+                  <div className="bg-green-50 border border-green-200 rounded-2xl p-5 shadow-sm">
+                      <h2 className="text-lg font-bold text-green-900 mb-4 flex items-center">
+                          <Navigation className="mr-2 fill-green-600 text-green-600"/> GPS Aufzeichnung starten
+                      </h2>
+                      
+                      <div className="space-y-4">
+                          <div>
+                              <label className="block text-xs font-bold text-green-800 uppercase mb-2">Tätigkeit</label>
+                              <div className="grid grid-cols-2 gap-2">
+                                  <button onClick={() => { setActivityType(ActivityType.FERTILIZATION); setSubType('Gülle'); }} className={`py-3 rounded-lg border-2 text-base font-bold transition-all ${activityType === ActivityType.FERTILIZATION ? 'border-green-600 bg-white text-green-700 shadow' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>
+                                      Düngung
+                                  </button>
+                                  <button onClick={() => { setActivityType(ActivityType.TILLAGE); setSubType('Wiesenegge'); }} className={`py-3 rounded-lg border-2 text-base font-bold transition-all ${activityType === ActivityType.TILLAGE ? 'border-green-600 bg-white text-green-700 shadow' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>
+                                      Bodenbearbeitung
+                                  </button>
+                              </div>
+                          </div>
+                          
+                          {/* Subtype Selector */}
+                          <div>
+                              <label className="block text-xs font-bold text-green-800 uppercase mb-2">Art</label>
+                              <select 
+                                value={subType} 
+                                onChange={(e) => setSubType(e.target.value)}
+                                className="w-full p-3 rounded-xl border border-green-200 bg-white font-bold text-slate-700 outline-none focus:ring-2 focus:ring-green-500"
+                              >
+                                  {activityType === ActivityType.FERTILIZATION && (
+                                      <>
+                                          <option value="Gülle">Gülle</option>
+                                          <option value="Mist">Mist</option>
+                                      </>
+                                  )}
+                                  {activityType === ActivityType.TILLAGE && (
+                                      <>
+                                          <option value="Wiesenegge">Wiesenegge</option>
+                                          <option value="Schlegeln">Schlegeln</option>
+                                          <option value="Striegel">Striegel</option>
+                                          <option value="Nachsaat">Nachsaat</option>
+                                          <option value="Pflug">Pflug</option>
+                                      </>
+                                  )}
+                              </select>
+                          </div>
+
+                          <button 
+                            onClick={startGPS}
+                            className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-900/20 flex items-center justify-center text-lg active:scale-[0.98] transition-all"
+                          >
+                              <Play size={24} className="mr-2 fill-white"/> Start
+                          </button>
+                      </div>
+                  </div>
+
+                  {/* Manual Entry Options */}
+                  <div>
+                      <h3 className="font-bold text-slate-700 mb-3">Oder manuell erfassen</h3>
+                      <div className="grid grid-cols-1 gap-3">
+                          <button onClick={() => setManualMode(ActivityType.FERTILIZATION)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 shadow-sm group">
+                              <div className="p-2 bg-amber-100 text-amber-700 rounded-lg mr-4 group-hover:bg-amber-200"><Truck size={20}/></div>
+                              <span className="font-bold text-slate-600">Düngung nachtragen</span>
+                          </button>
+                          <button onClick={() => setManualMode(ActivityType.HARVEST)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 shadow-sm group">
+                              <div className="p-2 bg-lime-100 text-lime-700 rounded-lg mr-4 group-hover:bg-lime-200"><Wheat size={20}/></div>
+                              <span className="font-bold text-slate-600">Ernte nachtragen</span>
+                          </button>
+                          <button onClick={() => setManualMode(ActivityType.TILLAGE)} className="flex items-center p-4 bg-white border border-slate-200 rounded-lg hover:bg-slate-50 shadow-sm group">
+                              <div className="p-2 bg-blue-100 text-blue-700 rounded-lg mr-4 group-hover:bg-blue-200"><Hammer size={20}/></div>
+                              <span className="font-bold text-slate-600">Bodenbearbeitung nachtragen</span>
+                          </button>
+                      </div>
+                  </div>
+              </div>
+          </div>
+      );
+  }
+
+  // --- 4. ACTIVE TRACKING RENDER ---
   return (
     <div className="h-full relative bg-slate-900 flex flex-col">
         {/* CSS for Filling Animation */}
