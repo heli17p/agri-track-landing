@@ -22,6 +22,47 @@ const MAP_COLORS = {
     }
 };
 
+// --- COLOR PALETTES FOR STORAGE TYPES ---
+// Gülle: Earthy, liquid browns
+const SLURRY_PALETTE = [
+    '#451a03', // Amber 950 (Very Dark Brown)
+    '#78350f', // Amber 900 (Standard Brown)
+    '#92400e', // Amber 800
+    '#b45309', // Amber 700
+    '#854d0e', // Yellow 800 (Olive/Mud)
+];
+
+// Mist: Solid, warmer orange/reds
+const MANURE_PALETTE = [
+    '#7c2d12', // Orange 900 (Dark Rust)
+    '#c2410c', // Orange 700
+    '#ea580c', // Orange 600 (Standard Orange)
+    '#d97706', // Amber 600 (Golden)
+    '#b91c1c', // Red 700
+];
+
+const getStorageColor = (storageId: string | undefined, allStorages: StorageLocation[]) => {
+    if (!storageId) return '#3b82f6'; // Default Blue (No Storage / Transit)
+    
+    const storage = allStorages.find(s => s.id === storageId);
+    if (!storage) return '#64748b'; // Slate (Unknown)
+
+    // Find all storages of the SAME type to determine index
+    // Sort by ID to ensure colors stay consistent across reloads
+    const sameTypeStorages = allStorages
+        .filter(s => s.type === storage.type)
+        .sort((a, b) => a.id.localeCompare(b.id));
+    
+    const index = sameTypeStorages.findIndex(s => s.id === storageId);
+    const safeIndex = index >= 0 ? index : 0;
+
+    if (storage.type === FertilizerType.SLURRY) {
+        return SLURRY_PALETTE[safeIndex % SLURRY_PALETTE.length];
+    } else {
+        return MANURE_PALETTE[safeIndex % MANURE_PALETTE.length];
+    }
+};
+
 // --- ICONS & ASSETS ---
 
 const createCustomIcon = (color: string, svgPath: string) => {
@@ -137,14 +178,6 @@ const MapController = ({ center, zoom, follow, onZoomChange }: { center: [number
     });
     
     return null;
-};
-
-// Colors for storages
-const STORAGE_COLORS = ['#ea580c', '#be185d', '#7e22ce', '#374151', '#0f766e', '#15803d'];
-const getStorageColor = (storageId: string | undefined, index: number = 0) => {
-    if (!storageId) return '#3b82f6'; // Default Blue (No Storage / Transit)
-    const sum = storageId.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
-    return STORAGE_COLORS[sum % STORAGE_COLORS.length];
 };
 
 // Types
@@ -775,13 +808,14 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       
       const segments: { points: [number, number][], color: string, isSpreading: boolean }[] = [];
       let currentPoints: [number, number][] = [[trackPoints[0].lat, trackPoints[0].lng]];
-      let currentColor = getStorageColor(trackPoints[0].storageId);
+      // PASS STORAGES TO COLOR HELPER
+      let currentColor = getStorageColor(trackPoints[0].storageId, storages);
       let currentSpreadState = trackPoints[0].isSpreading;
 
       for (let i = 1; i < trackPoints.length; i++) {
           const p = trackPoints[i];
           const prev = trackPoints[i-1];
-          const color = getStorageColor(p.storageId);
+          const color = getStorageColor(p.storageId, storages);
           
           // Start new segment if color OR spreading state changes
           if (color !== currentColor || p.isSpreading !== currentSpreadState) {
@@ -801,7 +835,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       // Push final
       segments.push({ points: currentPoints, color: currentColor, isSpreading: currentSpreadState });
       return segments;
-  }, [trackPoints, storages]); // Recalc when points change
+  }, [trackPoints, storages]); // Recalc when points change OR storages change
 
   // Determine initial center: 1. Current GPS, 2. Farm Location, 3. Austria Default
   const currentLat = currentLocation?.coords.latitude || profile?.addressGeo?.lat || 47.5;
@@ -1124,25 +1158,28 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                     />
                 )}
 
-                {/* Storages */}
-                {activityType === ActivityType.FERTILIZATION && storages.map(s => (
-                     <React.Fragment key={s.id}>
-                         <Circle 
-                            center={[s.geo.lat, s.geo.lng]}
-                            radius={settings.storageRadius || 20}
-                            pathOptions={{ 
-                                color: getStorageColor(s.id), 
-                                fillColor: getStorageColor(s.id), 
-                                fillOpacity: 0.2,
-                                dashArray: '5, 5'
-                            }}
-                         />
-                         <Marker 
-                            position={[s.geo.lat, s.geo.lng]}
-                            icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
-                         />
-                     </React.Fragment>
-                ))}
+                {/* Storages - COLORED CIRCLES BASED ON TYPE */}
+                {activityType === ActivityType.FERTILIZATION && storages.map(s => {
+                     const color = getStorageColor(s.id, storages);
+                     return (
+                         <React.Fragment key={s.id}>
+                             <Circle 
+                                center={[s.geo.lat, s.geo.lng]}
+                                radius={settings.storageRadius || 20}
+                                pathOptions={{ 
+                                    color: color, 
+                                    fillColor: color, 
+                                    fillOpacity: 0.3,
+                                    dashArray: '5, 5'
+                                }}
+                             />
+                             <Marker 
+                                position={[s.geo.lat, s.geo.lng]}
+                                icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
+                             />
+                         </React.Fragment>
+                     );
+                })}
             </MapContainer>
             
             {/* Map Controls */}
@@ -1177,7 +1214,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                 <div className="absolute top-4 left-4 bg-white/90 backdrop-blur p-2 rounded-lg shadow-lg border border-slate-200 z-[400] max-w-[150px] pointer-events-none">
                     <div className="text-[10px] font-bold text-slate-500 uppercase mb-1">Lager</div>
                     {storages.filter(s => s.type === subType).map(s => {
-                        const color = getStorageColor(s.id);
+                        const color = getStorageColor(s.id, storages);
                         return (
                             <div key={s.id} className="flex items-center text-[10px] text-slate-700 mb-0.5 last:mb-0">
                                 <span className="w-2.5 h-2.5 rounded-full mr-1.5 shrink-0" style={{backgroundColor: color, border: '1px solid white'}}></span>
@@ -1220,8 +1257,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                         
                         if (trackingState === 'LOADING') {
                             const targetId = activeLoadingStorageRef.current?.id || pendingStorageIdRef.current;
-                            const index = storages.findIndex(s => s.id === targetId);
-                            const color = getStorageColor(targetId, index >= 0 ? index : 0);
+                            const color = getStorageColor(targetId, storages);
                             
                             return (
                                 <div className="relative w-10 h-10 rounded-full border-2 border-white shadow-sm overflow-hidden bg-slate-200">
@@ -1240,7 +1276,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                         
                         if (trackingState === 'SPREADING') {
                             const sourceId = activeSourceId;
-                            const color = getStorageColor(sourceId);
+                            const color = getStorageColor(sourceId, storages);
                             return (
                                 <div className="w-10 h-10 flex items-center justify-center rounded-full text-white shadow-sm animate-pulse border-2 border-white" style={{backgroundColor: color}}>
                                     <Droplets size={20} />
@@ -1335,7 +1371,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                                          <div className="flex flex-wrap gap-2 max-w-[150px]">
                                              {Object.entries(loadCounts).map(([sId, count]) => {
                                                  const st = storages.find(s => s.id === sId);
-                                                 const color = getStorageColor(sId);
+                                                 const color = getStorageColor(sId, storages);
                                                  return (
                                                      <div key={sId} className="flex items-center bg-slate-100 px-2 py-0.5 rounded text-xs font-bold text-slate-700 border border-slate-200">
                                                          <span className="w-2 h-2 rounded-full mr-1.5" style={{backgroundColor: color}}></span>
