@@ -152,6 +152,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   // Simulation & Testmodus
   const [isTestMode, setIsTestMode] = useState(false);
+  const isTestModeRef = useRef(false);
 
   // Refs für Live Tracking (wichtig für Callbacks ohne Stale-State)
   const settingsRef = useRef<AppSettings>(DEFAULT_SETTINGS);
@@ -203,7 +204,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [historyMode, setHistoryMode] = useState<HistoryMode>('OFF');
   const [allHistoryTracks, setAllHistoryTracks] = useState<ActivityRecord[]>([]);
 
-  // Fix: Added useMemo for visibleHistoryTracks to solve line 768 error
+  // Fix: Added useMemo for visibleHistoryTracks
   const visibleHistoryTracks = useMemo(() => {
     if (historyMode === 'OFF') return [];
     const currentYear = new Date().getFullYear();
@@ -233,6 +234,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   useEffect(() => { subTypeRef.current = subType; }, [subType]);
   useEffect(() => { trackingStateRef.current = trackingState; }, [trackingState]);
   useEffect(() => { activeSourceIdRef.current = activeSourceId; }, [activeSourceId]);
+  useEffect(() => { isTestModeRef.current = isTestMode; }, [isTestMode]);
 
   // --- INITIALISIERUNG ---
   useEffect(() => {
@@ -292,13 +294,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setSummaryRecord(null);
       setGpsLoading(false);
 
-      if (!isTestMode) {
-          watchIdRef.current = navigator.geolocation.watchPosition(
-              (pos) => handleNewPosition(pos),
-              (err) => console.error("GPS Error", err),
-              { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
-          );
-      }
+      // Start watcher regardless, handleNewPosition will filter based on isTestModeRef
+      watchIdRef.current = navigator.geolocation.watchPosition(
+          (pos) => handleNewPosition(pos, false),
+          (err) => console.error("GPS Error", err),
+          { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
+      );
   };
 
   const stopGPS = () => {
@@ -345,16 +346,19 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           timestamp: Date.now()
       } as GeolocationPosition;
 
-      handleNewPosition(mockPos);
+      handleNewPosition(mockPos, true);
   };
 
   // --- POSITION VERARBEITUNG ---
-  const handleNewPosition = (pos: GeolocationPosition) => {
+  const handleNewPosition = (pos: GeolocationPosition, isMock: boolean = false) => {
+      // CRITICAL: Ignore real GPS signals if we are currently in test mode
+      if (!isMock && isTestModeRef.current) return;
+
       setCurrentLocation(pos);
-      if (isPaused) return;
+      if (isPaused || trackingStateRef.current === 'IDLE') return;
 
       const { latitude, longitude, speed, accuracy } = pos.coords;
-      if (accuracy > 35 && !isTestMode) return; // Signal-Qualitätscheck
+      if (accuracy > 35 && !isMock) return; // Signal-Qualitätscheck
 
       const speedKmh = (speed || 0) * 3.6;
       
@@ -454,7 +458,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   const startDetectionCountdown = (storage: StorageLocation) => {
       if (countdownIntervalRef.current) return; 
-      setDetectionCountdown(60); // 60 Sekunden Timer (wie vereinbart)
+      setDetectionCountdown(60); // 60 Sekunden Timer
       
       countdownIntervalRef.current = setInterval(() => {
           setDetectionCountdown(prev => {
