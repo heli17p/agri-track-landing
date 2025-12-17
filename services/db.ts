@@ -143,28 +143,42 @@ export const dbService = {
         
         if (lastCheck) {
             const hours = (now - parseInt(lastCheck)) / (1000 * 60 * 60);
-            if (hours > 1) {
+            
+            // Allow update if more than ~1 minute passed (0.016 hours) to be responsive
+            if (hours > 0.016) {
                 let changed = false;
                 storages.forEach((s: any) => {
                     if (s.dailyGrowth > 0) {
                         const growth = (s.dailyGrowth / 24) * hours;
+                        // Only add if not full
                         if(s.currentLevel < s.capacity) {
+                            // Add growth but cap at capacity
                             s.currentLevel = Math.min(s.capacity, s.currentLevel + growth);
                             changed = true;
                         }
                     }
                 });
+                
                 if (changed) {
+                    // Update Local
                     localStorage.setItem('agritrack_storage', JSON.stringify(storages));
+                    
+                    // Trigger UI Update immediately
+                    notifyDbChange();
+
+                    // Sync to Cloud if online
                     if(isCloudConfigured()) {
-                        for(const s of storages) {
-                            await saveData('storage', s);
-                        }
+                        // We use a "fire and forget" approach for growth updates to avoid UI lag
+                        Promise.all(storages.map((s: any) => saveData('storage', s))).catch(console.error);
                     }
                 }
+                // Only update timestamp if we actually processed time
+                localStorage.setItem('last_storage_growth_check', now.toString());
             }
+        } else {
+            // First run initialization
+            localStorage.setItem('last_storage_growth_check', now.toString());
         }
-        localStorage.setItem('last_storage_growth_check', now.toString());
     },
 
     // --- Profile ---

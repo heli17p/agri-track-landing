@@ -192,7 +192,7 @@ const App: React.FC = () => {
               localStorage.removeItem('agritrack_guest_mode'); // Clear guest flag
               setCurrentUserEmail(user.email);
               
-              // NEW: Trigger sync on startup if logged in (Critical for mobile)
+              // Trigger sync on startup if logged in (Critical for mobile)
               syncData().catch(err => console.error("Auto-sync failed on app start:", err));
           } else {
               setIsAuthenticated(false);
@@ -201,6 +201,19 @@ const App: React.FC = () => {
       });
 
       return () => unsubscribe();
+  }, []);
+
+  // --- AUTOMATIC STORAGE GROWTH ---
+  useEffect(() => {
+      // 1. Initial check (calculates growth since last open)
+      dbService.processStorageGrowth();
+
+      // 2. Periodic check (every minute)
+      const interval = setInterval(() => {
+          dbService.processStorageGrowth();
+      }, 60000); // 60s
+
+      return () => clearInterval(interval);
   }, []);
 
   // Helper to allow Hero to switch tab
