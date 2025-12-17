@@ -34,11 +34,11 @@ const SLURRY_PALETTE = [
 
 // Mist: Solid, warmer orange/reds
 const MANURE_PALETTE = [
-    '#7c2d12', // Orange 900 (Dark Rust)
-    '#c2410c', // Orange 700
+    '#d97706', // Amber 600 (Icon Color - Matches Marker)
     '#ea580c', // Orange 600 (Standard Orange)
-    '#d97706', // Amber 600 (Golden)
-    '#b91c1c', // Red 700
+    '#f59e0b', // Amber 500 (Yellow-Orange)
+    '#c2410c', // Orange 700 (Rust)
+    '#fb923c', // Orange 400 (Light Orange)
 ];
 
 const getStorageColor = (storageId: string | undefined, allStorages: StorageLocation[]) => {
