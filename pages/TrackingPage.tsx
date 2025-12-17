@@ -559,7 +559,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
       await dbService.saveActivity(record);
       
-      // NEW: Update Storage Levels (Deduct amounts)
+      // Update Storage Levels (Deduct amounts)
       if (activityType === ActivityType.FERTILIZATION && Object.keys(storageDistribution).length > 0) {
           await dbService.updateStorageLevels(storageDistribution);
       }
@@ -592,6 +592,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   const handleManualSave = async (record: ActivityRecord) => {
       await dbService.saveActivity(record);
+      
+      // NEW: Update Storage Levels if manual entry has distribution
+      if (record.type === ActivityType.FERTILIZATION && record.storageDistribution) {
+          await dbService.updateStorageLevels(record.storageDistribution);
+      }
+
       dbService.syncActivities(); // Background
       alert("Gespeichert!");
       setManualMode(null);
@@ -691,7 +697,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   // --- MANUAL MODE RENDER ---
   if (manualMode) {
-      if (manualMode === ActivityType.FERTILIZATION) return <ManualFertilizationForm fields={fields} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
+      if (manualMode === ActivityType.FERTILIZATION) return <ManualFertilizationForm fields={fields} storages={storages} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
       if (manualMode === ActivityType.HARVEST) return <HarvestForm fields={fields} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
       if (manualMode === ActivityType.TILLAGE) return <TillageForm fields={fields} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
   }

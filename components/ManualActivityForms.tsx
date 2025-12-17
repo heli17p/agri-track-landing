@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
-import { ChevronLeft, Droplets, Layers, CheckSquare, Square, Truck, Wheat, Hammer, FileText, ShoppingBag, Sprout, ArrowRight } from 'lucide-react';
-import { Field, AppSettings, ActivityRecord, ActivityType, FertilizerType, HarvestType, TillageType } from '../types';
+import React, { useState, useEffect, useMemo } from 'react';
+import { ChevronLeft, Droplets, Layers, CheckSquare, Square, Truck, Wheat, Hammer, FileText, ShoppingBag, Sprout, ArrowRight, Database } from 'lucide-react';
+import { Field, AppSettings, ActivityRecord, ActivityType, FertilizerType, HarvestType, TillageType, StorageLocation } from '../types';
 
 interface BaseFormProps {
   fields: Field[];
+  storages?: StorageLocation[]; // Added optional storages prop
   settings: AppSettings | null;
   onCancel: () => void;
   onSave: (record: ActivityRecord, summary: string[]) => void;
@@ -28,13 +29,31 @@ const getSmartDateISO = (dateStr: string) => {
     return inputDate.toISOString();
 };
 
-export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, settings, onCancel, onSave, onNavigate }) => {
+export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, storages = [], settings, onCancel, onSave, onNavigate }) => {
   const [selectedFertilizer, setSelectedFertilizer] = useState<FertilizerType>(FertilizerType.SLURRY);
+  const [selectedStorageId, setSelectedStorageId] = useState<string>('');
   const [amount, setAmount] = useState<number>(0);
   const [unit, setUnit] = useState<'Fuhren' | 'm³' | 't'>('Fuhren');
   const [date, setDate] = useState<string>(new Date().toISOString().substring(0, 10));
   const [selectedFieldIds, setSelectedFieldIds] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState('');
+
+  // Filter valid storages based on type
+  const availableStorages = useMemo(() => {
+      return storages.filter(s => s.type === selectedFertilizer);
+  }, [storages, selectedFertilizer]);
+
+  // Auto-select first storage if available
+  useEffect(() => {
+      if (availableStorages.length > 0) {
+          // Keep current if valid, else select first
+          if (!availableStorages.find(s => s.id === selectedStorageId)) {
+              setSelectedStorageId(availableStorages[0].id);
+          }
+      } else {
+          setSelectedStorageId('');
+      }
+  }, [selectedFertilizer, availableStorages]);
 
   const toggleField = (id: string) => {
     const next = new Set(selectedFieldIds);
@@ -74,6 +93,12 @@ export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, setti
 
     const finalIsoDate = getSmartDateISO(date);
 
+    // Create Storage Distribution (100% from selected storage)
+    const storageDist: Record<string, number> = {};
+    if (selectedStorageId) {
+        storageDist[selectedStorageId] = totalVolume;
+    }
+
     const record: ActivityRecord = {
       id: Math.random().toString(36).substr(2, 9),
       date: finalIsoDate,
@@ -84,12 +109,15 @@ export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, setti
       unit: unit === 'Fuhren' ? 'm³' : unit,
       loadCount: totalLoads,
       fieldDistribution: fieldDist,
+      storageDistribution: Object.keys(storageDist).length > 0 ? storageDist : undefined,
       notes: notes,
       year: new Date(finalIsoDate).getFullYear()
     };
 
+    const storageName = storages.find(s => s.id === selectedStorageId)?.name || 'Ohne Lager';
     const summary = [
         `Menge: ${totalVolume.toFixed(1)} m³ (${totalLoads} Fuhren)`,
+        `Quelle: ${storageName}`,
         `Felder: ${selectedFields.map(f => f.name).join(', ')}`
     ];
 
@@ -119,6 +147,30 @@ export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, setti
                         <Layers size={20} className="mb-1"/> Mist
                     </button>
                 </div>
+            </div>
+
+            {/* Storage Selector */}
+            <div>
+                <label className="block text-sm font-bold text-slate-500 uppercase mb-1">Lager / Quelle (für Abzug)</label>
+                {availableStorages.length > 0 ? (
+                    <div className="relative">
+                        <Database className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                        <select 
+                            value={selectedStorageId} 
+                            onChange={(e) => setSelectedStorageId(e.target.value)}
+                            className="w-full pl-10 pr-4 py-3 border border-slate-300 rounded-lg font-bold bg-white focus:ring-2 focus:ring-amber-500 outline-none appearance-none"
+                        >
+                            {availableStorages.map(s => (
+                                <option key={s.id} value={s.id}>{s.name} ({s.currentLevel.toFixed(0)} m³)</option>
+                            ))}
+                        </select>
+                        <ChevronLeft className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 rotate-270 pointer-events-none" size={16} />
+                    </div>
+                ) : (
+                    <div className="p-3 bg-slate-50 border border-slate-200 rounded-lg text-sm text-slate-500 italic">
+                        Kein passendes Lager gefunden. Erfassung erfolgt ohne Lagerabzug.
+                    </div>
+                )}
             </div>
 
             <div>
