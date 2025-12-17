@@ -769,10 +769,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
               {/* Summary Card */}
               <div className="absolute inset-0 flex flex-col items-center justify-center p-4 z-50">
-                  <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300">
+                  <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-300 flex flex-col max-h-[90vh]">
                       
-                      {/* Success Header */}
-                      <div className="bg-green-600 p-8 text-center text-white relative overflow-hidden">
+                      {/* Success Header (Fixed) */}
+                      <div className="bg-green-600 p-8 text-center text-white relative overflow-hidden shrink-0">
                           <div className="absolute inset-0 bg-gradient-to-br from-green-500 to-green-700 opacity-90"></div>
                           <div className="relative z-10 flex flex-col items-center">
                               <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mb-4 shadow-inner backdrop-blur-sm">
@@ -783,8 +783,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                           </div>
                       </div>
 
-                      {/* Stats Grid */}
-                      <div className="p-6">
+                      {/* Stats Grid (Scrollable) */}
+                      <div className="p-6 overflow-y-auto">
                           <div className="grid grid-cols-2 gap-4 mb-6">
                               {/* Duration */}
                               <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
