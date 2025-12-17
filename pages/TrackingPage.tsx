@@ -88,16 +88,16 @@ const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot'
 };
 
 const iconPaths = {
+  house: '<path d="M3 21h18M5 21V7l8-5 8 5v14"/>',
   droplet: '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>',
   layers: '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>',
-  house: '<path d="M3 21h18M5 21V7l8-5 8 5v14"/>',
 };
 
 const farmIcon = createCustomIcon('#2563eb', iconPaths.house);
 const slurryIcon = createCustomIcon('#78350f', iconPaths.droplet); 
 const manureIcon = createCustomIcon('#d97706', iconPaths.layers); 
 
-// --- MAP CONTROLLER MIT TESTMODUS KAMPATIBILITÄT ---
+// --- MAP CONTROLLER ---
 const MapController = ({ center, zoom, follow, onZoomChange, onMapClick, isTestMode }: { 
     center: [number, number] | null, 
     zoom: number, 
@@ -149,18 +149,15 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [profile, setProfile] = useState<FarmProfile | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
-  // Simulation & Testmodus
   const [isTestMode, setIsTestMode] = useState(false);
   const isTestModeRef = useRef(false);
 
-  // Refs für Live Tracking (wichtig für Callbacks ohne Stale-State)
   const settingsRef = useRef<AppSettings>(DEFAULT_SETTINGS);
   const fieldsRef = useRef<Field[]>([]);
   const storagesRef = useRef<StorageLocation[]>([]);
   const activityTypeRef = useRef<ActivityType>(ActivityType.FERTILIZATION);
   const subTypeRef = useRef<string>('Gülle');
 
-  // Tracking Core
   const [trackingState, setTrackingState] = useState<TrackingState>('IDLE');
   const trackingStateRef = useRef<TrackingState>('IDLE');
 
@@ -304,7 +301,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
     if (wakeLockRef.current) { try { await wakeLockRef.current.release(); wakeLockRef.current = null; } catch(e) { console.error(e); } }
   };
 
-  // --- SIMULATIONS-LOGIK (TESTMODUS) ---
+  // --- SIMULATIONS-LOGIK (FIX FÜR GESCHWINDIGKEIT) ---
   const handleSimulatedClick = (lat: number, lng: number) => {
       if (!isTestMode || trackingState === 'IDLE') return;
 
@@ -321,7 +318,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
       const radius = settingsRef.current.storageRadius || 20;
       const isNearStorage = storagesRef.current.some(s => getDistance({ lat, lng }, s.geo) < radius);
-      const simSpeedMs = isNearStorage ? 0.15 : 2.25;
+
+      // FIX: 2.1 m/s = 7.56 km/h (Sicher unter dem 8 km/h Limit für das Ausbringen)
+      // Bei Lagern: 0.15 m/s = 0.54 km/h (Sicher Stillstand für Timer)
+      const simSpeedMs = isNearStorage ? 0.15 : 2.1;
 
       const mockPos = {
           coords: {
@@ -366,12 +366,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       }
 
       if (trackingStateRef.current !== 'LOADING') {
-          const inField = fieldsRef.current.some(f => isPointInPolygon(point, f.boundary));
+          const inField = fieldsRef.current.find(f => isPointInPolygon(point, f.boundary));
           let isSpreading = false;
           
           if (inField) {
              const minSpeed = settingsRef.current.minSpeed || 2.0;
-             const maxSpeed = settingsRef.current.maxSpeed || 15.0;
+             const maxSpeed = settingsRef.current.maxSpeed || 8.0; // Hier greift die 8 km/h Grenze
              if (speedKmh >= minSpeed && speedKmh <= maxSpeed) {
                  isSpreading = true;
              }
@@ -439,7 +439,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   const startDetectionCountdown = (storage: StorageLocation) => {
       if (countdownIntervalRef.current) return; 
-      // FIX: Testmodus Timer auf 10s, sonst 60s
+      // FIX: Test-Timer auf 10s
       setDetectionCountdown(isTestModeRef.current ? 10 : 60); 
       
       countdownIntervalRef.current = setInterval(() => {
@@ -514,7 +514,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       const uiDist: Record<string, number> = {};
       Object.keys(loadDistribution).forEach(fid => uiDist[fid] = parseFloat(loadDistribution[fid].toFixed(1)));
       setDistributionOverrides(uiDist);
-      setShowSaveModal(true); // Dies wird jetzt sofort angezeigt dank veränderter Render-Logik
+      setShowSaveModal(true); // ERSCHEINT JETZT SOFORT
   };
 
   const handleFinish = async () => {
@@ -653,7 +653,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       return segments;
   }, [trackPoints, storages]);
 
-  // --- RENDER LOGIK ---
   if (summaryRecord) {
       return (
           <div className="h-full relative bg-slate-900 overflow-hidden">
@@ -704,7 +703,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       return <TillageForm fields={fields} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
   }
 
-  // FIX: Wir rendern das Tracking-Layout auch im IDLE-Status, wenn gerade die Zusammenfassung (showSaveModal) offen ist.
   if (trackingState === 'IDLE' && !showSaveModal) {
       return (
           <div className="h-full bg-white flex flex-col overflow-y-auto">
@@ -738,11 +736,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   return (
     <div className="h-full relative bg-slate-900 flex flex-col">
-        <style>{`
-            @keyframes fillUp { 0% { height: 0%; opacity: 0.8; } 50% { height: 60%; opacity: 1; } 100% { height: 100%; opacity: 0.8; } }
-            .animate-fill { animation: fillUp 2s infinite ease-in-out; }
-        `}</style>
-
         <div className="flex-1 relative z-0">
             <MapContainer center={[currentLat, currentLng]} zoom={currentZoom} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                 <TileLayer attribution='&copy; OSM' url={mapStyle === 'standard' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} />
