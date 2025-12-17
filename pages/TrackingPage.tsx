@@ -332,13 +332,21 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           heading = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
       }
 
+      // ERKENNUNG: Ist der Klick in der Nähe eines Lagers?
+      const radius = settingsRef.current.storageRadius || 20;
+      const isNearStorage = storagesRef.current.some(s => getDistance({ lat, lng }, s.geo) < radius);
+
+      // Falls nahe am Lager: Geschwindigkeit auf fast 0 setzen (simulierter Stillstand)
+      // Sonst: normale Reisegeschwindigkeit von ~8 km/h
+      const simSpeedMs = isNearStorage ? 0.2 : 2.22;
+
       // Erzeuge ein gefälschtes Geolocation-Objekt
       const mockPos = {
           coords: {
               latitude: lat,
               longitude: lng,
               accuracy: 5,
-              speed: 2.22, // Fixierte 8 km/h für die Erkennung
+              speed: simSpeedMs, 
               heading: heading,
               altitude: null,
               altitudeAccuracy: null
@@ -441,7 +449,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           
           setStorageWarning(null);
 
-          // Lade-Erkennung bei Stillstand
+          // Lade-Erkennung bei Stillstand (hier greift simSpeedMs 0.2 im Testmodus)
           if (speedKmh < 3.0) {
               if (pendingStorageIdRef.current !== nearestLoc.id) {
                   pendingStorageIdRef.current = nearestLoc.id;
