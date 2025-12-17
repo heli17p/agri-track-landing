@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
-import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, Popup, useMapEvents } from 'react-leaflet';
+import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, useMapEvents } from 'react-leaflet';
 import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban, History, Calendar, CheckCircle, Home, Share2, Loader2, ZoomIn, ZoomOut, Plus, Minus, MousePointer2 } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { Field, StorageLocation, ActivityRecord, TrackPoint, ActivityType, FertilizerType, AppSettings, DEFAULT_SETTINGS, TillageType, HarvestType, FarmProfile } from '../types';
@@ -23,12 +23,11 @@ const MAP_COLORS = {
     }
 };
 
-// Paletten für verschiedene Lagerstandorte (wird beim Zeichnen der Spur verwendet)
 const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
 const MANURE_PALETTE = ['#d97706', '#ea580c', '#f59e0b', '#c2410c', '#fb923c'];
 
 const getStorageColor = (storageId: string | undefined, allStorages: StorageLocation[]) => {
-    if (!storageId) return '#3b82f6'; // Standard Blau für Transit ohne Lagerzuordnung
+    if (!storageId) return '#3b82f6';
     const storage = allStorages.find(s => s.id === storageId);
     if (!storage) return '#64748b'; 
 
@@ -171,23 +170,19 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [isPaused, setIsPaused] = useState(false);
   const [gpsLoading, setGpsLoading] = useState(false);
   
-  // Fuhren-Logik & Quell-Zuordnung
   const [loadCounts, setLoadCounts] = useState<Record<string, number>>({}); 
   const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   const currentLoadIndexRef = useRef<number>(1);
   const activeSourceIdRef = useRef<string | null>(null);
 
-  // Aktivitäts-Konfiguration
   const [activityType, setActivityType] = useState<ActivityType>(ActivityType.FERTILIZATION);
   const [subType, setSubType] = useState<string>('Gülle');
   
-  // Lagererkennung & Timer
   const pendingStorageIdRef = useRef<string | null>(null);
   const [detectionCountdown, setDetectionCountdown] = useState<number | null>(null);
   const activeLoadingStorageRef = useRef<StorageLocation | null>(null);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
 
-  // UI State
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
   const [followUser, setFollowUser] = useState(true);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -195,16 +190,13 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [summaryRecord, setSummaryRecord] = useState<ActivityRecord | null>(null);
   const [currentZoom, setCurrentZoom] = useState(18);
   
-  // Ergebnis-Bearbeitung
   const [distributionOverrides, setDistributionOverrides] = useState<Record<string, number>>({});
   const [detectedFieldsList, setDetectedFieldsList] = useState<Field[]>([]);
   
-  // Visuelle Optionen
   const [vehicleIconType, setVehicleIconType] = useState<VehicleIconType>('tractor');
   const [historyMode, setHistoryMode] = useState<HistoryMode>('OFF');
   const [allHistoryTracks, setAllHistoryTracks] = useState<ActivityRecord[]>([]);
 
-  // Fix: Added useMemo for visibleHistoryTracks
   const visibleHistoryTracks = useMemo(() => {
     if (historyMode === 'OFF') return [];
     const currentYear = new Date().getFullYear();
@@ -218,15 +210,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
     });
   }, [allHistoryTracks, historyMode]);
   
-  // Manuelle Formulare
   const [manualMode, setManualMode] = useState<ActivityType | null>(null);
 
-  // System-Referenzen
   const watchIdRef = useRef<number | null>(null);
   const countdownIntervalRef = useRef<any>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
-  // Synchronisation der Referenzen (für Callbacks)
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { fieldsRef.current = fields; }, [fields]);
   useEffect(() => { storagesRef.current = storages; }, [storages]);
@@ -294,7 +283,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setSummaryRecord(null);
       setGpsLoading(false);
 
-      // Start watcher regardless, handleNewPosition will filter based on isTestModeRef
       watchIdRef.current = navigator.geolocation.watchPosition(
           (pos) => handleNewPosition(pos, false),
           (err) => console.error("GPS Error", err),
@@ -320,7 +308,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const handleSimulatedClick = (lat: number, lng: number) => {
       if (!isTestMode || trackingState === 'IDLE') return;
 
-      // Berechne Winkel vom letzten Punkt zum neuen Klick
       let heading = 0;
       if (currentLocation) {
           const lat1 = currentLocation.coords.latitude * Math.PI / 180;
@@ -332,15 +319,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           heading = (Math.atan2(y, x) * 180 / Math.PI + 360) % 360;
       }
 
-      // ERKENNUNG: Ist der Klick in der Nähe eines Lagers?
       const radius = settingsRef.current.storageRadius || 20;
       const isNearStorage = storagesRef.current.some(s => getDistance({ lat, lng }, s.geo) < radius);
+      const simSpeedMs = isNearStorage ? 0.15 : 2.25;
 
-      // Falls nahe am Lager: Geschwindigkeit auf fast 0 setzen (simulierter Stillstand)
-      // Sonst: normale Reisegeschwindigkeit von ~8 km/h
-      const simSpeedMs = isNearStorage ? 0.2 : 2.22;
-
-      // Erzeuge ein gefälschtes Geolocation-Objekt
       const mockPos = {
           coords: {
               latitude: lat,
@@ -359,14 +341,13 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   // --- POSITION VERARBEITUNG ---
   const handleNewPosition = (pos: GeolocationPosition, isMock: boolean = false) => {
-      // CRITICAL: Ignore real GPS signals if we are currently in test mode
       if (!isMock && isTestModeRef.current) return;
 
       setCurrentLocation(pos);
       if (isPaused || trackingStateRef.current === 'IDLE') return;
 
       const { latitude, longitude, speed, accuracy } = pos.coords;
-      if (accuracy > 35 && !isMock) return; // Signal-Qualitätscheck
+      if (accuracy > 35 && !isMock) return; 
 
       const speedKmh = (speed || 0) * 3.6;
       
@@ -380,12 +361,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           loadIndex: currentLoadIndexRef.current 
       };
 
-      // 1. Lager-Check (nur bei Düngung)
       if (activityTypeRef.current === ActivityType.FERTILIZATION) {
           checkStorageProximity(point, speedKmh);
       }
 
-      // 2. Tätigkeits-Check (Befindet man sich im Feld?)
       if (trackingStateRef.current !== 'LOADING') {
           const inField = fieldsRef.current.some(f => isPointInPolygon(point, f.boundary));
           let isSpreading = false;
@@ -402,7 +381,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           if (newState !== trackingStateRef.current) setTrackingState(newState);
           point.isSpreading = isSpreading;
       } else {
-          // Im Lademodus zeichnen wir keine Arbeitsspur
           point.isSpreading = false;
           if (activeLoadingStorageRef.current) {
               point.storageId = activeLoadingStorageRef.current.id;
@@ -417,7 +395,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       const currentState = trackingStateRef.current;
       const currentSubType = subTypeRef.current;
 
-      // Wenn wir bereits laden, prüfen ob wir uns entfernen
       if (currentState === 'LOADING' && activeLoadingStorageRef.current) {
           const dist = getDistance(point, activeLoadingStorageRef.current.geo);
           if (dist > radius && speedKmh > 2.0) {
@@ -429,7 +406,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           return; 
       }
 
-      // Suche nahestes Lager
       let nearest: StorageLocation | null = null;
       let minDist = Infinity;
       storagesRef.current.forEach(s => {
@@ -439,8 +415,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
       if (nearest && minDist <= radius) {
           const nearestLoc = nearest as StorageLocation;
-          
-          // Warnung wenn falscher Typ (Gülle vs Mist)
           if (nearestLoc.type !== currentSubType) {
               setStorageWarning(`${nearestLoc.name} ist ${nearestLoc.type}!`);
               cancelDetection(); 
@@ -449,7 +423,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           
           setStorageWarning(null);
 
-          // Lade-Erkennung bei Stillstand (hier greift simSpeedMs 0.2 im Testmodus)
           if (speedKmh < 3.0) {
               if (pendingStorageIdRef.current !== nearestLoc.id) {
                   pendingStorageIdRef.current = nearestLoc.id;
@@ -466,7 +439,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   const startDetectionCountdown = (storage: StorageLocation) => {
       if (countdownIntervalRef.current) return; 
-      setDetectionCountdown(60); // 60 Sekunden Timer
+      // FIX: Testmodus Timer auf 10s, sonst 60s
+      setDetectionCountdown(isTestModeRef.current ? 10 : 60); 
       
       countdownIntervalRef.current = setInterval(() => {
           setDetectionCountdown(prev => {
@@ -474,17 +448,11 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
               if (prev <= 1) {
                   clearInterval(countdownIntervalRef.current);
                   countdownIntervalRef.current = null;
-
                   setTrackingState('LOADING');
                   activeLoadingStorageRef.current = storage;
-                  
-                  // Erhöhe Fuhrenanzahl für dieses Lager
                   setLoadCounts(prev => ({ ...prev, [storage.id]: (prev[storage.id] || 0) + 1 }));
-                  
-                  // Starte neuen Index für die nächste Fuhre (wichtig für die Verteilung)
                   currentLoadIndexRef.current += 1;
                   setActiveSourceId(storage.id);
-                  
                   return null;
               }
               return prev - 1;
@@ -503,7 +471,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       stopGPS();
       setTrackingState('IDLE');
 
-      // 1. Gruppiere Punkte nach Fuhren-Index
       const pointsByLoad: Record<number, TrackPoint[]> = {};
       const loads = new Set<number>();
       trackPoints.forEach(p => {
@@ -516,7 +483,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       const loadDistribution: Record<string, number> = {}; 
       const fieldIds = new Set<string>();
 
-      // 2. Berechne Verteilung pro Fuhre
       loads.forEach(loadIdx => {
           const points = pointsByLoad[loadIdx];
           let loadTotalDist = 0;
@@ -545,34 +511,27 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       });
 
       setDetectedFieldsList(fields.filter(f => fieldIds.has(f.id)));
-      
       const uiDist: Record<string, number> = {};
       Object.keys(loadDistribution).forEach(fid => uiDist[fid] = parseFloat(loadDistribution[fid].toFixed(1)));
       setDistributionOverrides(uiDist);
-      
-      setShowSaveModal(true);
+      setShowSaveModal(true); // Dies wird jetzt sofort angezeigt dank veränderter Render-Logik
   };
 
   const handleFinish = async () => {
       const userTotalLoads = Object.values(distributionOverrides).reduce((a, b) => a + b, 0);
       let spreadDist = 0;
-      const fieldDistMap: Record<string, number> = {}; 
       const fieldIds = new Set<string>();
       detectedFieldsList.forEach(f => fieldIds.add(f.id));
 
       for (let i = 1; i < trackPoints.length; i++) {
           if (trackPoints[i].isSpreading) {
-              const dist = getDistance(trackPoints[i-1], trackPoints[i]);
-              spreadDist += dist;
-              const f = fields.find(field => isPointInPolygon(trackPoints[i], field.boundary));
-              if (f) fieldDistMap[f.id] = (fieldDistMap[f.id] || 0) + dist;
+              spreadDist += getDistance(trackPoints[i-1], trackPoints[i]);
           }
       }
 
       const width = activityType === ActivityType.FERTILIZATION 
           ? (subType === 'Mist' ? settings.manureSpreadWidth : settings.slurrySpreadWidth) 
           : 6; 
-      
       const areaHa = (spreadDist * (width || 12)) / 10000;
       
       let totalAmount = 0;
@@ -590,7 +549,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           totalAmount = parseFloat(areaHa.toFixed(2));
       }
 
-      // Erzeuge detaillierte Quellen-Mapping pro Feld
       const finalFieldDist: Record<string, number> = {};
       const finalDetailedSources: Record<string, Record<string, number>> = {};
 
@@ -661,7 +619,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       }
   };
 
-  // --- RENDERING HELPER ---
   const currentLat = currentLocation?.coords.latitude || profile?.addressGeo?.lat || 47.5;
   const currentLng = currentLocation?.coords.longitude || profile?.addressGeo?.lng || 14.5;
 
@@ -696,7 +653,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       return segments;
   }, [trackPoints, storages]);
 
-  // --- RENDER ---
+  // --- RENDER LOGIK ---
   if (summaryRecord) {
       return (
           <div className="h-full relative bg-slate-900 overflow-hidden">
@@ -747,7 +704,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       return <TillageForm fields={fields} settings={settings} onCancel={() => setManualMode(null)} onSave={handleManualSave} onNavigate={onNavigate} />;
   }
 
-  if (trackingState === 'IDLE') {
+  // FIX: Wir rendern das Tracking-Layout auch im IDLE-Status, wenn gerade die Zusammenfassung (showSaveModal) offen ist.
+  if (trackingState === 'IDLE' && !showSaveModal) {
       return (
           <div className="h-full bg-white flex flex-col overflow-y-auto">
               <div className="bg-slate-900 text-white p-6 shrink-0"><h1 className="text-2xl font-bold mb-2">Neue Tätigkeit</h1><p className="text-slate-400 text-sm">Wähle eine Methode um zu starten.</p></div>
@@ -810,7 +768,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
             
             <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400] items-end pointer-events-auto">
                  <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white/90 p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700"><Layers size={24}/></button>
-                 
                  <div className="flex flex-col space-y-1">
                     <button 
                         onClick={() => {
@@ -824,7 +781,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                     </button>
                     {isTestMode && <span className="bg-orange-500 text-white text-[8px] font-bold px-1 rounded-sm text-center shadow-sm">TEST</span>}
                  </div>
-                 
                  <button onClick={() => setHistoryMode(prev => prev === 'OFF' ? 'RECENT' : prev === 'RECENT' ? 'YEAR' : prev === 'YEAR' ? 'ALL_12M' : 'OFF')} className={`p-3 rounded-xl shadow-lg border ${historyMode !== 'OFF' ? 'bg-purple-600 text-white border-purple-700' : 'bg-white text-slate-700'}`}><History size={24}/></button>
             </div>
 
