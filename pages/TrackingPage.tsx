@@ -8,7 +8,7 @@ import { ManualFertilizationForm, HarvestForm, TillageForm } from '../components
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
-// --- COLOR CONSTANTS (Synced with MapPage) ---
+// --- COLOR CONSTANTS ---
 const MAP_COLORS = {
     standard: {
         acker: '#92400E',    // Amber-900
@@ -23,32 +23,15 @@ const MAP_COLORS = {
 };
 
 // --- COLOR PALETTES FOR STORAGE TYPES ---
-// Gülle: Earthy, liquid browns
-const SLURRY_PALETTE = [
-    '#451a03', // Amber 950 (Very Dark Brown)
-    '#78350f', // Amber 900 (Standard Brown)
-    '#92400e', // Amber 800
-    '#b45309', // Amber 700
-    '#854d0e', // Yellow 800 (Olive/Mud)
-];
-
-// Mist: Solid, warmer orange/reds
-const MANURE_PALETTE = [
-    '#d97706', // Amber 600 (Icon Color - Matches Marker)
-    '#ea580c', // Orange 600 (Standard Orange)
-    '#f59e0b', // Amber 500 (Yellow-Orange)
-    '#c2410c', // Orange 700 (Rust)
-    '#fb923c', // Orange 400 (Light Orange)
-];
+const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
+const MANURE_PALETTE = ['#d97706', '#ea580c', '#f59e0b', '#c2410c', '#fb923c'];
 
 const getStorageColor = (storageId: string | undefined, allStorages: StorageLocation[]) => {
     if (!storageId) return '#3b82f6'; // Default Blue (No Storage / Transit)
     
     const storage = allStorages.find(s => s.id === storageId);
-    if (!storage) return '#64748b'; // Slate (Unknown)
+    if (!storage) return '#64748b'; 
 
-    // Find all storages of the SAME type to determine index
-    // Sort by ID to ensure colors stay consistent across reloads
     const sameTypeStorages = allStorages
         .filter(s => s.type === storage.type)
         .sort((a, b) => a.id.localeCompare(b.id));
@@ -64,7 +47,6 @@ const getStorageColor = (storageId: string | undefined, allStorages: StorageLoca
 };
 
 // --- ICONS & ASSETS ---
-
 const createCustomIcon = (color: string, svgPath: string) => {
   return L.divIcon({
     className: 'custom-pin-icon',
@@ -75,7 +57,6 @@ const createCustomIcon = (color: string, svgPath: string) => {
   });
 };
 
-// DYNAMIC CURSOR ICON GENERATOR
 const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot') => {
     const rotation = heading || 0;
     let content = '';
@@ -83,62 +64,28 @@ const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot'
     let anchor = [16, 16];
 
     if (type === 'tractor') {
-        // Detailed Tractor Top-Down View (Compact)
         content = `
             <svg viewBox="0 0 50 50" width="100%" height="100%" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.4));">
-                <!-- Rear Axle -->
                 <rect x="5" y="30" width="12" height="18" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1"/>
                 <rect x="33" y="30" width="12" height="18" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1"/>
-                
-                <!-- Front Axle -->
                 <rect x="8" y="5" width="8" height="10" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1"/>
                 <rect x="34" y="5" width="8" height="10" rx="2" fill="#1e293b" stroke="#0f172a" stroke-width="1"/>
-                
-                <!-- Body (Hood + Chassis) -->
                 <path d="M20 4 L30 4 L30 20 L34 22 L34 40 L16 40 L16 22 L20 20 Z" fill="#16a34a" stroke="#14532d" stroke-width="1"/>
-                
-                <!-- Cabin (Roof) -->
                 <rect x="14" y="24" width="22" height="14" rx="1" fill="#ffffff" fill-opacity="0.9" stroke="#94a3b8" stroke-width="2"/>
             </svg>
         `;
-        size = [36, 36]; // Smaller than 50
-        anchor = [18, 18];
+        size = [36, 36]; anchor = [18, 18];
     } else if (type === 'arrow') {
-        // Classic Navigation Arrow
-        content = `
-            <svg viewBox="0 0 24 24" width="100%" height="100%" fill="#2563eb" stroke="white" stroke-width="2" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.4));">
-                <path d="M12 2 L22 22 L12 18 L2 22 Z" />
-            </svg>
-        `;
-        size = [28, 28]; // Smaller than 40
-        anchor = [14, 14];
+        content = `<svg viewBox="0 0 24 24" width="100%" height="100%" fill="#2563eb" stroke="white" stroke-width="2" style="filter: drop-shadow(0px 2px 3px rgba(0,0,0,0.4));"><path d="M12 2 L22 22 L12 18 L2 22 Z" /></svg>`;
+        size = [28, 28]; anchor = [14, 14];
     } else {
-        // Dot (Simple)
-        content = `
-            <div style="width: 100%; height: 100%; background-color: #2563eb; border: 2px solid white; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.5);"></div>
-        `;
-        size = [16, 16]; // Very small
-        anchor = [8, 8];
+        content = `<div style="width: 100%; height: 100%; background-color: #2563eb; border: 2px solid white; border-radius: 50%; box-shadow: 0 1px 3px rgba(0,0,0,0.5);"></div>`;
+        size = [16, 16]; anchor = [8, 8];
     }
 
-    // Apply rotation wrapper
-    const html = `
-        <div style="
-            transform: rotate(${rotation}deg); 
-            transition: transform 0.3s ease; 
-            width: ${size[0]}px; height: ${size[1]}px; 
-            display: flex; align-items: center; justify-content: center;
-        ">
-            ${content}
-        </div>
-    `;
+    const html = `<div style="transform: rotate(${rotation}deg); transition: transform 0.3s ease; width: ${size[0]}px; height: ${size[1]}px; display: flex; align-items: center; justify-content: center;">${content}</div>`;
 
-    return L.divIcon({
-        className: 'vehicle-cursor',
-        html: html,
-        iconSize: [size[0], size[1]],
-        iconAnchor: [anchor[0], anchor[1]]
-    });
+    return L.divIcon({ className: 'vehicle-cursor', html: html, iconSize: [size[0], size[1]], iconAnchor: [anchor[0], anchor[1]] });
 };
 
 const iconPaths = {
@@ -151,32 +98,12 @@ const slurryIcon = createCustomIcon('#78350f', iconPaths.droplet);
 const manureIcon = createCustomIcon('#d97706', iconPaths.layers); 
 const farmIcon = createCustomIcon('#2563eb', iconPaths.house);
 
-// --- HELPERS ---
-
-// Map Controller to follow user position and handle Zoom events
+// Map Controller
 const MapController = ({ center, zoom, follow, onZoomChange }: { center: [number, number] | null, zoom: number, follow: boolean, onZoomChange: (z: number) => void }) => {
     const map = useMap();
-    
-    // Initial Center Effect
-    useEffect(() => {
-        if (center) {
-            map.setView(center, zoom, { animate: follow });
-        }
-    }, [center, zoom, follow, map]);
-    
-    // Fix map rendering issues on mount
-    useEffect(() => {
-        const t = setTimeout(() => map.invalidateSize(), 200);
-        return () => clearTimeout(t);
-    }, [map]);
-
-    // Capture manual zoom interactions
-    useMapEvents({
-        zoomend: () => {
-            onZoomChange(map.getZoom());
-        }
-    });
-    
+    useEffect(() => { if (center) map.setView(center, zoom, { animate: follow }); }, [center, zoom, follow, map]);
+    useEffect(() => { const t = setTimeout(() => map.invalidateSize(), 200); return () => clearTimeout(t); }, [map]);
+    useMapEvents({ zoomend: () => onZoomChange(map.getZoom()) });
     return null;
 };
 
@@ -192,15 +119,13 @@ interface Props {
 }
 
 export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTrackingStateChange }) => {
-  // --- STATE ---
-  
-  // Data
+  // State
   const [fields, setFields] = useState<Field[]>([]);
   const [storages, setStorages] = useState<StorageLocation[]>([]);
   const [profile, setProfile] = useState<FarmProfile | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
 
-  // REFS FOR LIVE TRACKING (Crucial for live updates without restarting GPS)
+  // Refs for Live Tracking
   const settingsRef = useRef<AppSettings>(DEFAULT_SETTINGS);
   const fieldsRef = useRef<Field[]>([]);
   const storagesRef = useRef<StorageLocation[]>([]);
@@ -209,7 +134,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   // Tracking Core
   const [trackingState, setTrackingState] = useState<TrackingState>('IDLE');
-  // State Ref to allow access inside GPS callback without closure staleness
   const trackingStateRef = useRef<TrackingState>('IDLE');
 
   const [currentLocation, setCurrentLocation] = useState<GeolocationPosition | null>(null);
@@ -220,23 +144,20 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   
   // Load Counting & Source Tracking
   const [loadCounts, setLoadCounts] = useState<Record<string, number>>({}); 
-  const [activeSourceId, setActiveSourceId] = useState<string | null>(null); // The storage we currently "have in the tank"
-  // Ref for activeSourceId to ensure track points get the correct color instantly
-  const activeSourceIdRef = useRef<string | null>(null);
+  const [activeSourceId, setActiveSourceId] = useState<string | null>(null);
   
-  // NEW: Per-Load Tracking Index (Starts at 1, increments on every load)
+  // NEW: Per-Load Tracking Logic (Starts at 1, increments on every load)
   const currentLoadIndexRef = useRef<number>(1);
+  const activeSourceIdRef = useRef<string | null>(null);
 
   // Activity Config
   const [activityType, setActivityType] = useState<ActivityType>(ActivityType.FERTILIZATION);
-  const [subType, setSubType] = useState<string>('Gülle'); // Gülle, Mist, Silage, etc.
+  const [subType, setSubType] = useState<string>('Gülle');
   
   // Storage Detection Logic
   const pendingStorageIdRef = useRef<string | null>(null);
   const [detectionCountdown, setDetectionCountdown] = useState<number | null>(null);
   const activeLoadingStorageRef = useRef<StorageLocation | null>(null);
-  
-  // WARNING STATE for Mismatched Storage Type
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
 
   // UI State
@@ -245,24 +166,28 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [showSaveModal, setShowSaveModal] = useState(false);
   const [saveNotes, setSaveNotes] = useState('');
   const [summaryRecord, setSummaryRecord] = useState<ActivityRecord | null>(null);
-  const [currentZoom, setCurrentZoom] = useState(18); // Default closer zoom
+  const [currentZoom, setCurrentZoom] = useState(18);
   
-  // Visual Preferences
+  // Finish & Edit State
+  const [distributionOverrides, setDistributionOverrides] = useState<Record<string, number>>({});
+  const [detectedFieldsList, setDetectedFieldsList] = useState<Field[]>([]);
+  
+  // Visuals
   const [vehicleIconType, setVehicleIconType] = useState<VehicleIconType>('tractor');
   
-  // Ghost Tracks (History)
+  // History
   const [historyMode, setHistoryMode] = useState<HistoryMode>('OFF');
   const [allHistoryTracks, setAllHistoryTracks] = useState<ActivityRecord[]>([]);
   
   // Manual Forms
   const [manualMode, setManualMode] = useState<ActivityType | null>(null);
 
-  // Refs for interval management
+  // System Refs
   const watchIdRef = useRef<number | null>(null);
   const countdownIntervalRef = useRef<any>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
 
-  // --- SYNC REFS WITH STATE ---
+  // Sync Refs
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { fieldsRef.current = fields; }, [fields]);
   useEffect(() => { storagesRef.current = storages; }, [storages]);
@@ -271,20 +196,15 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   useEffect(() => { trackingStateRef.current = trackingState; }, [trackingState]);
   useEffect(() => { activeSourceIdRef.current = activeSourceId; }, [activeSourceId]);
 
-  // --- INIT ---
+  // Init
   useEffect(() => {
     const init = async () => {
-        const loadedFields = await dbService.getFields();
-        setFields(loadedFields);
-        const loadedStorages = await dbService.getStorageLocations();
-        setStorages(loadedStorages);
-        const loadedSettings = await dbService.getSettings();
-        setSettings(loadedSettings);
-        
+        setFields(await dbService.getFields());
+        setStorages(await dbService.getStorageLocations());
+        setSettings(await dbService.getSettings());
         const profiles = await dbService.getFarmProfile();
         if (profiles.length > 0) setProfile(profiles[0]);
 
-        // Preload ALL History (Sorted DESC)
         const allActs = await dbService.getActivities();
         const pastTracks = allActs
             .filter(a => a.type === ActivityType.FERTILIZATION && a.trackPoints && a.trackPoints.length > 0)
@@ -292,135 +212,72 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         setAllHistoryTracks(pastTracks);
     };
     init();
-
-    // Listen to Database Changes (Updates Settings & Data Live while tracking)
-    const unsub = dbService.onDatabaseChange(() => {
-        init(); // Re-fetch data to keep Refs up to date
-    });
-
-    return () => {
-        stopGPS();
-        releaseWakeLock();
-        unsub();
-    };
+    const unsub = dbService.onDatabaseChange(init);
+    return () => { stopGPS(); releaseWakeLock(); unsub(); };
   }, []);
 
-  // Update parent about tracking state
-  useEffect(() => {
-      onTrackingStateChange(trackingState !== 'IDLE');
-  }, [trackingState, onTrackingStateChange]);
+  useEffect(() => { onTrackingStateChange(trackingState !== 'IDLE'); }, [trackingState, onTrackingStateChange]);
 
-  // Re-acquire wake lock if visibility changes
   useEffect(() => {
     const handleVisibilityChange = () => {
-      if (document.visibilityState === 'visible' && trackingState !== 'IDLE') {
-        requestWakeLock();
-      }
+      if (document.visibilityState === 'visible' && trackingState !== 'IDLE') requestWakeLock();
     };
     document.addEventListener('visibilitychange', handleVisibilityChange);
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [trackingState]);
 
-  // Prevent accidental close/refresh when tracking
   useEffect(() => {
       const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-          if (trackingState !== 'IDLE') {
-              e.preventDefault();
-              e.returnValue = ''; // Required for Chrome to show prompt
-          }
+          if (trackingState !== 'IDLE') { e.preventDefault(); e.returnValue = ''; }
       };
       window.addEventListener('beforeunload', handleBeforeUnload);
       return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, [trackingState]);
 
-  // --- WAKE LOCK ---
   const requestWakeLock = async () => {
-    try {
-      if ('wakeLock' in navigator) {
-        wakeLockRef.current = await navigator.wakeLock.request('screen');
-      }
-    } catch (err) {
-      console.error('Wake Lock Error:', err);
-    }
+    try { if ('wakeLock' in navigator) wakeLockRef.current = await navigator.wakeLock.request('screen'); } catch (err) { console.error(err); }
   };
 
   const releaseWakeLock = async () => {
-    if (wakeLockRef.current) {
-      try {
-        await wakeLockRef.current.release();
-        wakeLockRef.current = null;
-      } catch(e) { console.error(e); }
-    }
+    if (wakeLockRef.current) { try { await wakeLockRef.current.release(); wakeLockRef.current = null; } catch(e) { console.error(e); } }
   };
 
-  // --- GPS LOGIC ---
+  // --- GPS ---
   const startGPS = async () => {
-      if (!navigator.geolocation) {
-          alert("GPS wird von diesem Browser nicht unterstützt.");
-          return;
-      }
-
+      if (!navigator.geolocation) { alert("GPS wird nicht unterstützt."); return; }
       setGpsLoading(true);
-
-      // --- 1. SYSTEM-CHECK (FORCE ON) ---
-      // Wir fordern eine "einmalige" Position mit Hoher Genauigkeit an.
-      // Das zwingt Android/iOS, den Nutzer zu fragen, ob GPS eingeschaltet werden soll, falls es aus ist.
       try {
           await new Promise((resolve, reject) => {
-              navigator.geolocation.getCurrentPosition(
-                  resolve, 
-                  (err) => reject(err), 
-                  { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 } // 8s Timeout für den "Anschalt"-Dialog
-              );
+              navigator.geolocation.getCurrentPosition(resolve, (err) => reject(err), { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
           });
       } catch (error: any) {
           setGpsLoading(false);
-          // Fehlerbehandlung für den User
-          if (error.code === 1) { // PERMISSION_DENIED
-              alert("GPS Zugriff verweigert! Bitte erlaube den Standortzugriff in den Browsereinstellungen.");
-          } else if (error.code === 2) { // POSITION_UNAVAILABLE
-              alert("Kein GPS Signal! Bitte stelle sicher, dass GPS/Standort am Handy eingeschaltet ist.");
-          } else if (error.code === 3) { // TIMEOUT
-              alert("GPS reagiert nicht. Bitte prüfe, ob du Empfang hast und GPS aktiviert ist.");
-          } else {
-              alert("GPS Fehler: " + error.message);
-          }
-          return; // Abbruch
+          alert("GPS Fehler: " + (error.message || "Kein Signal"));
+          return;
       }
 
-      // --- 2. START TRACKING ---
-      // Wenn wir hier sind, ist GPS an und wir haben Permissions.
       await requestWakeLock();
-
       setStartTime(Date.now());
       setTrackingState('TRANSIT');
       setTrackPoints([]);
       setLoadCounts({});
       setActiveSourceId(null);
+      currentLoadIndexRef.current = 1; // Start with Load 1
       setIsPaused(false);
       setStorageWarning(null);
-      setSummaryRecord(null); // Clear previous summary
+      setSummaryRecord(null);
       setGpsLoading(false);
-      
-      // Reset Load Index
-      currentLoadIndexRef.current = 1;
 
       watchIdRef.current = navigator.geolocation.watchPosition(
           (pos) => handleNewPosition(pos),
-          (err) => console.error("GPS Watch Error", err),
+          (err) => console.error("GPS Error", err),
           { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
       );
   };
 
   const stopGPS = () => {
-      if (watchIdRef.current !== null) {
-          navigator.geolocation.clearWatch(watchIdRef.current);
-          watchIdRef.current = null;
-      }
-      if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
-      }
+      if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
+      if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); countdownIntervalRef.current = null; }
       releaseWakeLock();
   };
 
@@ -428,15 +285,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setCurrentLocation(pos);
       if (isPaused) return;
 
-      // USE REFS TO GET LATEST DATA INSIDE CALLBACK (Crucial for background/tab switching)
       const currentFields = fieldsRef.current;
       const currentSettings = settingsRef.current;
       const currentActivity = activityTypeRef.current;
       const currentState = trackingStateRef.current;
 
       const { latitude, longitude, speed, accuracy } = pos.coords;
-      
-      // Filter poor accuracy points (> 30m)
       if (accuracy > 30) return;
 
       const speedKmh = (speed || 0) * 3.6;
@@ -447,48 +301,28 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           timestamp: pos.timestamp,
           speed: speedKmh,
           isSpreading: false,
-          storageId: activeSourceIdRef.current || undefined, // Use Ref to tag with LIVE active source
-          loadIndex: currentLoadIndexRef.current // NEW: Tag point with current load ID
+          storageId: activeSourceIdRef.current || undefined,
+          loadIndex: currentLoadIndexRef.current // KEY: Tag point with current load ID
       };
 
-      // 1. STORAGE DETECTION (Only if Fertilization)
-      if (currentActivity === ActivityType.FERTILIZATION) {
-          checkStorageProximity(point, speedKmh);
-      }
+      if (currentActivity === ActivityType.FERTILIZATION) checkStorageProximity(point, speedKmh);
 
-      // 2. STATE MACHINE
       if (currentState !== 'LOADING') {
-          // Detect Spreading vs Transit based on Speed & Field Proximity
-          
-          // Check if inside any field
           const inField = currentFields.some(f => isPointInPolygon(point, f.boundary));
-          
-          // Determine if spreading
           let isSpreading = false;
-          
           if (currentActivity === ActivityType.FERTILIZATION || currentActivity === ActivityType.TILLAGE) {
              const minSpeed = currentSettings.minSpeed || 2.0;
              const maxSpeed = currentSettings.maxSpeed || 15.0;
-             
-             if (inField && speedKmh >= minSpeed && speedKmh <= maxSpeed) {
-                 isSpreading = true;
-             }
+             if (inField && speedKmh >= minSpeed && speedKmh <= maxSpeed) isSpreading = true;
           }
-
           const newState = isSpreading ? 'SPREADING' : 'TRANSIT';
           if (newState !== currentState) setTrackingState(newState);
-          
           point.isSpreading = isSpreading;
       } else {
-          // If LOADING, we are not spreading
           point.isSpreading = false;
-          // While loading, track definitely belongs to this storage
-          if (activeLoadingStorageRef.current) {
-              point.storageId = activeLoadingStorageRef.current.id;
-          }
+          if (activeLoadingStorageRef.current) point.storageId = activeLoadingStorageRef.current.id;
       }
 
-      // Add to track
       setTrackPoints(prev => [...prev, point]);
   };
 
@@ -499,107 +333,67 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       const currentSubType = subTypeRef.current;
       const currentState = trackingStateRef.current;
 
-      // Only for Fertilization
       if (currentActivity !== ActivityType.FERTILIZATION) return;
-
-      const detectionRadius = currentSettings.storageRadius || 20; // meters (Live Value)
+      const detectionRadius = currentSettings.storageRadius || 20;
       
-      // Special handling if already LOADING
       if (currentState === 'LOADING' && activeLoadingStorageRef.current) {
           const distToActive = getDistance(point, activeLoadingStorageRef.current.geo);
-          
-          // EXIT CONDITION: Left Radius AND Speed > 2 km/h
           if (distToActive > detectionRadius && speedKmh > 2.0) {
-              // Clearly left the area and driving
               setTrackingState('TRANSIT');
               activeLoadingStorageRef.current = null;
               cancelDetection();
               setStorageWarning(null);
               return;
           }
-          
-          // Otherwise stay LOADING (even if slightly outside radius but stopped, e.g. waiting)
           return; 
       }
 
-      // Find nearest storage
       let nearest: StorageLocation | null = null;
       let minDist = Infinity;
-
       currentStorages.forEach(s => {
           const dist = getDistance(point, s.geo);
-          if (dist < minDist) {
-              minDist = dist;
-              nearest = s;
-          }
+          if (dist < minDist) { minDist = dist; nearest = s; }
       });
 
       if (nearest && minDist <= detectionRadius) {
           const nearestLoc = nearest as StorageLocation;
-          
-          // 1. CHECK TYPE MISMATCH (New Requirement)
-          // `subType` matches `FertilizerType` values ('Gülle' or 'Mist')
           if (nearestLoc.type !== currentSubType) {
-              setStorageWarning(`${nearestLoc.name} erkannt, aber falscher Typ (${nearestLoc.type})!`);
-              cancelDetection(); // Ensure we don't accidentally start counting
-              return; 
+              setStorageWarning(`${nearestLoc.name} falscher Typ!`);
+              cancelDetection(); return; 
           }
-          
-          // If types match, clear warning
           setStorageWarning(null);
-
-          // We are close to a VALID storage
           const nearestId = nearestLoc.id;
 
-          // If we are moving very slowly or stopped, start countdown to switch to LOADING
           if (speedKmh < 3.0) {
               if (pendingStorageIdRef.current !== nearestId) {
-                  // New detection
                   pendingStorageIdRef.current = nearestId;
                   startDetectionCountdown(nearestLoc);
               }
-          } else {
-              // Moving too fast, cancel countdown
-              cancelDetection();
-          }
-      } else {
-          // Left proximity
-          cancelDetection();
-          setStorageWarning(null); // Clear warning if we leave the area
-      }
+          } else { cancelDetection(); }
+      } else { cancelDetection(); setStorageWarning(null); }
   };
 
   const startDetectionCountdown = (storage: StorageLocation) => {
-      // Use REF to check if running, avoiding stale state issues in GPS callback
       if (countdownIntervalRef.current) return; 
-      
-      setDetectionCountdown(60); // 60 seconds (USER REQUEST)
-      
+      setDetectionCountdown(60); 
       if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
       
       countdownIntervalRef.current = setInterval(() => {
           setDetectionCountdown(prev => {
               if (prev === null) return null;
               if (prev <= 1) {
-                  // Countdown finished -> Switch to LOADING
                   if (countdownIntervalRef.current) clearInterval(countdownIntervalRef.current);
-                  countdownIntervalRef.current = null; // Important: Clear ref so new detection can start later
+                  countdownIntervalRef.current = null;
 
                   setTrackingState('LOADING');
                   activeLoadingStorageRef.current = storage;
                   
-                  // Increment Load Counter SPECIFIC for this storage
-                  setLoadCounts(prevCounts => ({
-                      ...prevCounts,
-                      [storage.id]: (prevCounts[storage.id] || 0) + 1
-                  }));
+                  setLoadCounts(prevCounts => ({ ...prevCounts, [storage.id]: (prevCounts[storage.id] || 0) + 1 }));
                   
                   // NEW: Increment Load Index (start next load session)
                   currentLoadIndexRef.current += 1;
                   
-                  // SET CURRENT SOURCE -> All future track points will have this color
                   setActiveSourceId(storage.id);
-                  
                   return null;
               }
               return prev - 1;
@@ -610,60 +404,90 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const cancelDetection = () => {
       pendingStorageIdRef.current = null;
       setDetectionCountdown(null);
-      if (countdownIntervalRef.current) {
-          clearInterval(countdownIntervalRef.current);
-          countdownIntervalRef.current = null;
-      }
+      if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); countdownIntervalRef.current = null; }
   };
 
-  // --- SAVE ---
-  const handleFinish = async () => {
+  // --- STOP & CALCULATE ---
+  const stopTrackingAndCalculate = () => {
       stopGPS();
-      setTrackingState('IDLE'); // This hides the UI overlays immediately
-      
-      // Calculate Stats
-      const totalDist = trackPoints.length > 1 ? trackPoints.reduce((acc, p, i) => {
-          if (i === 0) return 0;
-          return acc + getDistance(trackPoints[i-1], p);
-      }, 0) : 0; // meters
+      setTrackingState('IDLE');
 
-      // Calculate Area & SMART DISTRIBUTION
-      let spreadDist = 0;
-      let lastSpreadPoint: TrackPoint | null = null;
+      // 1. Group points by loadIndex
+      const pointsByLoad: Record<number, TrackPoint[]> = {};
+      const loads = new Set<number>();
       
-      // Smart Distribution Tracking
-      // Stores meters driven active per field ID
-      const fieldDistMap: Record<string, number> = {}; 
-      // Stores meters driven active per field ID per Storage Source
-      const fieldSourceMap: Record<string, Record<string, number>> = {};
-      
-      // Simple Set for compatibility with old logic
+      trackPoints.forEach(p => {
+          const idx = p.loadIndex || 1; // Default to 1 if missing
+          if (!pointsByLoad[idx]) pointsByLoad[idx] = [];
+          pointsByLoad[idx].push(p);
+          loads.add(idx);
+      });
+
+      const loadDistribution: Record<string, number> = {}; 
       const fieldIds = new Set<string>();
+
+      // 2. Iterate each load separately to perform precise distribution
+      loads.forEach(loadIdx => {
+          const points = pointsByLoad[loadIdx];
+          let loadTotalDist = 0;
+          const loadFieldDist: Record<string, number> = {};
+          
+          // Calculate distance driven *spreading* for THIS specific load
+          for (let i = 1; i < points.length; i++) {
+              const p1 = points[i-1];
+              const p2 = points[i];
+              if (p2.isSpreading) {
+                  const d = getDistance(p1, p2);
+                  loadTotalDist += d;
+                  const f = fields.find(field => isPointInPolygon(p2, field.boundary));
+                  if (f) {
+                      loadFieldDist[f.id] = (loadFieldDist[f.id] || 0) + d;
+                      fieldIds.add(f.id);
+                  }
+              }
+          }
+
+          // Distribute 1.0 Load (or partial load) across fields based on distance share in *this* trip
+          if (loadTotalDist > 0) {
+              Object.keys(loadFieldDist).forEach(fid => {
+                  const ratio = loadFieldDist[fid] / loadTotalDist;
+                  // Add proportion of 1 load to the total count for this field
+                  loadDistribution[fid] = (loadDistribution[fid] || 0) + ratio;
+              });
+          }
+      });
+
+      const relevantFields = fields.filter(f => fieldIds.has(f.id));
+      setDetectedFieldsList(relevantFields);
+
+      // Round for UI
+      const uiDistribution: Record<string, number> = {};
+      Object.keys(loadDistribution).forEach(fid => {
+          uiDistribution[fid] = parseFloat(loadDistribution[fid].toFixed(1));
+      });
+
+      setDistributionOverrides(uiDistribution);
+      setShowSaveModal(true);
+  };
+
+  const handleFinish = async () => {
+      // Sum user overrides for total
+      const userTotalLoads = Object.values(distributionOverrides).reduce((a, b) => a + b, 0);
+      
+      // Generic Area calc (Total distance)
+      let spreadDist = 0;
+      const fieldDistMap: Record<string, number> = {}; 
+      const fieldIds = new Set<string>();
+      detectedFieldsList.forEach(f => fieldIds.add(f.id));
 
       for (let i = 1; i < trackPoints.length; i++) {
           const p1 = trackPoints[i-1];
           const p2 = trackPoints[i];
-
           if (p2.isSpreading) {
               const dist = getDistance(p1, p2);
               spreadDist += dist;
-              
-              const storageId = p2.storageId || 'unknown';
-
-              // Check which field this segment belongs to
-              // We check p2 (current point)
               const f = fields.find(field => isPointInPolygon(p2, field.boundary));
-              
-              if (f) {
-                  fieldIds.add(f.id);
-                  
-                  // Add to total field distance
-                  fieldDistMap[f.id] = (fieldDistMap[f.id] || 0) + dist;
-                  
-                  // Add to detailed source map
-                  if (!fieldSourceMap[f.id]) fieldSourceMap[f.id] = {};
-                  fieldSourceMap[f.id][storageId] = (fieldSourceMap[f.id][storageId] || 0) + dist;
-              }
+              if (f) fieldDistMap[f.id] = (fieldDistMap[f.id] || 0) + dist;
           }
       }
 
@@ -673,26 +497,27 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       
       const calculatedAreaHa = (spreadDist * (width || 12)) / 10000;
       
-      // --- Calculate Loads & Distribution ---
-      let totalLoadCount = 0;
-      const storageDistribution: Record<string, number> = {};
       let totalAmount = 0;
+      const storageDistribution: Record<string, number> = {};
       
       if (activityType === ActivityType.FERTILIZATION) {
-          // Use current settings for final calculation
           const loadSize = subType === 'Mist' ? settings.manureLoadSize : settings.slurryLoadSize;
-          
-          Object.entries(loadCounts).forEach(([storageId, count]) => {
-              totalLoadCount += count;
-              const vol = count * loadSize;
-              storageDistribution[storageId] = vol;
-              totalAmount += vol;
-          });
+          if (userTotalLoads > 0) {
+              totalAmount = userTotalLoads * loadSize;
+              // Distribute storage usage proportionally to total recorded loads
+              const recordedTotalLoads = Object.values(loadCounts).reduce((a, b) => a + b, 0);
+              Object.entries(loadCounts).forEach(([storageId, count]) => {
+                  let share = 0;
+                  if (recordedTotalLoads > 0) share = count / recordedTotalLoads;
+                  else share = 1 / Object.keys(loadCounts).length;
+                  if (!isFinite(share)) share = 1;
+                  storageDistribution[storageId] = parseFloat((share * totalAmount).toFixed(2));
+              });
+          } else { totalAmount = 0; }
       } else if (activityType === ActivityType.TILLAGE) {
           totalAmount = parseFloat(calculatedAreaHa.toFixed(2));
       }
 
-      // --- CALCULATE SMART DISTRIBUTION (PROPORTIONS) ---
       const finalFieldDistribution: Record<string, number> = {};
       const finalDetailedSources: Record<string, Record<string, number>> = {};
 
@@ -712,11 +537,15 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
               uniqueLoads.add(idx);
           });
 
-          const fieldLoadShares: Record<string, number> = {};
-
           // 2. Iterate each load separately
           uniqueLoads.forEach(loadIdx => {
               const points = pointsByLoad[loadIdx];
+              
+              // FIND SOURCE FOR THIS LOAD
+              // We check points in this load. If any point has a storageID, we assume the whole load came from there.
+              // Logic: The first point with a storage ID wins.
+              const loadStorageId = points.find(p => p.storageId)?.storageId || 'unknown';
+
               let distInLoad = 0;
               const distPerFieldInLoad: Record<string, number> = {};
               
@@ -733,34 +562,20 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
               // Distribute 1 Load (or partial load logic if needed) based on distance share in THIS trip
               if (distInLoad > 0) {
                   Object.keys(distPerFieldInLoad).forEach(fId => {
-                      const share = distPerFieldInLoad[fId] / distInLoad;
-                      // Add proportion of 1 load to the total count for this field
-                      fieldLoadShares[fId] = (fieldLoadShares[fId] || 0) + share;
+                      const share = distPerFieldInLoad[fId] / distInLoad; // 0.0 to 1.0 of the load
+                      
+                      // Calculate concrete volume for this part of the load
+                      const volumePart = parseFloat((share * loadSize).toFixed(2));
+                      
+                      // Add to total field distribution
+                      finalFieldDistribution[fId] = (finalFieldDistribution[fId] || 0) + volumePart;
+
+                      // Add to detailed source tracking
+                      if (!finalDetailedSources[fId]) finalDetailedSources[fId] = {};
+                      finalDetailedSources[fId][loadStorageId] = (finalDetailedSources[fId][loadStorageId] || 0) + volumePart;
                   });
               }
           });
-
-          // 3. Convert Load Shares to Amount
-          Object.keys(fieldLoadShares).forEach(fId => {
-               // Load Share * Load Size = Amount
-               const amount = parseFloat((fieldLoadShares[fId] * loadSize).toFixed(2));
-               if (amount > 0) finalFieldDistribution[fId] = amount;
-          });
-
-          // 4. Fill detailed sources (Approximate based on total mix for now, or use load-specific source ID)
-          if (fieldSourceMap) {
-               Object.keys(fieldSourceMap).forEach(fId => {
-                   if (finalFieldDistribution[fId]) {
-                       finalDetailedSources[fId] = {};
-                       // Normalize detailed sources to match the new per-load total
-                       const fieldTotalDist = Object.values(fieldSourceMap[fId]).reduce((a,b) => a+b, 0);
-                       Object.keys(fieldSourceMap[fId]).forEach(sId => {
-                           const ratio = fieldSourceMap[fId][sId] / fieldTotalDist;
-                           finalDetailedSources[fId][sId] = parseFloat((finalFieldDistribution[fId] * ratio).toFixed(2));
-                       });
-                   }
-               });
-          }
 
       } else {
           // Fallback for Tillage/Harvest (Area/Count based on Distance)
@@ -773,9 +588,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           }
       }
 
-      // Calculate Duration
-      const durationMs = startTime ? Date.now() - startTime : 0;
-      const durationMin = Math.round(durationMs / 60000);
+      const durationMin = Math.round((startTime ? Date.now() - startTime : 0) / 60000);
 
       const record: ActivityRecord = {
           id: generateId(),
@@ -784,33 +597,22 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           fertilizerType: activityType === ActivityType.FERTILIZATION ? (subType === 'Mist' ? FertilizerType.MANURE : FertilizerType.SLURRY) : undefined,
           tillageType: activityType === ActivityType.TILLAGE ? (subType as TillageType) : undefined,
           fieldIds: Array.from(fieldIds),
-          amount: totalAmount, 
+          amount: parseFloat(totalAmount.toFixed(2)), 
           unit: activityType === ActivityType.HARVEST ? 'Stk' : (activityType === ActivityType.TILLAGE ? 'ha' : 'm³'),
           trackPoints: trackPoints,
-          loadCount: totalLoadCount,
+          loadCount: userTotalLoads, 
           storageDistribution: activityType === ActivityType.FERTILIZATION ? storageDistribution : undefined,
           notes: saveNotes + `\nAutomatisch erfasst. Dauer: ${durationMin} min`,
           year: new Date().getFullYear(),
-          fieldDistribution: finalFieldDistribution, // Smart Per-Load Distribution
-          detailedFieldSources: finalDetailedSources // Precise Source Tracking
+          fieldDistribution: finalFieldDistribution,
+          detailedFieldSources: finalDetailedSources
       };
       
-      // Special override for Tillage (Area based)
-      if (activityType === ActivityType.TILLAGE) {
-          // If Tillage, the "Amount" IS the area.
-          // Distribution is already Area based above.
-      }
-
       await dbService.saveActivity(record);
-      
-      // Update Storage Levels (Deduct amounts)
       if (activityType === ActivityType.FERTILIZATION && Object.keys(storageDistribution).length > 0) {
           await dbService.updateStorageLevels(storageDistribution);
       }
-
       dbService.syncActivities();
-
-      // Show Summary instead of Alert
       setSummaryRecord(record); 
       setShowSaveModal(false);
   };
@@ -1444,15 +1246,39 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         <div className="bg-white border-t border-slate-200 p-4 pb-safe z-10 shrink-0">
              {showSaveModal ? (
                  <div className="space-y-4 animate-in slide-in-from-bottom-10">
-                     <div className="flex justify-between items-center">
+                     <div className="flex justify-between items-center border-b border-slate-100 pb-3">
                          <h3 className="font-bold text-lg text-slate-800">Aufzeichnung beenden</h3>
                          <button 
                             onClick={handleDiscard}
                             className="text-xs bg-red-50 text-red-600 px-3 py-1.5 rounded-lg border border-red-100 font-bold flex items-center hover:bg-red-100"
                          >
-                             <Trash2 size={14} className="mr-1"/> Verwerfen / Löschen
+                             <Trash2 size={14} className="mr-1"/> Verwerfen
                          </button>
                      </div>
+                     
+                     {/* LOAD DISTRIBUTION EDITOR (Dynamic per-load logic) */}
+                     {activityType === ActivityType.FERTILIZATION && detectedFieldsList.length > 0 && (
+                         <div className="bg-blue-50 border border-blue-100 rounded-xl p-3">
+                             <h4 className="text-xs font-bold text-blue-800 uppercase mb-2">Verteilung anpassen (Fuhren)</h4>
+                             <div className="space-y-2">
+                                 {detectedFieldsList.map(f => {
+                                     const currentLoad = distributionOverrides[f.id] || 0;
+                                     return (
+                                         <div key={f.id} className="flex justify-between items-center bg-white p-2 rounded-lg border border-slate-200 shadow-sm">
+                                             <div className="flex flex-col truncate mr-2"><span className="text-sm font-bold text-slate-700 truncate">{f.name}</span><span className="text-[10px] text-slate-400">{f.areaHa.toFixed(2)} ha</span></div>
+                                             <div className="flex items-center space-x-2 shrink-0">
+                                                 <button onClick={() => setDistributionOverrides(prev => ({ ...prev, [f.id]: Math.max(0, (prev[f.id] || 0) - 0.5) }))} className="w-8 h-8 flex items-center justify-center bg-slate-100 rounded-full font-bold text-slate-600 hover:bg-slate-200 active:scale-95"><Minus size={16}/></button>
+                                                 <div className="w-12 text-center font-mono font-bold text-lg">{currentLoad.toFixed(1)}</div>
+                                                 <button onClick={() => setDistributionOverrides(prev => ({ ...prev, [f.id]: (prev[f.id] || 0) + 0.5 }))} className="w-8 h-8 flex items-center justify-center bg-slate-100 rounded-full font-bold text-slate-600 hover:bg-slate-200 active:scale-95"><Plus size={16}/></button>
+                                             </div>
+                                         </div>
+                                     );
+                                 })}
+                             </div>
+                             <div className="mt-2 text-right text-xs font-bold text-blue-700">Gesamt: {Object.values(distributionOverrides).reduce((a,b) => a+b, 0).toFixed(1)} Fuhren</div>
+                         </div>
+                     )}
+
                      <div>
                          <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Notizen</label>
                          <textarea 
@@ -1516,7 +1342,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
                      {/* Action Button */}
                      <button 
-                        onClick={() => setShowSaveModal(true)}
+                        onClick={stopTrackingAndCalculate}
                         className="w-16 h-16 bg-red-600 text-white rounded-2xl flex items-center justify-center shadow-lg hover:bg-red-700 active:scale-95 transition-all"
                      >
                          <Square size={24} fill="currentColor" />
