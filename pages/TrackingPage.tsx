@@ -493,6 +493,24 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
       const detectionRadius = currentSettings.storageRadius || 20; // meters (Live Value)
       
+      // Special handling if already LOADING
+      if (currentState === 'LOADING' && activeLoadingStorageRef.current) {
+          const distToActive = getDistance(point, activeLoadingStorageRef.current.geo);
+          
+          // EXIT CONDITION: Left Radius AND Speed > 2 km/h
+          if (distToActive > detectionRadius && speedKmh > 2.0) {
+              // Clearly left the area and driving
+              setTrackingState('TRANSIT');
+              activeLoadingStorageRef.current = null;
+              cancelDetection();
+              setStorageWarning(null);
+              return;
+          }
+          
+          // Otherwise stay LOADING (even if slightly outside radius but stopped, e.g. waiting)
+          return; 
+      }
+
       // Find nearest storage
       let nearest: StorageLocation | null = null;
       let minDist = Infinity;
@@ -504,27 +522,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
               nearest = s;
           }
       });
-
-      // Special handling if already LOADING
-      // We want to be "sticky" -> Don't leave loading state just because speed > 3
-      // Only leave if distance > radius + hysteresis
-      if (currentState === 'LOADING') {
-          if (nearest && minDist <= (detectionRadius + 10)) {
-              // Still close enough, refresh ref if needed, but stay LOADING
-              if (activeLoadingStorageRef.current?.id !== nearest.id) {
-                  // Switched storage without leaving? Unlikely but update.
-                  activeLoadingStorageRef.current = nearest;
-              }
-              return; 
-          } else {
-              // Clearly left the area
-              setTrackingState('TRANSIT');
-              activeLoadingStorageRef.current = null;
-              cancelDetection();
-              setStorageWarning(null);
-              return;
-          }
-      }
 
       if (nearest && minDist <= detectionRadius) {
           const nearestLoc = nearest as StorageLocation;
@@ -694,12 +691,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                       Object.keys(fieldSourceMap[fId]).forEach(sId => {
                           const sDist = fieldSourceMap[fId][sId];
                           // Amount from Source X to Field Y = (Distance with Source X in Field Y / Total Spreading Distance) * Total Amount
-                          // Note: This logic assumes a constant flow rate regardless of source or speed (simplified)
-                          // Refined Logic: Share of this field's total allocated amount
-                          const sourceRatioInField = sDist / fieldDistMap[fId];
-                          const amountFromSource = allocatedAmount * sourceRatioInField;
-                          
-                          finalDetailedSources[fId][sId] = parseFloat(amountFromSource.toFixed(2));
+                          // This normalizes everything to the total amount.
+                          const amountShare = (sDist / spreadDist) * totalAmount;
+                          finalDetailedSources[fId][sId] = parseFloat(amountShare.toFixed(2));
                       });
                   }
               }
@@ -1189,7 +1183,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                                     positions={segment.points}
                                     pathOptions={{ 
                                         color: 'white', 
-                                        weight: 2,
+                                        weight: 2, 
                                         opacity: 0.5,
                                         dashArray: '5, 10'
                                     }}
