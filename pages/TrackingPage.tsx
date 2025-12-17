@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { MapContainer, TileLayer, Marker, Circle, Polyline, Polygon, useMap, Popup } from 'react-leaflet';
-import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban, History, Calendar, CheckCircle, Home, Share2 } from 'lucide-react';
+import { Play, Pause, Square, Navigation, RotateCcw, Save, LocateFixed, ChevronDown, Minimize2, Settings, Layers, AlertTriangle, Truck, Wheat, Hammer, FileText, Trash2, Droplets, Database, Clock, ArrowRight, Ban, History, Calendar, CheckCircle, Home, Share2, Loader2 } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { Field, StorageLocation, ActivityRecord, TrackPoint, ActivityType, FertilizerType, AppSettings, DEFAULT_SETTINGS, TillageType, HarvestType, FarmProfile } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
@@ -167,6 +167,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [trackPoints, setTrackPoints] = useState<TrackPoint[]>([]);
   const [startTime, setStartTime] = useState<number | null>(null);
   const [isPaused, setIsPaused] = useState(false);
+  const [gpsLoading, setGpsLoading] = useState(false);
   
   // Load Counting & Source Tracking
   const [loadCounts, setLoadCounts] = useState<Record<string, number>>({}); 
@@ -273,6 +274,36 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           return;
       }
 
+      setGpsLoading(true);
+
+      // --- 1. SYSTEM-CHECK (FORCE ON) ---
+      // Wir fordern eine "einmalige" Position mit Hoher Genauigkeit an.
+      // Das zwingt Android/iOS, den Nutzer zu fragen, ob GPS eingeschaltet werden soll, falls es aus ist.
+      try {
+          await new Promise((resolve, reject) => {
+              navigator.geolocation.getCurrentPosition(
+                  resolve, 
+                  (err) => reject(err), 
+                  { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 } // 8s Timeout für den "Anschalt"-Dialog
+              );
+          });
+      } catch (error: any) {
+          setGpsLoading(false);
+          // Fehlerbehandlung für den User
+          if (error.code === 1) { // PERMISSION_DENIED
+              alert("GPS Zugriff verweigert! Bitte erlaube den Standortzugriff in den Browsereinstellungen.");
+          } else if (error.code === 2) { // POSITION_UNAVAILABLE
+              alert("Kein GPS Signal! Bitte stelle sicher, dass GPS/Standort am Handy eingeschaltet ist.");
+          } else if (error.code === 3) { // TIMEOUT
+              alert("GPS reagiert nicht. Bitte prüfe, ob du Empfang hast und GPS aktiviert ist.");
+          } else {
+              alert("GPS Fehler: " + error.message);
+          }
+          return; // Abbruch
+      }
+
+      // --- 2. START TRACKING ---
+      // Wenn wir hier sind, ist GPS an und wir haben Permissions.
       await requestWakeLock();
 
       setStartTime(Date.now());
@@ -283,10 +314,11 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setIsPaused(false);
       setStorageWarning(null);
       setSummaryRecord(null); // Clear previous summary
+      setGpsLoading(false);
 
       watchIdRef.current = navigator.geolocation.watchPosition(
           (pos) => handleNewPosition(pos),
-          (err) => console.error("GPS Error", err),
+          (err) => console.error("GPS Watch Error", err),
           { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 }
       );
   };
@@ -930,9 +962,11 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
                           <button 
                             onClick={startGPS}
-                            className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-900/20 flex items-center justify-center text-lg active:scale-[0.98] transition-all"
+                            disabled={gpsLoading}
+                            className="w-full py-4 bg-green-600 hover:bg-green-700 text-white rounded-xl font-bold shadow-lg shadow-green-900/20 flex items-center justify-center text-lg active:scale-[0.98] transition-all disabled:opacity-50 disabled:cursor-wait"
                           >
-                              <Play size={24} className="mr-2 fill-white"/> Start
+                              {gpsLoading ? <Loader2 className="animate-spin mr-2"/> : <Play size={24} className="mr-2 fill-white"/>} 
+                              {gpsLoading ? 'Suche GPS...' : 'Start'}
                           </button>
                       </div>
                   </div>
