@@ -843,6 +843,20 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       return field.type === 'Acker' ? colors.acker : colors.grunland;
   };
 
+  // NEW: Calculate active spread width for visualization based on settings
+  const currentSpreadWidth = useMemo(() => {
+      if (activityType === ActivityType.FERTILIZATION) {
+          // Check Subtype (Gülle vs Mist)
+          if (subType === 'Mist') {
+              return settings.manureSpreadWidth || 10;
+          } else {
+              return settings.slurrySpreadWidth || 12;
+          }
+      }
+      // Fallback for Tillage/Harvest (generic spreadWidth)
+      return settings.spreadWidth || 12;
+  }, [activityType, subType, settings]);
+
   // --- MAP SEGMENTS FOR COLORING ---
   const trackSegments = useMemo(() => {
       if (trackPoints.length < 2) return [];
@@ -1157,7 +1171,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
                 {/* Live Track - DYNAMIC SEGMENTS */}
                 {trackSegments.map((segment, index) => {
-                    const weight = segment.isSpreading ? 6 : 4;
+                    // USE CALCULATED WIDTH BASED ON SETTINGS
+                    const weight = segment.isSpreading ? Math.max(4, currentSpreadWidth) : 4;
                     const opacity = segment.isSpreading ? 0.9 : 0.6;
                     
                     return (
