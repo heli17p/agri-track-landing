@@ -1171,8 +1171,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
                 {/* Live Track - DYNAMIC SEGMENTS */}
                 {trackSegments.map((segment, index) => {
-                    // USE CALCULATED WIDTH BASED ON SETTINGS
-                    const weight = segment.isSpreading ? Math.max(4, currentSpreadWidth) : 4;
+                    // USE CALCULATED WIDTH BASED ON SETTINGS (1m = 2px)
+                    const weight = segment.isSpreading ? (currentSpreadWidth * 2) : 4;
                     const opacity = segment.isSpreading ? 0.9 : 0.6;
                     
                     return (
@@ -1183,7 +1183,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                                 pathOptions={{ 
                                     color: segment.color, 
                                     weight: weight,
-                                    opacity: opacity
+                                    opacity: opacity,
+                                    lineCap: 'butt'
                                 }}
                             />
                             {/* Dash overlay for spreading */}

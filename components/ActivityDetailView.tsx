@@ -195,9 +195,16 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
   const totalVolume = editedActivity.amount || 0;
   const averagePerHa = totalArea > 0 ? (totalVolume / totalArea).toFixed(1) : "0";
   
-  // Calculate pixel weight based on spreadWidth setting (approximate visualization)
-  // Default to 15px if no setting, or spreadWidth * 2 for visibility
-  const trackWeight = settings.spreadWidth ? settings.spreadWidth * 2 : 12;
+  // Calculate pixel weight based on specific spreadWidth setting (2px per meter)
+  let widthMeters = settings.spreadWidth || 12;
+  if (activity.type === ActivityType.FERTILIZATION) {
+      if (activity.fertilizerType === FertilizerType.MANURE) {
+          widthMeters = settings.manureSpreadWidth || 10;
+      } else {
+          widthMeters = settings.slurrySpreadWidth || 12;
+      }
+  }
+  const trackWeight = widthMeters * 2;
 
   // --- Track Segmentation Logic (Detailed Segmentation by ID) ---
   const trackSegments = useMemo(() => {
