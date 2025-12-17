@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { X, Calendar, Save, Trash2, AlertTriangle, Truck, Wheat, MapPin, FileText, Hammer, PlusCircle, CheckSquare, Square, Check, Layers, Droplets, ShoppingBag, Database } from 'lucide-react';
 import { ActivityRecord, ActivityType, Field, FertilizerType, HarvestType, TillageType, StorageLocation, TrackPoint, AppSettings, DEFAULT_SETTINGS } from '../types';
@@ -42,13 +41,45 @@ const FitBoundsToTrack = ({ points, fields }: { points: TrackPoint[], fields: Fi
     return null;
 };
 
-// --- Color Helper (Shared) ---
-// UPDATED: Removed Blue (#1d4ed8) to avoid conflict with Transit Track (#3b82f6)
-const STORAGE_COLORS = ['#ea580c', '#be185d', '#7e22ce', '#374151', '#0f766e', '#15803d'];
-const getStorageColor = (storageId: string | undefined) => {
-    if (!storageId) return '#78350f'; // Default Brown (Legacy)
-    const sum = storageId.split('').reduce((a,c) => a + c.charCodeAt(0), 0);
-    return STORAGE_COLORS[sum % STORAGE_COLORS.length];
+// --- COLOR PALETTES FOR STORAGE TYPES (Synced with TrackingPage) ---
+// Gülle: Earthy, liquid browns
+const SLURRY_PALETTE = [
+    '#451a03', // Amber 950 (Very Dark Brown)
+    '#78350f', // Amber 900 (Standard Brown)
+    '#92400e', // Amber 800
+    '#b45309', // Amber 700
+    '#854d0e', // Yellow 800 (Olive/Mud)
+];
+
+// Mist: Solid, warmer orange/reds
+const MANURE_PALETTE = [
+    '#d97706', // Amber 600 (Icon Color - Matches Marker)
+    '#ea580c', // Orange 600 (Standard Orange)
+    '#f59e0b', // Amber 500 (Yellow-Orange)
+    '#c2410c', // Orange 700 (Rust)
+    '#fb923c', // Orange 400 (Light Orange)
+];
+
+const getStorageColor = (storageId: string | undefined, allStorages: StorageLocation[]) => {
+    if (!storageId) return '#3b82f6'; // Default Blue (No Storage / Transit)
+    
+    const storage = allStorages.find(s => s.id === storageId);
+    if (!storage) return '#64748b'; // Slate (Unknown)
+
+    // Find all storages of the SAME type to determine index
+    // Sort by ID to ensure colors stay consistent across reloads
+    const sameTypeStorages = allStorages
+        .filter(s => s.type === storage.type)
+        .sort((a, b) => a.id.localeCompare(b.id));
+    
+    const index = sameTypeStorages.findIndex(s => s.id === storageId);
+    const safeIndex = index >= 0 ? index : 0;
+
+    if (storage.type === FertilizerType.SLURRY) {
+        return SLURRY_PALETTE[safeIndex % SLURRY_PALETTE.length];
+    } else {
+        return MANURE_PALETTE[safeIndex % MANURE_PALETTE.length];
+    }
 };
 
 export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdate }) => {
@@ -272,29 +303,29 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
                         {/* Track Segments Visualization */}
                         {trackSegments.map((segment, index) => {
                              if (segment.isSpreading) {
-                                 const color = getStorageColor(segment.storageId);
+                                 const color = getStorageColor(segment.storageId, allStorages);
                                  // SPREADING STYLE (Double Line)
                                  return (
                                      <React.Fragment key={`seg-${index}`}>
                                          {/* Wide colored base */}
                                          <Polyline 
                                             positions={segment.points} 
-                                            pathOptions={{ 
+                                            {...{ pathOptions: { 
                                                 color: color, 
                                                 weight: trackWeight,
                                                 opacity: 0.8,
                                                 lineCap: 'butt'
-                                            }}
+                                            }} as any}
                                          />
                                          {/* Thin white center */}
                                          <Polyline 
                                             positions={segment.points} 
-                                            pathOptions={{ 
+                                            {...{ pathOptions: { 
                                                 color: 'white', 
                                                 weight: 2, 
                                                 dashArray: '5, 5',
                                                 opacity: 0.9
-                                            }}
+                                            }} as any}
                                          />
                                      </React.Fragment>
                                  );
@@ -304,11 +335,11 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
                                      <Polyline 
                                         key={`seg-${index}`}
                                         positions={segment.points} 
-                                        pathOptions={{ 
+                                        {...{ pathOptions: { 
                                             color: '#3b82f6', // Blue
                                             weight: 3,
                                             opacity: 0.7 
-                                        }}
+                                        }} as any}
                                      />
                                  );
                              }
@@ -333,7 +364,7 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
                             {uniqueTrackStorageIds.map(id => {
                                 const storage = allStorages.find(s => s.id === id);
                                 const name = storage ? storage.name : 'Unbekannt';
-                                const color = getStorageColor(id);
+                                const color = getStorageColor(id, allStorages);
                                 return (
                                     <div key={id} className="flex items-center text-[10px] text-slate-700 mb-0.5 last:mb-0">
                                         <span className="w-2.5 h-2.5 rounded-full mr-1.5 shrink-0" style={{backgroundColor: color, border: '1px solid white'}}></span>
@@ -432,7 +463,7 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
                     <div className="divide-y divide-slate-100">
                         {Object.entries(activity.storageDistribution).map(([sId, amount]) => {
                              const store = allStorages.find(s => s.id === sId);
-                             const color = getStorageColor(sId);
+                             const color = getStorageColor(sId, allStorages);
                              
                              // Calculate specific loads for this storage
                              let loadStr = "";
@@ -445,7 +476,7 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
                                  <div key={sId} className="flex justify-between py-2 text-sm">
                                      <div className="flex items-center text-slate-600">
                                          {/* Legend dot match map */}
-                                         <span className="w-2 h-2 rounded-full mr-2" style={{backgroundColor: color}}></span>
+                                         <span className="w-2.5 h-2.5 rounded-full mr-2" style={{backgroundColor: color}}></span>
                                          <span>{store ? store.name : 'Unbekanntes Lager'}</span>
                                      </div>
                                      <span className="font-bold text-slate-800">{amount} {activity.unit}{loadStr}</span>
@@ -566,7 +597,7 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
                                             <div className="mt-1 ml-2 pl-2 border-l-2 border-slate-100 text-[10px] text-slate-500">
                                                 {Object.entries(activity.detailedFieldSources[f.id]).map(([sId, amount]) => {
                                                     const store = allStorages.find(s => s.id === sId);
-                                                    const color = getStorageColor(sId);
+                                                    const color = getStorageColor(sId, allStorages);
                                                     return (
                                                         <div key={sId} className="flex items-center space-x-1">
                                                             <span className="w-1.5 h-1.5 rounded-full" style={{backgroundColor: color}}></span>
@@ -621,4 +652,3 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
     </div>
   );
 };
-
