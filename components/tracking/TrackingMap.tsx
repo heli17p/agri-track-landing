@@ -27,6 +27,8 @@ const MapController = ({ center, zoom, follow, onZoomChange, isTestMode }: { cen
   const map = useMap();
   
   useEffect(() => { 
+    // Im Testmodus folgen wir dem Traktor nicht automatisch per SetView, 
+    // da das Ziehen sonst die Karte verschiebt und die Geste abbricht.
     if (center && !isTestMode) {
       map.setView(center, zoom, { animate: follow }); 
     }
@@ -98,15 +100,15 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
       }
     },
     dragend() {
-      // Kleiner Delay, damit der letzte State-Update durchlaufen kann, 
-      // bevor React die Position wieder übernimmt
+      // Kleiner Timeout, um sicherzustellen, dass das letzte Event verarbeitet wurde, 
+      // bevor React wieder die Positions-Kontrolle übernimmt.
       setTimeout(() => {
         isDraggingInternal.current = false;
-      }, 100);
+      }, 50);
     }
   }), [isTestMode, onSimulateClick]);
 
-  // Synchronisation von Außen NUR, wenn wir NICHT gerade ziehen
+  // Externe Synchronisation: Nur aktualisieren, wenn der User NICHT gerade zieht.
   useEffect(() => {
     if (markerRef.current && currentLocation && !isDraggingInternal.current) {
       markerRef.current.setLatLng([currentLocation.coords.latitude, currentLocation.coords.longitude]);

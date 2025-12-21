@@ -43,6 +43,7 @@ export const useTracking = (
   
   const lastSimPosRef = useRef<GeoPoint | null>(null);
   const lastSimTimeRef = useRef<number>(0);
+  const speedBufferRef = useRef<number[]>([]);
 
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { fieldsRef.current = fields; }, [fields]);
@@ -138,7 +139,6 @@ export const useTracking = (
   }, [cancelDetection, startDetectionCountdown]);
 
   const handleNewPosition = useCallback((pos: GeolocationPosition) => {
-    // State nur aktualisieren, wenn wir wirklich eine Änderung haben
     setCurrentLocation(pos);
     if (isPaused) return;
 
@@ -176,11 +176,13 @@ export const useTracking = (
       if (activeLoadingStorageRef.current) point.storageId = activeLoadingStorageRef.current.id;
     }
 
-    // Filter für Simulation: Nur Punkte speichern, die eine gewisse Distanz haben, um die DB nicht zu fluten
+    // Performance & Glättung: Nur Punkte speichern, die eine Mindestdistanz haben (besonders wichtig im Testmodus)
     setTrackPoints(prev => {
-        if (isTestModeRef.current && prev.length > 0) {
+        if (prev.length > 0) {
             const last = prev[prev.length - 1];
-            if (getDistance(last, point) < 0.5) return prev; // Zu kleine Bewegungen ignorieren
+            const dist = getDistance(last, point);
+            const minMove = isTestModeRef.current ? 1.0 : 0.5; // Im Testmodus etwas grober, um DB zu schonen
+            if (dist < minMove) return prev;
         }
         return [...prev, point];
     });
@@ -195,9 +197,18 @@ export const useTracking = (
       const dist = getDistance({ lat, lng }, lastSimPosRef.current);
       const timeSec = (now - lastSimTimeRef.current) / 1000;
       
-      if (timeSec > 0) {
-        speedMs = dist / timeSec;
-        if (speedMs > 25) speedMs = 25; // Deckelung auf 90 km/h
+      // Geschwindigkeits-Glättung: Wir begrenzen die Beschleunigung
+      if (timeSec > 0.05) { // Nur bei nennenswerten Zeitabständen rechnen
+        const instantSpeed = dist / timeSec;
+        
+        // Rolling Average Buffer (3 Werte)
+        speedBufferRef.current.push(instantSpeed);
+        if (speedBufferRef.current.length > 3) speedBufferRef.current.shift();
+        
+        speedMs = speedBufferRef.current.reduce((a, b) => a + b, 0) / speedBufferRef.current.length;
+        
+        // Deckelung auf realistische 40 km/h im Testmodus für bessere Kontrolle
+        if (speedMs > 11.1) speedMs = 11.1; 
       }
 
       const dy = lat - lastSimPosRef.current.lat;
@@ -238,6 +249,7 @@ export const useTracking = (
       setStorageWarning(null);
       setIsTestMode(false);
       currentLoadIndexRef.current = 1;
+      speedBufferRef.current = [];
       
       lastSimPosRef.current = { lat: initPos.coords.latitude, lng: initPos.coords.longitude };
       lastSimTimeRef.current = Date.now();
@@ -256,6 +268,7 @@ export const useTracking = (
     setIsTestMode(false);
     lastSimPosRef.current = null;
     lastSimTimeRef.current = 0;
+    speedBufferRef.current = [];
   }, [releaseWakeLock]);
 
   const handleFinishLogic = async (notes: string) => {
