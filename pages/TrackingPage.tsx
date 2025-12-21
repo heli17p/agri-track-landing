@@ -109,8 +109,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   return (
     <div className="h-full flex flex-col bg-slate-900 overflow-hidden">
-      {/* Karten-Bereich (flexibel) */}
-      <div className="flex-1 relative overflow-hidden">
+      {/* Karten-Bereich: Nimmt den RESTLICHEN Platz ein (flex-1) */}
+      <div className="flex-1 relative overflow-hidden z-0">
         <TrackingMap 
           points={tracker.trackPoints} 
           fields={fields} 
@@ -127,38 +127,52 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           activeSourceId={tracker.activeSourceId} 
           subType={subType} 
         />
-        
-        {/* Absolute Overlays werden hier gerendert */}
-        <TrackingUI 
-          trackingState={tracker.trackingState} 
-          startTime={tracker.startTime} 
-          loadCounts={tracker.loadCounts} 
-          currentLocation={tracker.currentLocation} 
-          detectionCountdown={tracker.detectionCountdown} 
-          storageWarning={tracker.storageWarning} 
-          onStopClick={() => setShowSaveConfirm(true)} 
-          onDiscardClick={() => { if(confirm("Möchtest du die aktuelle Aufzeichnung wirklich löschen?")) tracker.handleDiscard(); }}
-          onMapStyleToggle={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} 
-          onFollowToggle={() => setFollowUser(!followUser)} 
-          onHistoryToggle={() => setHistoryMode(prev => prev === 'OFF' ? 'ON' : 'OFF')} 
-          followUser={followUser} 
-          historyMode={historyMode} 
-          subType={subType} 
-          activityType={activityType} 
-        />
       </div>
 
-      {/* Speicher-Dialog (Modal) */}
+      {/* UI & Controls: Werden UNTER der Karte platziert */}
+      <TrackingUI 
+        trackingState={tracker.trackingState} 
+        startTime={tracker.startTime} 
+        loadCounts={tracker.loadCounts} 
+        currentLocation={tracker.currentLocation} 
+        detectionCountdown={tracker.detectionCountdown} 
+        storageWarning={tracker.storageWarning} 
+        onStopClick={() => setShowSaveConfirm(true)} 
+        onDiscardClick={() => { if(confirm("Möchtest du die aktuelle Aufzeichnung wirklich löschen?")) tracker.handleDiscard(); }}
+        onMapStyleToggle={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} 
+        onFollowToggle={() => setFollowUser(!followUser)} 
+        onHistoryToggle={() => setHistoryMode(prev => prev === 'OFF' ? 'ON' : 'OFF')} 
+        followUser={followUser} 
+        historyMode={historyMode} 
+        subType={subType} 
+        activityType={activityType} 
+      />
+
+      {/* Speicher-Dialog (Überlagernd) */}
       {showSaveConfirm && (
-        <div className="absolute inset-0 z-[500] bg-black/50 backdrop-blur p-4 flex items-end pb-24">
-          <div className="bg-white w-full rounded-2xl p-6 shadow-2xl space-y-4 animate-in slide-in-from-bottom-10">
-            <h3 className="font-bold text-lg">Aufzeichnung beenden</h3>
-            <textarea value={saveNotes} onChange={e => setSaveNotes(e.target.value)} className="w-full border border-slate-200 p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-green-500" placeholder="Notizen (optional)..." rows={2} />
-            <div className="flex space-x-3">
-              <button onClick={() => setShowSaveConfirm(false)} className="flex-1 py-3 bg-slate-100 font-bold rounded-xl text-slate-600 active:scale-95 transition-all">Zurück</button>
-              <button onClick={handleFinish} className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg active:scale-95 transition-all">Speichern</button>
+        <div className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm p-4 flex items-end pb-24">
+          <div className="bg-white w-full rounded-3xl p-6 shadow-2xl space-y-4 animate-in slide-in-from-bottom-10">
+            <h3 className="font-black text-xl text-slate-800">Aufzeichnung beenden</h3>
+            <div className="space-y-1">
+                <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Notizen zum Einsatz</label>
+                <textarea 
+                    value={saveNotes} 
+                    onChange={e => setSaveNotes(e.target.value)} 
+                    className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm outline-none focus:border-green-500 transition-colors" 
+                    placeholder="Besonderheiten (optional)..." 
+                    rows={2} 
+                />
             </div>
-            <button onClick={() => { if(confirm("Wirklich alles verwerfen?")) { tracker.handleDiscard(); setShowSaveConfirm(false); } }} className="w-full text-red-500 font-bold text-xs py-2 uppercase tracking-widest">Aufzeichnung löschen</button>
+            <div className="flex space-x-3">
+              <button onClick={() => setShowSaveConfirm(false)} className="flex-1 py-4 bg-slate-100 font-bold rounded-2xl text-slate-600 active:scale-95 transition-all">Zurück</button>
+              <button onClick={handleFinish} className="flex-1 py-4 bg-green-600 text-white font-bold rounded-2xl shadow-lg shadow-green-100 active:scale-95 transition-all">Speichern</button>
+            </div>
+            <button 
+                onClick={() => { if(confirm("Wirklich alles löschen?")) { tracker.handleDiscard(); setShowSaveConfirm(false); } }} 
+                className="w-full text-red-500 font-bold text-xs py-2 uppercase tracking-widest opacity-60 hover:opacity-100"
+            >
+                Aufzeichnung verwerfen
+            </button>
           </div>
         </div>
       )}
