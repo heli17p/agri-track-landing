@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Circle, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { Field, StorageLocation, TrackPoint, FertilizerType } from '../../types';
@@ -27,6 +27,8 @@ const MapController = ({ center, zoom, follow, onZoomChange, isTestMode }: { cen
   const map = useMap();
   
   useEffect(() => { 
+    // Im Testmodus folgen wir dem Traktor nicht automatisch per SetView, 
+    // da das Ziehen sonst die Karte verschiebt und die Geste abbricht.
     if (center && !isTestMode) {
       map.setView(center, zoom, { animate: follow }); 
     }
@@ -87,6 +89,10 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
   const markerRef = useRef<L.Marker>(null);
   const isDraggingInternal = useRef(false);
 
+  // WICHTIG: Diese Position ändert sich NICHT während der Simulation, 
+  // damit React den Marker nicht zurückspringt.
+  const [stablePosition] = useState<[number, number]>(center);
+
   const eventHandlers = useMemo(() => ({
     dragstart() {
       isDraggingInternal.current = true;
@@ -94,21 +100,19 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
     drag(e: any) {
       if (isTestMode && onSimulateClick) {
         const { lat, lng } = e.target.getLatLng();
-        // Hier schieben wir die neue Position flüssig an den Tracker weiter
         onSimulateClick(lat, lng);
       }
     },
     dragend() {
-      // Verzögerte Freigabe, damit der letzte Render-Cycle von React 
-      // nicht das Icon zurück-teleportiert.
+      // Verzögerte Freigabe der Sperre
       setTimeout(() => {
         isDraggingInternal.current = false;
       }, 100);
     }
   }), [isTestMode, onSimulateClick]);
 
-  // Synchronisation der Marker-Position von AUẞEN (z.B. echtes GPS oder Simulations-State-Update)
-  // Wir führen das nur aus, wenn der User NICHT gerade aktiv zieht.
+  // Synchronisation von Außen (echtes GPS oder State-Update):
+  // Wir aktualisieren den Marker nur dann manuell, wenn der User NICHT gerade zieht.
   useEffect(() => {
     if (markerRef.current && currentLocation && !isDraggingInternal.current) {
       markerRef.current.setLatLng([currentLocation.coords.latitude, currentLocation.coords.longitude]);
@@ -144,7 +148,12 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
       
       {currentLocation && (
         <Marker 
-            position={center} 
+            /* 
+               Im Testmodus geben wir dem Marker eine STABILE Position als Prop. 
+               Die echte Bewegung steuern wir oben im useEffect über markerRef.setLatLng.
+               Das verhindert das ständige Neu-Rendern und Abbrechen der Geste.
+            */
+            position={isTestMode ? stablePosition : center} 
             ref={markerRef}
             draggable={isTestMode}
             eventHandlers={eventHandlers}

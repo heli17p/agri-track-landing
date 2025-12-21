@@ -180,8 +180,8 @@ export const useTracking = (
         if (prev.length > 0) {
             const last = prev[prev.length - 1];
             const dist = getDistance(last, point);
-            // Kleiner Schwellenwert: Nur Punkte speichern die mind. 0.5m entfernt sind
-            if (dist < 0.5) return prev;
+            // Kleiner Schwellenwert: Nur Punkte speichern die mind. 0.3m entfernt sind (glatteres Tracking)
+            if (dist < 0.3) return prev;
         }
         return [...prev, point];
     });
@@ -192,19 +192,21 @@ export const useTracking = (
     let speedMs = 0;
     let heading = 0;
 
+    // Nur alle 100ms ein State-Update in der Simulation zulassen, um React nicht zu überfordern
+    if (lastSimTimeRef.current > 0 && (now - lastSimTimeRef.current) < 100) return;
+
     if (lastSimPosRef.current && lastSimTimeRef.current > 0) {
       const dist = getDistance({ lat, lng }, lastSimPosRef.current);
       const timeSec = (now - lastSimTimeRef.current) / 1000;
       
-      // Geschwindigkeits-Berechnung glätten über die letzten 4 Messungen
       if (timeSec > 0.05) {
         const instantSpeed = dist / timeSec;
         speedBufferRef.current.push(instantSpeed);
-        if (speedBufferRef.current.length > 4) speedBufferRef.current.shift();
+        if (speedBufferRef.current.length > 3) speedBufferRef.current.shift();
         speedMs = speedBufferRef.current.reduce((a, b) => a + b, 0) / speedBufferRef.current.length;
         
-        // Deckelung auf realistische 45 km/h in der Simulation
-        if (speedMs > 12.5) speedMs = 12.5; 
+        // Deckelung auf 40 km/h
+        if (speedMs > 11.1) speedMs = 11.1; 
       }
 
       const dy = lat - lastSimPosRef.current.lat;
