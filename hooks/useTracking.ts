@@ -25,12 +25,14 @@ export const useTracking = (
   const [gpsLoading, setGpsLoading] = useState(false);
   const [isTestMode, setIsTestMode] = useState(false);
 
-  // Refs for background safety
+  // Refs for background safety and closure handling
   const settingsRef = useRef(settings);
   const fieldsRef = useRef(fields);
   const storagesRef = useRef(storages);
   const activityTypeRef = useRef(activityType);
   const subTypeRef = useRef(subType);
+  const isTestModeRef = useRef(false); // WICHTIG: Damit der Watcher den aktuellen Stand kennt
+  
   const trackingStateRef = useRef<TrackingState>('IDLE');
   const activeSourceIdRef = useRef<string | null>(null);
   const currentLoadIndexRef = useRef<number>(1);
@@ -48,6 +50,9 @@ export const useTracking = (
   useEffect(() => { subTypeRef.current = subType; }, [subType]);
   useEffect(() => { trackingStateRef.current = trackingState; }, [trackingState]);
   useEffect(() => { activeSourceIdRef.current = activeSourceId; }, [activeSourceId]);
+  
+  // Synchronisiere den Ref mit dem State
+  useEffect(() => { isTestModeRef.current = isTestMode; }, [isTestMode]);
 
   const requestWakeLock = async () => {
     try {
@@ -142,7 +147,9 @@ export const useTracking = (
     if (isPaused) return;
 
     const { latitude, longitude, speed, accuracy } = pos.coords;
-    if (accuracy > 50 && !isTestMode) return; // Etwas kulanter im Testmodus
+    
+    // Im Testmodus ignorieren wir schlechte Genauigkeit
+    if (accuracy > 50 && !isTestModeRef.current) return; 
 
     const speedKmh = (speed || 0) * 3.6;
     const point: TrackPoint = {
@@ -176,7 +183,7 @@ export const useTracking = (
     }
 
     setTrackPoints(prev => [...prev, point]);
-  }, [isPaused, isTestMode, checkStorageProximity]);
+  }, [isPaused, checkStorageProximity]); // isTestMode nicht mehr nötig hier, da wir Ref nutzen
 
   const simulatePosition = useCallback((lat: number, lng: number) => {
     // Simuliere 12 km/h = 3.33 m/s
@@ -187,7 +194,7 @@ export const useTracking = (
         longitude: lng,
         accuracy: 5,
         speed: speedMs,
-        heading: lastSimulatedPosRef.current ? 0 : null // Man könnte Heading berechnen
+        heading: 0
       },
       timestamp: Date.now()
     };
@@ -212,9 +219,13 @@ export const useTracking = (
       setStorageWarning(null);
       setIsTestMode(false);
       currentLoadIndexRef.current = 1;
+      
+      // Starte den Watcher
       watchIdRef.current = navigator.geolocation.watchPosition((pos) => {
-        // Ignoriere echtes GPS wenn Testmodus aktiv
-        if (!isTestMode) handleNewPosition(pos);
+        // WICHTIG: Nutze isTestModeRef.current, um Closure-Problem zu vermeiden!
+        if (!isTestModeRef.current) {
+          handleNewPosition(pos);
+        }
       }, (err) => console.error(err), { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 });
     } catch (e: any) { alert("GPS Fehler: " + e.message); }
     finally { setGpsLoading(false); }
@@ -238,7 +249,7 @@ export const useTracking = (
     stopGPS();
     setTrackingState('IDLE');
 
-    // Stats Calculation Logic
+    // Stats Calculation
     let spreadDist = 0;
     const fieldDistMap: Record<string, number> = {};
     const fieldIds = new Set<string>();
