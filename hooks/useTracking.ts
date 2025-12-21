@@ -41,6 +41,8 @@ export const useTracking = (
   // Refs für Countdown-Logik (30 Sekunden)
   const proximityStartTimeRef = useRef<number | null>(null);
   const pendingStorageIdRef = useRef<string | null>(null);
+  const lastKnownSpeedRef = useRef<number>(0);
+  const lastKnownPosRef = useRef<GeoPoint | null>(null);
   const DETECTION_DELAY_MS = 30000;
 
   useEffect(() => { 
@@ -52,72 +54,87 @@ export const useTracking = (
     isTestModeRef.current = isTestMode; 
   }, [settings, fields, storages, activityType, subType, isTestMode]);
 
-  const checkStorageProximity = (lat: number, lng: number, speedKmh: number) => {
-    if (activityTypeRef.current !== ActivityType.FERTILIZATION) return;
-    const rad = settingsRef.current.storageRadius || 20;
+  // --- NEU: Zeitbasierter Timer-Tick (unabhängig von Bewegung) ---
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (activityTypeRef.current !== ActivityType.FERTILIZATION) return;
+      
+      // Nur wenn wir eine Position haben
+      if (!lastKnownPosRef.current) return;
 
-    let nearest: StorageLocation | null = null;
-    let minDist = Infinity;
-    storagesRef.current.forEach(s => {
-      const dist = getDistance({ lat, lng }, s.geo);
-      if (dist < minDist) { minDist = dist; nearest = s; }
-    });
+      const lat = lastKnownPosRef.current.lat;
+      const lng = lastKnownPosRef.current.lng;
+      const speedKmh = lastKnownSpeedRef.current;
+      const rad = settingsRef.current.storageRadius || 20;
 
-    // Bedingung für Erkennung: Nah dran UND langsam (Stillstand/Schritttempo)
-    if (nearest && minDist <= rad && speedKmh < 2.5) {
-        const isCorrectType = nearest.type === (subTypeRef.current === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE);
-        
-        if (!isCorrectType) {
-            setStorageWarning(`${nearest.name} erkannt, aber falscher Typ!`);
-            proximityStartTimeRef.current = null;
-            setDetectionCountdown(null);
-            pendingStorageIdRef.current = null;
-            return;
-        }
+      let nearest: StorageLocation | null = null;
+      let minDist = Infinity;
+      storagesRef.current.forEach(s => {
+        const dist = getDistance({ lat, lng }, s.geo);
+        if (dist < minDist) { minDist = dist; nearest = s; }
+      });
 
-        setStorageWarning(null);
+      // Bedingung für Erkennung: Nah dran UND langsam (Stillstand/Schritttempo)
+      if (nearest && minDist <= rad && speedKmh < 2.5) {
+          const isCorrectType = nearest.type === (subTypeRef.current === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE);
+          
+          if (!isCorrectType) {
+              setStorageWarning(`${nearest.name} erkannt, aber falscher Typ!`);
+              proximityStartTimeRef.current = null;
+              setDetectionCountdown(null);
+              pendingStorageIdRef.current = null;
+              return;
+          }
 
-        // Wenn wir bereits in diesem Lager laden, nichts tun
-        if (activeSourceIdRef.current === nearest.id && trackingState === 'LOADING') {
-            proximityStartTimeRef.current = null;
-            setDetectionCountdown(null);
-            return;
-        }
+          setStorageWarning(null);
 
-        // Countdown Logik starten oder fortführen
-        if (pendingStorageIdRef.current !== nearest.id) {
-            pendingStorageIdRef.current = nearest.id;
-            proximityStartTimeRef.current = Date.now();
-        }
+          // Wenn wir bereits in diesem Lager laden, Countdown ignorieren
+          if (activeSourceIdRef.current === nearest.id && trackingState === 'LOADING') {
+              proximityStartTimeRef.current = null;
+              setDetectionCountdown(null);
+              pendingStorageIdRef.current = null;
+              return;
+          }
 
-        const elapsed = Date.now() - (proximityStartTimeRef.current || Date.now());
-        const remaining = Math.max(0, Math.ceil((DETECTION_DELAY_MS - elapsed) / 1000));
+          // Countdown Logik starten oder fortführen
+          if (pendingStorageIdRef.current !== nearest.id) {
+              pendingStorageIdRef.current = nearest.id;
+              proximityStartTimeRef.current = Date.now();
+          }
 
-        if (remaining > 0) {
-            setDetectionCountdown(remaining);
-        } else {
-            // Countdown abgelaufen -> Fuhre buchen
-            activeSourceIdRef.current = nearest.id;
-            setActiveSourceId(nearest.id);
-            setLoadCounts(prev => ({ ...prev, [nearest!.id]: (prev[nearest!.id] || 0) + 1 }));
-            currentLoadIndexRef.current++;
-            setTrackingState('LOADING');
-            setDetectionCountdown(null);
-            proximityStartTimeRef.current = null;
-            pendingStorageIdRef.current = null;
-        }
-    } else {
-        // Abbruch bei Bewegung oder Verlassen des Radius
-        setStorageWarning(null);
-        proximityStartTimeRef.current = null;
-        pendingStorageIdRef.current = null;
-        setDetectionCountdown(null);
+          const elapsed = Date.now() - (proximityStartTimeRef.current || Date.now());
+          const remaining = Math.max(0, Math.ceil((DETECTION_DELAY_MS - elapsed) / 1000));
 
-        if (speedKmh > 3.5 && trackingState === 'LOADING') {
-            setTrackingState('TRANSIT');
-        }
-    }
-  };
+          if (remaining > 0) {
+              setDetectionCountdown(remaining);
+          } else {
+              // Countdown abgelaufen -> Fuhre buchen
+              activeSourceIdRef.current = nearest.id;
+              setActiveSourceId(nearest.id);
+              setLoadCounts(prev => ({ ...prev, [nearest!.id]: (prev[nearest!.id] || 0) + 1 }));
+              currentLoadIndexRef.current++;
+              setTrackingState('LOADING');
+              setDetectionCountdown(null);
+              proximityStartTimeRef.current = null;
+              pendingStorageIdRef.current = null;
+          }
+      } else {
+          // Abbruch bei zu hoher Geschwindigkeit oder Verlassen des Radius
+          setStorageWarning(null);
+          proximityStartTimeRef.current = null;
+          pendingStorageIdRef.current = null;
+          setDetectionCountdown(null);
+
+          if (speedKmh > 3.5 && trackingState === 'LOADING') {
+              setTrackingState('TRANSIT');
+              activeSourceIdRef.current = null;
+              setActiveSourceId(null);
+          }
+      }
+    }, 1000); // Check jede Sekunde
+
+    return () => clearInterval(timer);
+  }, [trackingState]); // Re-subscribe wenn sich Status ändert
 
   const handleNewPosition = useCallback((pos: GeolocationPosition) => {
     setCurrentLocation(pos);
@@ -127,16 +144,25 @@ export const useTracking = (
     if (accuracy > 50 && !isTestModeRef.current) return; 
 
     const speedKmh = (speed || 0) * 3.6;
-    checkStorageProximity(latitude, longitude, speedKmh);
+    
+    // Update der Referenzwerte für den Timer-Tick
+    lastKnownSpeedRef.current = speedKmh;
+    lastKnownPosRef.current = { lat: latitude, lng: longitude };
 
     const inField = fieldsRef.current.some(f => isPointInPolygon({ lat: latitude, lng: longitude }, f.boundary));
     let isSpreading = false;
     if (inField && speedKmh >= (settingsRef.current.minSpeed || 2.0)) isSpreading = true;
 
-    // Statuswechsel Logik
+    // Statuswechsel Logik (Countdown/Laden hat Vorrang)
     if (trackingState !== 'LOADING' || speedKmh > 3.0) {
         const newState = isSpreading ? 'SPREADING' : (trackingState === 'LOADING' ? 'LOADING' : 'TRANSIT');
         if (newState !== trackingState) setTrackingState(newState);
+        
+        // Reset Lager-Referenz wenn wir wieder schnell fahren
+        if (speedKmh > 3.5 && trackingState === 'LOADING') {
+            activeSourceIdRef.current = null;
+            setActiveSourceId(null);
+        }
     }
 
     const point: TrackPoint = {
@@ -186,8 +212,13 @@ export const useTracking = (
       const initPos: any = await new Promise((res, rej) => { navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true }); });
       setStartTime(Date.now()); setTrackingState('TRANSIT'); setTrackPoints([]); setLoadCounts({});
       activeSourceIdRef.current = null; setActiveSourceId(null); setIsPaused(false); setIsTestMode(false); currentLoadIndexRef.current = 1;
+      
       const startCoord = { lat: initPos.coords.latitude, lng: initPos.coords.longitude };
-      lastSimPosRef.current = startCoord; lastSimTimeRef.current = Date.now();
+      lastKnownPosRef.current = startCoord;
+      lastKnownSpeedRef.current = 0;
+      lastSimPosRef.current = startCoord; 
+      lastSimTimeRef.current = Date.now();
+      
       setCurrentLocation(initPos);
       watchIdRef.current = navigator.geolocation.watchPosition((pos) => { if (!isTestModeRef.current) handleNewPosition(pos); }, undefined, { enableHighAccuracy: true });
     } finally { setGpsLoading(false); }
@@ -264,7 +295,7 @@ export const useTracking = (
       amount: totalAmt,
       unit,
       loadCount: loadCnt > 0 ? loadCnt : undefined,
-      notes: `${notes}\n(Automatisch zugeordnet)`,
+      notes: `${notes}\n(Automatisch zugeordnet)\nDauer: ${durationMin} min`,
       trackPoints: [...trackPoints],
       fieldDistribution: fieldDist,
       storageDistribution: Object.keys(storageDist).length > 0 ? storageDist : undefined,
@@ -281,6 +312,7 @@ export const useTracking = (
 
     setTrackingState('IDLE');
     setTrackPoints([]);
+    lastKnownPosRef.current = null;
     return record;
   }, [trackPoints, startTime, loadCounts]);
 
@@ -288,7 +320,7 @@ export const useTracking = (
     trackingState, currentLocation, trackPoints, startTime, loadCounts,
     activeSourceId, detectionCountdown, storageWarning, gpsLoading,
     isTestMode, setIsTestMode: (v: boolean) => { setIsTestMode(v); isTestModeRef.current = v; if (v && currentLocation) lastSimPosRef.current = { lat: currentLocation.coords.latitude, lng: currentLocation.coords.longitude }; }, simulateMovement, startGPS, stopGPS: useCallback(() => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setIsTestMode(false); lastSimPosRef.current = null; }, []),
-    handleFinishLogic, handleDiscard: () => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setTrackingState('IDLE'); setTrackPoints([]); }
+    handleFinishLogic, handleDiscard: () => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setTrackingState('IDLE'); setTrackPoints([]); lastKnownPosRef.current = null; }
   };
 };
 
