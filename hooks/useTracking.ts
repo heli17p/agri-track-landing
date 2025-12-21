@@ -38,9 +38,10 @@ export const useTracking = (
   const lastSimPosRef = useRef<GeoPoint | null>(null);
   const lastSimTimeRef = useRef<number>(0);
   
-  // Refs für Countdown-Logik
+  // Refs für Countdown-Logik (30 Sekunden)
   const proximityStartTimeRef = useRef<number | null>(null);
   const pendingStorageIdRef = useRef<string | null>(null);
+  const DETECTION_DELAY_MS = 30000;
 
   useEffect(() => { 
     settingsRef.current = settings; 
@@ -62,15 +63,15 @@ export const useTracking = (
       if (dist < minDist) { minDist = dist; nearest = s; }
     });
 
-    // Bedingung für Erkennung: Nah dran UND langsam
+    // Bedingung für Erkennung: Nah dran UND langsam (Stillstand/Schritttempo)
     if (nearest && minDist <= rad && speedKmh < 2.5) {
-        // Richtiger Düngertyp Check
         const isCorrectType = nearest.type === (subTypeRef.current === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE);
         
         if (!isCorrectType) {
             setStorageWarning(`${nearest.name} erkannt, aber falscher Typ!`);
             proximityStartTimeRef.current = null;
             setDetectionCountdown(null);
+            pendingStorageIdRef.current = null;
             return;
         }
 
@@ -83,19 +84,19 @@ export const useTracking = (
             return;
         }
 
-        // Countdown Logik starten
+        // Countdown Logik starten oder fortführen
         if (pendingStorageIdRef.current !== nearest.id) {
             pendingStorageIdRef.current = nearest.id;
             proximityStartTimeRef.current = Date.now();
         }
 
         const elapsed = Date.now() - (proximityStartTimeRef.current || Date.now());
-        const remaining = Math.max(0, Math.ceil((5000 - elapsed) / 1000));
+        const remaining = Math.max(0, Math.ceil((DETECTION_DELAY_MS - elapsed) / 1000));
 
         if (remaining > 0) {
             setDetectionCountdown(remaining);
         } else {
-            // Countdown abgelaufen -> Laden triggern
+            // Countdown abgelaufen -> Fuhre buchen
             activeSourceIdRef.current = nearest.id;
             setActiveSourceId(nearest.id);
             setLoadCounts(prev => ({ ...prev, [nearest!.id]: (prev[nearest!.id] || 0) + 1 }));
@@ -106,7 +107,7 @@ export const useTracking = (
             pendingStorageIdRef.current = null;
         }
     } else {
-        // Außerhalb des Radius oder zu schnell -> Reset Countdown
+        // Abbruch bei Bewegung oder Verlassen des Radius
         setStorageWarning(null);
         proximityStartTimeRef.current = null;
         pendingStorageIdRef.current = null;
@@ -132,7 +133,7 @@ export const useTracking = (
     let isSpreading = false;
     if (inField && speedKmh >= (settingsRef.current.minSpeed || 2.0)) isSpreading = true;
 
-    // Statuswechsel Logik (Countdown hat Vorrang)
+    // Statuswechsel Logik
     if (trackingState !== 'LOADING' || speedKmh > 3.0) {
         const newState = isSpreading ? 'SPREADING' : (trackingState === 'LOADING' ? 'LOADING' : 'TRANSIT');
         if (newState !== trackingState) setTrackingState(newState);

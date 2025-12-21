@@ -61,7 +61,7 @@ export const TrackingUI: React.FC<Props> = ({
         <button onClick={onTestModeToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${isTestMode ? 'bg-orange-500 text-white animate-pulse' : 'bg-white/95 text-slate-700'}`}><Beaker size={24}/></button>
       </div>
 
-      <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[1000] w-full max-w-[80%] flex flex-col items-center space-y-2 pointer-events-none">
+      <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[1000] w-full max-w-[85%] flex flex-col items-center space-y-3 pointer-events-none">
         {isTestMode && (
           <div className="bg-orange-600/90 backdrop-blur text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg animate-bounce">Simulation Aktiv: Karte klicken zum Fahren</div>
         )}
@@ -72,18 +72,27 @@ export const TrackingUI: React.FC<Props> = ({
           </div>
         )}
 
-        {/* --- COUNTDOWN ANZEIGE --- */}
+        {/* --- OPTIMIERTE COUNTDOWN ANZEIGE (30s) --- */}
         {detectionCountdown !== null && (
-          <div className="bg-blue-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center space-x-3 animate-pulse border-2 border-white scale-110">
-             <Timer size={24} className="animate-spin-slow"/>
-             <div className="flex flex-col">
-                <span className="text-[10px] font-bold uppercase opacity-80 leading-none">Lager wird erkannt...</span>
-                <span className="text-xl font-black">Noch {detectionCountdown}s</span>
+          <div className="bg-blue-600 text-white px-8 py-4 rounded-[2rem] shadow-[0_20px_50px_rgba(37,99,235,0.4)] flex flex-col items-center space-y-1 animate-in zoom-in-95 border-4 border-white">
+             <div className="flex items-center space-x-2">
+                <Timer size={28} className="animate-spin-slow text-blue-200"/>
+                <span className="text-[12px] font-black uppercase tracking-tighter opacity-90">Lagerplatz erkannt</span>
+             </div>
+             <div className="flex items-baseline space-x-1">
+                <span className="text-4xl font-mono font-black">{detectionCountdown}</span>
+                <span className="text-xl font-bold opacity-70">Sek</span>
+             </div>
+             <div className="w-full bg-blue-800/50 h-1.5 rounded-full mt-2 overflow-hidden">
+                <div 
+                    className="bg-white h-full transition-all duration-1000 ease-linear" 
+                    style={{ width: `${(detectionCountdown / 30) * 100}%` }}
+                ></div>
              </div>
           </div>
         )}
         
-        <div className={`bg-white/95 backdrop-blur shadow-2xl border border-slate-300 rounded-full px-5 py-2.5 flex items-center space-x-3 pointer-events-auto transition-all w-fit ${detectionCountdown !== null ? 'opacity-40 scale-90' : 'opacity-100'}`}>
+        <div className={`bg-white/95 backdrop-blur shadow-2xl border border-slate-300 rounded-full px-5 py-2.5 flex items-center space-x-3 pointer-events-auto transition-all w-fit ${detectionCountdown !== null ? 'opacity-20 scale-75 blur-[1px]' : 'opacity-100'}`}>
           <div className={`p-2 rounded-full text-white ${trackingState === 'LOADING' ? 'bg-amber-500 animate-pulse' : trackingState === 'SPREADING' ? 'bg-green-600 animate-pulse' : 'bg-blue-500'}`}>
             {trackingState === 'LOADING' ? <Database size={18}/> : trackingState === 'SPREADING' ? <Droplets size={18}/> : <Truck size={18}/>}
           </div>
