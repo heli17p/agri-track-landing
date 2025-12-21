@@ -136,6 +136,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         loadCounts={tracker.loadCounts} 
         currentLocation={tracker.currentLocation} 
         detectionCountdown={tracker.detectionCountdown} 
+        pendingStorageId={tracker.pendingStorageId}
         storageWarning={tracker.storageWarning} 
         onStopClick={() => setShowSaveConfirm(true)} 
         onDiscardClick={() => { if(confirm("Möchtest du die aktuelle Aufzeichnung wirklich löschen?")) tracker.handleDiscard(); }}

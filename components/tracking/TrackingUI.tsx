@@ -9,6 +9,7 @@ interface Props {
   loadCounts: Record<string, number>;
   currentLocation: GeolocationPosition | null;
   detectionCountdown: number | null;
+  pendingStorageId: string | null;
   storageWarning: string | null;
   onStopClick: () => void;
   onDiscardClick: () => void;
@@ -31,6 +32,7 @@ export const TrackingUI: React.FC<Props> = ({
   loadCounts, 
   currentLocation, 
   detectionCountdown, 
+  pendingStorageId,
   storageWarning, 
   onStopClick, 
   onDiscardClick,
@@ -51,6 +53,7 @@ export const TrackingUI: React.FC<Props> = ({
   const duration = startTime ? Math.round((Date.now() - startTime) / 60000) : 0;
 
   const activeStorageName = activeSourceId ? storages.find(s => s.id === activeSourceId)?.name : null;
+  const pendingStorageName = pendingStorageId ? storages.find(s => s.id === pendingStorageId)?.name : null;
 
   return (
     <>
@@ -72,12 +75,17 @@ export const TrackingUI: React.FC<Props> = ({
           </div>
         )}
 
-        {/* --- OPTIMIERTE COUNTDOWN ANZEIGE (30s) --- */}
+        {/* --- OPTIMIERTE COUNTDOWN ANZEIGE (30s) mit NAMEN --- */}
         {detectionCountdown !== null && (
           <div className="bg-blue-600 text-white px-8 py-4 rounded-[2rem] shadow-[0_20px_50px_rgba(37,99,235,0.4)] flex flex-col items-center space-y-1 animate-in zoom-in-95 border-4 border-white">
-             <div className="flex items-center space-x-2">
-                <Timer size={28} className="animate-spin-slow text-blue-200"/>
-                <span className="text-[12px] font-black uppercase tracking-tighter opacity-90">Lagerplatz erkannt</span>
+             <div className="flex flex-col items-center">
+                <div className="flex items-center space-x-2 mb-1">
+                    <Timer size={22} className="animate-spin-slow text-blue-200"/>
+                    <span className="text-[11px] font-black uppercase tracking-tighter opacity-90">Lagerplatz erkannt</span>
+                </div>
+                {pendingStorageName && (
+                    <span className="text-sm font-bold bg-white/20 px-3 py-0.5 rounded-full mb-2 border border-white/10">{pendingStorageName}</span>
+                )}
              </div>
              <div className="flex items-baseline space-x-1">
                 <span className="text-4xl font-mono font-black">{detectionCountdown}</span>
