@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Circle, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { Field, StorageLocation, TrackPoint, StorageLocation as StorageType, FertilizerType } from '../../types';
@@ -23,18 +23,23 @@ interface Props {
   onSimulateClick?: (lat: number, lng: number) => void;
 }
 
-const MapController = ({ center, zoom, follow, onZoomChange, isTestMode, onSimulateClick }: { center: [number, number], zoom: number, follow: boolean, onZoomChange: (z: number) => void, isTestMode: boolean, onSimulateClick?: (lat: number, lng: number) => void }) => {
+const MapController = ({ center, zoom, follow, onZoomChange, isTestMode }: { center: [number, number], zoom: number, follow: boolean, onZoomChange: (z: number) => void, isTestMode: boolean }) => {
   const map = useMap();
-  useEffect(() => { if (center && !isTestMode) map.setView(center, zoom, { animate: follow }); }, [center, zoom, follow, map, isTestMode]);
-  useEffect(() => { const t = setTimeout(() => map.invalidateSize(), 200); return () => clearTimeout(t); }, [map]);
+  
+  // Im Testmodus verhindern wir das automatische Zentrieren, damit die Zieh-Geste nicht unterbrochen wird
+  useEffect(() => { 
+    if (center && !isTestMode) {
+      map.setView(center, zoom, { animate: follow }); 
+    }
+  }, [center, zoom, follow, map, isTestMode]);
+
+  useEffect(() => { 
+    const t = setTimeout(() => map.invalidateSize(), 200); 
+    return () => clearTimeout(t); 
+  }, [map]);
   
   useMapEvents({ 
-    zoomend: () => onZoomChange(map.getZoom()),
-    click: (e) => {
-      if (isTestMode && onSimulateClick) {
-        onSimulateClick(e.latlng.lat, e.latlng.lng);
-      }
-    }
+    zoomend: () => onZoomChange(map.getZoom())
   });
   
   return null;
@@ -56,7 +61,7 @@ const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot'
   const rotation = heading || 0;
   let content = '';
   let size = [32, 32];
-  const color = isDragging ? '#2563eb' : '#16a34a';
+  const color = isDragging ? '#3b82f6' : '#16a34a';
 
   if (type === 'tractor') {
     content = `<svg viewBox="0 0 50 50"><rect x="5" y="30" width="12" height="18" rx="2" fill="#1e293b"/><rect x="33" y="30" width="12" height="18" rx="2" fill="#1e293b"/><rect x="8" y="5" width="8" height="10" rx="2" fill="#1e293b"/><rect x="34" y="5" width="8" height="10" rx="2" fill="#1e293b"/><path d="M20 4 L30 4 L30 20 L34 22 L34 40 L16 40 L16 22 L20 20 Z" fill="${color}"/><rect x="14" y="24" width="22" height="14" rx="1" fill="#fff" fill-opacity="0.9" stroke="#94a3b8" stroke-width="2"/></svg>`;
@@ -70,7 +75,7 @@ const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot'
   }
   return L.divIcon({ 
     className: 'vehicle-cursor', 
-    html: `<div style="transform:rotate(${rotation}deg);transition:transform 0.1s linear;width:100%;height:100%;display:flex;align-items:center;justify-content:center;${isDragging ? 'filter: drop-shadow(0 0 8px rgba(37,99,235,0.5));' : ''}">${content}</div>`, 
+    html: `<div style="transform:rotate(${rotation}deg);width:100%;height:100%;display:flex;align-items:center;justify-content:center;${isDragging ? 'filter: drop-shadow(0 0 8px rgba(59,130,246,0.6)); scale: 1.1;' : ''}">${content}</div>`, 
     iconSize: [size[0], size[1]], 
     iconAnchor: [size[0] / 2, size[1] / 2] 
   });
@@ -82,14 +87,23 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
   const center: [number, number] = currentLocation ? [currentLocation.coords.latitude, currentLocation.coords.longitude] : [47.5, 14.5];
   const markerRef = useRef<L.Marker>(null);
 
+  // Wir nutzen das 'move' Event statt 'drag', da es flüssiger mit dem State harmoniert
   const eventHandlers = useMemo(() => ({
-    drag(e: any) {
+    move(e: any) {
         if (isTestMode && onSimulateClick) {
-            const { lat, lng } = e.target.getLatLng();
+            const { lat, lng } = e.latlng;
             onSimulateClick(lat, lng);
         }
     }
   }), [isTestMode, onSimulateClick]);
+
+  // WICHTIG: Im Testmodus aktualisieren wir die Position des Markers MANUELL über die Ref,
+  // um den React-Render-Loop zu umgehen, der den Marker sonst zurückspringen lässt.
+  useEffect(() => {
+    if (markerRef.current && currentLocation && !isTestMode) {
+      markerRef.current.setLatLng([currentLocation.coords.latitude, currentLocation.coords.longitude]);
+    }
+  }, [currentLocation, isTestMode]);
 
   const trackSegments = useMemo(() => {
     if (points.length < 2) return [];
@@ -113,7 +127,7 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
   return (
     <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} zoomControl={false}>
       <TileLayer url={mapStyle === 'standard' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} />
-      <MapController center={center} zoom={zoom} follow={followUser} onZoomChange={onZoomChange} isTestMode={isTestMode} onSimulateClick={onSimulateClick} />
+      <MapController center={center} zoom={zoom} follow={followUser} onZoomChange={onZoomChange} isTestMode={isTestMode} />
       {fields.map(f => <Polygon key={f.id} positions={f.boundary.map(p => [p.lat, p.lng])} pathOptions={{ color: f.color || (f.type === 'Acker' ? '#92400E' : '#15803D'), fillOpacity: 0.3, weight: 1 }} />)}
       {historyMode !== 'OFF' && historyTracks.map((act, i) => act.trackPoints && <Polyline key={i} positions={act.trackPoints.map((p: any) => [p.lat, p.lng])} pathOptions={{ color: '#666', weight: 2, opacity: 0.3, dashArray: '5,5' }} />)}
       {trackSegments.map((s, i) => <Polyline key={i} positions={s.points as any} pathOptions={{ color: s.color, weight: s.spread ? 20 : 4, opacity: 0.8 }} />)}
@@ -125,6 +139,7 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
             draggable={isTestMode}
             eventHandlers={eventHandlers}
             icon={getCursorIcon(currentLocation.coords.heading, vehicleIconType, isTestMode)} 
+            zIndexOffset={1000}
         />
       )}
 

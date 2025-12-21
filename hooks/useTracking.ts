@@ -41,7 +41,6 @@ export const useTracking = (
   const activeLoadingStorageRef = useRef<StorageLocation | null>(null);
   const pendingStorageIdRef = useRef<string | null>(null);
   
-  // Refs für die Simulationsberechnung
   const lastSimPosRef = useRef<GeoPoint | null>(null);
   const lastSimTimeRef = useRef<number>(0);
 
@@ -139,6 +138,7 @@ export const useTracking = (
   }, [cancelDetection, startDetectionCountdown]);
 
   const handleNewPosition = useCallback((pos: GeolocationPosition) => {
+    // State nur aktualisieren, wenn wir wirklich eine Änderung haben
     setCurrentLocation(pos);
     if (isPaused) return;
 
@@ -176,7 +176,14 @@ export const useTracking = (
       if (activeLoadingStorageRef.current) point.storageId = activeLoadingStorageRef.current.id;
     }
 
-    setTrackPoints(prev => [...prev, point]);
+    // Filter für Simulation: Nur Punkte speichern, die eine gewisse Distanz haben, um die DB nicht zu fluten
+    setTrackPoints(prev => {
+        if (isTestModeRef.current && prev.length > 0) {
+            const last = prev[prev.length - 1];
+            if (getDistance(last, point) < 0.5) return prev; // Zu kleine Bewegungen ignorieren
+        }
+        return [...prev, point];
+    });
   }, [isPaused, checkStorageProximity]);
 
   const simulateMovement = useCallback((lat: number, lng: number) => {
@@ -190,11 +197,9 @@ export const useTracking = (
       
       if (timeSec > 0) {
         speedMs = dist / timeSec;
-        // Begrenzung auf plausible 50 km/h in der Simulation
-        if (speedMs > 13.8) speedMs = 13.8; 
+        if (speedMs > 25) speedMs = 25; // Deckelung auf 90 km/h
       }
 
-      // Heading berechnen (Grob)
       const dy = lat - lastSimPosRef.current.lat;
       const dx = lng - lastSimPosRef.current.lng;
       heading = (Math.atan2(dx, dy) * 180) / Math.PI;
@@ -234,7 +239,6 @@ export const useTracking = (
       setIsTestMode(false);
       currentLoadIndexRef.current = 1;
       
-      // Init Simulation Refs
       lastSimPosRef.current = { lat: initPos.coords.latitude, lng: initPos.coords.longitude };
       lastSimTimeRef.current = Date.now();
 
