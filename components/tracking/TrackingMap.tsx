@@ -25,6 +25,8 @@ interface Props {
 
 const MapController = ({ center, zoom, follow, onZoomChange, isTestMode }: { center: [number, number], zoom: number, follow: boolean, onZoomChange: (z: number) => void, isTestMode: boolean }) => {
   const map = useMap();
+  // Fix: Use ref to track previous state for one-time events
+  const lastTestMode = useRef(isTestMode);
   
   useEffect(() => { 
     // Im Testmodus folgen wir dem Traktor nicht automatisch per SetView, 
@@ -32,6 +34,13 @@ const MapController = ({ center, zoom, follow, onZoomChange, isTestMode }: { cen
     if (center && !isTestMode) {
       map.setView(center, zoom, { animate: follow }); 
     }
+
+    // Fix: Move centering logic here to avoid accessing protected _map property.
+    // Zentrieren beim Start der Simulation (Wechsel von false auf true)
+    if (isTestMode && !lastTestMode.current && center) {
+        map.setView(center, map.getZoom());
+    }
+    lastTestMode.current = isTestMode;
   }, [center, zoom, follow, map, isTestMode]);
 
   useEffect(() => { 
@@ -89,9 +98,16 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
   const markerRef = useRef<L.Marker>(null);
   const isDraggingInternal = useRef(false);
 
-  // WICHTIG: Diese Position ändert sich NICHT während der Simulation, 
-  // damit React den Marker nicht zurückspringt.
-  const [stablePosition] = useState<[number, number]>(center);
+  // WICHTIG: Wir frieren die Position ein, sobald isTestMode aktiviert wird.
+  // Das verhindert das "Millimeter-Kleben", weil React den Marker-Zustand während der Geste nicht mehr ändert.
+  const [frozenPos, setFrozenPos] = useState<[number, number]>(center);
+
+  // Fix: Removed direct _map access on markerRef. Centering is now handled in MapController via useMap hook.
+  useEffect(() => {
+    if (isTestMode) {
+      setFrozenPos(center);
+    }
+  }, [isTestMode]);
 
   const eventHandlers = useMemo(() => ({
     dragstart() {
@@ -104,15 +120,13 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
       }
     },
     dragend() {
-      // Verzögerte Freigabe der Sperre
       setTimeout(() => {
         isDraggingInternal.current = false;
-      }, 100);
+      }, 150);
     }
   }), [isTestMode, onSimulateClick]);
 
-  // Synchronisation von Außen (echtes GPS oder State-Update):
-  // Wir aktualisieren den Marker nur dann manuell, wenn der User NICHT gerade zieht.
+  // Manuelle Synchronisation des Markers (nur wenn nicht gezogen wird)
   useEffect(() => {
     if (markerRef.current && currentLocation && !isDraggingInternal.current) {
       markerRef.current.setLatLng([currentLocation.coords.latitude, currentLocation.coords.longitude]);
@@ -148,12 +162,8 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
       
       {currentLocation && (
         <Marker 
-            /* 
-               Im Testmodus geben wir dem Marker eine STABILE Position als Prop. 
-               Die echte Bewegung steuern wir oben im useEffect über markerRef.setLatLng.
-               Das verhindert das ständige Neu-Rendern und Abbrechen der Geste.
-            */
-            position={isTestMode ? stablePosition : center} 
+            /* Im Testmodus nutzen wir frozenPos, damit React nicht ständig setLatLng aufruft */
+            position={isTestMode ? frozenPos : center} 
             ref={markerRef}
             draggable={isTestMode}
             eventHandlers={eventHandlers}

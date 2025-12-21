@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { dbService, generateId } from '../services/db';
-import { Field, StorageLocation, TrackPoint, ActivityType, FertilizerType, AppSettings, ActivityRecord, GeoPoint } from '../types';
+import { Field, StorageLocation, TrackPoint, ActivityType, FertilizerType, AppSettings, ActivityRecord, GeoPoint, FarmProfile } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
 
 type TrackingState = 'IDLE' | 'LOADING' | 'TRANSIT' | 'SPREADING';
@@ -180,7 +180,6 @@ export const useTracking = (
         if (prev.length > 0) {
             const last = prev[prev.length - 1];
             const dist = getDistance(last, point);
-            // Kleiner Schwellenwert: Nur Punkte speichern die mind. 0.3m entfernt sind (glatteres Tracking)
             if (dist < 0.3) return prev;
         }
         return [...prev, point];
@@ -192,8 +191,7 @@ export const useTracking = (
     let speedMs = 0;
     let heading = 0;
 
-    // Nur alle 100ms ein State-Update in der Simulation zulassen, um React nicht zu überfordern
-    if (lastSimTimeRef.current > 0 && (now - lastSimTimeRef.current) < 100) return;
+    if (lastSimTimeRef.current > 0 && (now - lastSimTimeRef.current) < 80) return;
 
     if (lastSimPosRef.current && lastSimTimeRef.current > 0) {
       const dist = getDistance({ lat, lng }, lastSimPosRef.current);
@@ -204,8 +202,6 @@ export const useTracking = (
         speedBufferRef.current.push(instantSpeed);
         if (speedBufferRef.current.length > 3) speedBufferRef.current.shift();
         speedMs = speedBufferRef.current.reduce((a, b) => a + b, 0) / speedBufferRef.current.length;
-        
-        // Deckelung auf 40 km/h
         if (speedMs > 11.1) speedMs = 11.1; 
       }
 
@@ -229,6 +225,24 @@ export const useTracking = (
     lastSimTimeRef.current = now;
     handleNewPosition(fakePos);
   }, [handleNewPosition]);
+
+  const toggleTestMode = async (enabled: boolean) => {
+      if (enabled && !currentLocation) {
+          // Falls wir kein GPS haben, versuchen wir zur Hofstelle zu springen
+          const profiles = await dbService.getFarmProfile();
+          if (profiles.length > 0 && profiles[0].addressGeo) {
+              const p = profiles[0].addressGeo;
+              const initPos: any = {
+                  coords: { latitude: p.lat, longitude: p.lng, accuracy: 5, speed: 0, heading: 0 },
+                  timestamp: Date.now()
+              };
+              lastSimPosRef.current = { lat: p.lat, lng: p.lng };
+              lastSimTimeRef.current = Date.now();
+              handleNewPosition(initPos);
+          }
+      }
+      setIsTestMode(enabled);
+  };
 
   const startGPS = async () => {
     if (!navigator.geolocation) { alert("GPS wird nicht unterstützt."); return; }
@@ -361,7 +375,7 @@ export const useTracking = (
   return {
     trackingState, currentLocation, trackPoints, startTime, loadCounts,
     activeSourceId, detectionCountdown, storageWarning, gpsLoading,
-    isTestMode, setIsTestMode, simulateMovement, startGPS, stopGPS,
+    isTestMode, setIsTestMode: toggleTestMode, simulateMovement, startGPS, stopGPS,
     handleFinishLogic, handleDiscard
   };
 };
