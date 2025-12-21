@@ -2,7 +2,7 @@
 import React, { useState, useEffect } from 'react';
 import { Navigation, Play, Loader2, Truck, Hammer, Wheat } from 'lucide-react';
 import { dbService } from '../services/db';
-import { Field, StorageLocation, ActivityType, DEFAULT_SETTINGS, ActivityRecord, FarmProfile } from '../types';
+import { Field, StorageLocation, ActivityType, DEFAULT_SETTINGS, ActivityRecord } from '../types';
 import { useTracking } from '../hooks/useTracking';
 import { TrackingMap } from '../components/tracking/TrackingMap';
 import { TrackingUI } from '../components/tracking/TrackingUI';
@@ -80,7 +80,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   if (tracker.trackingState === 'IDLE') {
     return (
       <div className="h-full bg-white flex flex-col overflow-y-auto">
-        <div className="bg-slate-900 text-white p-6 shrink-0">
+        <div className="bg-slate-900 text-white p-6 shrink-0 shadow-lg">
           <h1 className="text-2xl font-bold mb-2">Neue Tätigkeit</h1>
           <p className="text-slate-400 text-sm">Wähle eine Methode um zu starten.</p>
         </div>
@@ -89,18 +89,18 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
             <h2 className="text-lg font-bold text-green-900 mb-4 flex items-center"><Navigation className="mr-2 fill-green-600 text-green-600"/> GPS Aufzeichnung</h2>
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => { setActivityType(ActivityType.FERTILIZATION); setSubType('Gülle'); }} className={`py-3 rounded-lg border-2 font-bold ${activityType === ActivityType.FERTILIZATION ? 'border-green-600 bg-white text-green-700' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>Düngung</button>
-                <button onClick={() => { setActivityType(ActivityType.TILLAGE); setSubType('Wiesenegge'); }} className={`py-3 rounded-lg border-2 font-bold ${activityType === ActivityType.TILLAGE ? 'border-green-600 bg-white text-green-700' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>Boden</button>
+                <button onClick={() => { setActivityType(ActivityType.FERTILIZATION); setSubType('Gülle'); }} className={`py-3 rounded-lg border-2 font-bold transition-all ${activityType === ActivityType.FERTILIZATION ? 'border-green-600 bg-white text-green-700 shadow-sm' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>Düngung</button>
+                <button onClick={() => { setActivityType(ActivityType.TILLAGE); setSubType('Wiesenegge'); }} className={`py-3 rounded-lg border-2 font-bold transition-all ${activityType === ActivityType.TILLAGE ? 'border-green-600 bg-white text-green-700 shadow-sm' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>Boden</button>
               </div>
-              <select value={subType} onChange={e => setSubType(e.target.value)} className="w-full p-3 rounded-xl border border-green-200 bg-white font-bold">
+              <select value={subType} onChange={e => setSubType(e.target.value)} className="w-full p-3 rounded-xl border border-green-200 bg-white font-bold outline-none focus:ring-2 focus:ring-green-500">
                 {activityType === ActivityType.FERTILIZATION ? <><option value="Gülle">Gülle</option><option value="Mist">Mist</option></> : <><option value="Wiesenegge">Wiesenegge</option><option value="Schlegeln">Schlegeln</option><option value="Nachsaat">Nachsaat</option></>}
               </select>
-              <button onClick={tracker.startGPS} disabled={tracker.gpsLoading} className="w-full py-4 bg-green-600 text-white rounded-xl font-bold flex items-center justify-center">{tracker.gpsLoading ? <Loader2 className="animate-spin mr-2"/> : <Play size={24} className="mr-2 fill-white"/>} {tracker.gpsLoading ? 'GPS wird gesucht...' : 'Starten'}</button>
+              <button onClick={tracker.startGPS} disabled={tracker.gpsLoading} className="w-full py-4 bg-green-600 text-white rounded-xl font-bold flex items-center justify-center shadow-lg active:scale-[0.98] transition-all disabled:opacity-70">{tracker.gpsLoading ? <Loader2 className="animate-spin mr-2"/> : <Play size={24} className="mr-2 fill-white"/>} {tracker.gpsLoading ? 'GPS wird gesucht...' : 'Starten'}</button>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3">
-            <button onClick={() => setManualMode(ActivityType.FERTILIZATION)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl"><Truck size={20} className="mr-4 text-amber-600"/><span className="font-bold">Düngung nachtragen</span></button>
-            <button onClick={() => setManualMode(ActivityType.HARVEST)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl"><Wheat size={20} className="mr-4 text-lime-600"/><span className="font-bold">Ernte nachtragen</span></button>
+            <button onClick={() => setManualMode(ActivityType.FERTILIZATION)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all"><Truck size={20} className="mr-4 text-amber-600"/><span className="font-bold">Düngung nachtragen</span></button>
+            <button onClick={() => setManualMode(ActivityType.HARVEST)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all"><Wheat size={20} className="mr-4 text-lime-600"/><span className="font-bold">Ernte nachtragen</span></button>
           </div>
         </div>
       </div>
@@ -108,22 +108,57 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   }
 
   return (
-    <div className="h-full relative bg-slate-900 flex flex-col">
-      <div className="flex-1 relative z-0">
-        <TrackingMap points={tracker.trackPoints} fields={fields} storages={storages} currentLocation={tracker.currentLocation} mapStyle={mapStyle} followUser={followUser} historyTracks={historyTracks} historyMode={historyMode} vehicleIconType="tractor" onZoomChange={setZoom} zoom={zoom} storageRadius={settings.storageRadius} activeSourceId={tracker.activeSourceId} subType={subType} />
-        <TrackingUI trackingState={tracker.trackingState} startTime={tracker.startTime} loadCounts={tracker.loadCounts} currentLocation={tracker.currentLocation} detectionCountdown={tracker.detectionCountdown} storageWarning={tracker.storageWarning} onStopClick={() => setShowSaveConfirm(true)} onMapStyleToggle={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} onFollowToggle={() => setFollowUser(!followUser)} onHistoryToggle={() => setHistoryMode(prev => prev === 'OFF' ? 'ON' : 'OFF')} followUser={followUser} historyMode={historyMode} subType={subType} activityType={activityType} />
+    <div className="h-full flex flex-col bg-slate-900 overflow-hidden">
+      {/* Karten-Bereich (flexibel) */}
+      <div className="flex-1 relative overflow-hidden">
+        <TrackingMap 
+          points={tracker.trackPoints} 
+          fields={fields} 
+          storages={storages} 
+          currentLocation={tracker.currentLocation} 
+          mapStyle={mapStyle} 
+          followUser={followUser} 
+          historyTracks={historyTracks} 
+          historyMode={historyMode} 
+          vehicleIconType="tractor" 
+          onZoomChange={setZoom} 
+          zoom={zoom} 
+          storageRadius={settings.storageRadius} 
+          activeSourceId={tracker.activeSourceId} 
+          subType={subType} 
+        />
+        
+        {/* Absolute Overlays werden hier gerendert */}
+        <TrackingUI 
+          trackingState={tracker.trackingState} 
+          startTime={tracker.startTime} 
+          loadCounts={tracker.loadCounts} 
+          currentLocation={tracker.currentLocation} 
+          detectionCountdown={tracker.detectionCountdown} 
+          storageWarning={tracker.storageWarning} 
+          onStopClick={() => setShowSaveConfirm(true)} 
+          onDiscardClick={() => { if(confirm("Möchtest du die aktuelle Aufzeichnung wirklich löschen?")) tracker.handleDiscard(); }}
+          onMapStyleToggle={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} 
+          onFollowToggle={() => setFollowUser(!followUser)} 
+          onHistoryToggle={() => setHistoryMode(prev => prev === 'OFF' ? 'ON' : 'OFF')} 
+          followUser={followUser} 
+          historyMode={historyMode} 
+          subType={subType} 
+          activityType={activityType} 
+        />
       </div>
 
+      {/* Speicher-Dialog (Modal) */}
       {showSaveConfirm && (
         <div className="absolute inset-0 z-[500] bg-black/50 backdrop-blur p-4 flex items-end pb-24">
           <div className="bg-white w-full rounded-2xl p-6 shadow-2xl space-y-4 animate-in slide-in-from-bottom-10">
             <h3 className="font-bold text-lg">Aufzeichnung beenden</h3>
-            <textarea value={saveNotes} onChange={e => setSaveNotes(e.target.value)} className="w-full border p-3 rounded-xl text-sm" placeholder="Notizen (optional)..." rows={2} />
+            <textarea value={saveNotes} onChange={e => setSaveNotes(e.target.value)} className="w-full border border-slate-200 p-3 rounded-xl text-sm outline-none focus:ring-2 focus:ring-green-500" placeholder="Notizen (optional)..." rows={2} />
             <div className="flex space-x-3">
-              <button onClick={() => setShowSaveConfirm(false)} className="flex-1 py-3 bg-slate-100 font-bold rounded-xl">Zurück</button>
-              <button onClick={handleFinish} className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl">Speichern</button>
+              <button onClick={() => setShowSaveConfirm(false)} className="flex-1 py-3 bg-slate-100 font-bold rounded-xl text-slate-600 active:scale-95 transition-all">Zurück</button>
+              <button onClick={handleFinish} className="flex-1 py-3 bg-green-600 text-white font-bold rounded-xl shadow-lg active:scale-95 transition-all">Speichern</button>
             </div>
-            <button onClick={() => { if(confirm("Verwerfen?")) tracker.handleDiscard(); setShowSaveConfirm(false); }} className="w-full text-red-500 font-bold text-xs py-2">Verwerfen</button>
+            <button onClick={() => { if(confirm("Wirklich alles verwerfen?")) { tracker.handleDiscard(); setShowSaveConfirm(false); } }} className="w-full text-red-500 font-bold text-xs py-2 uppercase tracking-widest">Aufzeichnung löschen</button>
           </div>
         </div>
       )}
