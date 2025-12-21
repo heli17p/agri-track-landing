@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Circle, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { Field, StorageLocation, TrackPoint, FertilizerType } from '../../types';
@@ -87,32 +87,33 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
   const markerRef = useRef<L.Marker>(null);
   const isDraggingInternal = useRef(false);
 
-  // WICHTIG: Wir speichern die Position, bei der die Simulation gestartet wurde,
-  // um React davon abzuhalten, den Marker ständig neu zu setzen.
-  const [initialSimPos] = useState<[number, number]>(center);
-
   const eventHandlers = useMemo(() => ({
     dragstart() {
       isDraggingInternal.current = true;
     },
-    move(e: any) {
-      if (isTestMode && onSimulateClick && isDraggingInternal.current) {
+    drag(e: any) {
+      if (isTestMode && onSimulateClick) {
         const { lat, lng } = e.target.getLatLng();
+        // Hier schieben wir die neue Position flüssig an den Tracker weiter
         onSimulateClick(lat, lng);
       }
     },
     dragend() {
-      isDraggingInternal.current = false;
+      // Verzögerte Freigabe, damit der letzte Render-Cycle von React 
+      // nicht das Icon zurück-teleportiert.
+      setTimeout(() => {
+        isDraggingInternal.current = false;
+      }, 100);
     }
   }), [isTestMode, onSimulateClick]);
 
-  // Synchronisation von Außen (echtes GPS):
-  // Nur anwenden, wenn wir NICHT im Testmodus sind. Im Testmodus verwaltet Leaflet die Position intern.
+  // Synchronisation der Marker-Position von AUẞEN (z.B. echtes GPS oder Simulations-State-Update)
+  // Wir führen das nur aus, wenn der User NICHT gerade aktiv zieht.
   useEffect(() => {
-    if (markerRef.current && currentLocation && !isTestMode) {
+    if (markerRef.current && currentLocation && !isDraggingInternal.current) {
       markerRef.current.setLatLng([currentLocation.coords.latitude, currentLocation.coords.longitude]);
     }
-  }, [currentLocation, isTestMode]);
+  }, [currentLocation]);
 
   const trackSegments = useMemo(() => {
     if (points.length < 2) return [];
@@ -143,8 +144,7 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
       
       {currentLocation && (
         <Marker 
-            /* Im Testmodus nutzen wir initialSimPos, damit React nicht ständig setLatLng aufruft */
-            position={isTestMode ? initialSimPos : center} 
+            position={center} 
             ref={markerRef}
             draggable={isTestMode}
             eventHandlers={eventHandlers}

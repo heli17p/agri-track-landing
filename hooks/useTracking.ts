@@ -196,15 +196,15 @@ export const useTracking = (
       const dist = getDistance({ lat, lng }, lastSimPosRef.current);
       const timeSec = (now - lastSimTimeRef.current) / 1000;
       
-      // Geschwindigkeits-Berechnung glätten
-      if (timeSec > 0.01) {
+      // Geschwindigkeits-Berechnung glätten über die letzten 4 Messungen
+      if (timeSec > 0.05) {
         const instantSpeed = dist / timeSec;
         speedBufferRef.current.push(instantSpeed);
-        if (speedBufferRef.current.length > 5) speedBufferRef.current.shift();
+        if (speedBufferRef.current.length > 4) speedBufferRef.current.shift();
         speedMs = speedBufferRef.current.reduce((a, b) => a + b, 0) / speedBufferRef.current.length;
         
-        // Deckelung auf realistische 40 km/h in der Simulation
-        if (speedMs > 11.1) speedMs = 11.1; 
+        // Deckelung auf realistische 45 km/h in der Simulation
+        if (speedMs > 12.5) speedMs = 12.5; 
       }
 
       const dy = lat - lastSimPosRef.current.lat;
