@@ -1,6 +1,7 @@
 
 import React from 'react';
 import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker } from 'lucide-react';
+import { StorageLocation } from '../../types';
 
 interface Props {
   trackingState: string;
@@ -20,6 +21,8 @@ interface Props {
   subType: string;
   activityType: string;
   isTestMode: boolean;
+  activeSourceId: string | null;
+  storages: StorageLocation[];
 }
 
 export const TrackingUI: React.FC<Props> = ({ 
@@ -39,43 +42,33 @@ export const TrackingUI: React.FC<Props> = ({
   historyMode, 
   subType, 
   activityType,
-  isTestMode
+  isTestMode,
+  activeSourceId,
+  storages
 }) => {
   const totalLoads = Object.values(loadCounts).reduce((a, b) => a + b, 0);
   const speed = ((currentLocation?.coords.speed || 0) * 3.6).toFixed(1);
   const duration = startTime ? Math.round((Date.now() - startTime) / 60000) : 0;
 
+  const activeStorageName = activeSourceId ? storages.find(s => s.id === activeSourceId)?.name : null;
+
   return (
     <>
-      {/* Schwebende Karten-Buttons (Rechts) - FIXED POSITION */}
       <div className="fixed top-20 right-4 flex flex-col space-y-3 z-[1000]">
-        <button onClick={onMapStyleToggle} className="bg-white/95 p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur text-slate-700 active:scale-95 transition-all">
-          <Layers size={24} />
-        </button>
-        <button onClick={onFollowToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${followUser ? 'bg-blue-600 text-white' : 'bg-white/95 text-slate-700'}`}>
-          <LocateFixed size={24}/>
-        </button>
-        <button onClick={onHistoryToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${historyMode !== 'OFF' ? 'bg-purple-600 text-white' : 'bg-white/95 text-slate-700'}`}>
-          <History size={24}/>
-        </button>
-        {/* NEU: Test Modus Button */}
-        <button onClick={onTestModeToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${isTestMode ? 'bg-orange-500 text-white animate-pulse' : 'bg-white/95 text-slate-700'}`}>
-          <Beaker size={24}/>
-        </button>
+        <button onClick={onMapStyleToggle} className="bg-white/95 p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur text-slate-700 active:scale-95 transition-all"><Layers size={24} /></button>
+        <button onClick={onFollowToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${followUser ? 'bg-blue-600 text-white' : 'bg-white/95 text-slate-700'}`}><LocateFixed size={24}/></button>
+        <button onClick={onHistoryToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${historyMode !== 'OFF' ? 'bg-purple-600 text-white' : 'bg-white/95 text-slate-700'}`}><History size={24}/></button>
+        <button onClick={onTestModeToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${isTestMode ? 'bg-orange-500 text-white animate-pulse' : 'bg-white/95 text-slate-700'}`}><Beaker size={24}/></button>
       </div>
 
-      {/* Status Anzeige (Oben Mitte) - FIXED POSITION */}
       <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[1000] w-full max-w-[80%] flex flex-col items-center space-y-2 pointer-events-none">
         {isTestMode && (
-          <div className="bg-orange-600/90 backdrop-blur text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg animate-bounce">
-            Simulation Aktiv: Karte klicken zum Fahren
-          </div>
+          <div className="bg-orange-600/90 backdrop-blur text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg animate-bounce">Simulation Aktiv: Karte klicken zum Fahren</div>
         )}
         
         {storageWarning && (
           <div className="bg-orange-500/95 backdrop-blur text-white px-4 py-2 rounded-xl shadow-xl flex items-center space-x-2 animate-in slide-in-from-top-4 w-full justify-center">
-            <Ban size={18}/>
-            <span className="font-bold text-xs">{storageWarning}</span>
+            <Ban size={18}/><span className="font-bold text-xs">{storageWarning}</span>
           </div>
         )}
         
@@ -84,68 +77,32 @@ export const TrackingUI: React.FC<Props> = ({
             {trackingState === 'LOADING' ? <Database size={18}/> : trackingState === 'SPREADING' ? <Droplets size={18}/> : <Truck size={18}/>}
           </div>
           <div className="flex flex-col">
-            <span className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-0.5 tracking-tighter">Live-Status</span>
+            <span className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-0.5 tracking-tighter">
+                {activeStorageName ? `Quelle: ${activeStorageName}` : 'Live-Status'}
+            </span>
             <span className="font-bold text-slate-800 text-sm leading-none">
-              {detectionCountdown ? `Laden in: ${detectionCountdown}s` : trackingState === 'LOADING' ? 'Laden...' : trackingState === 'SPREADING' ? 'Ausbringung' : 'Transport'}
+              {trackingState === 'LOADING' ? 'Laden...' : trackingState === 'SPREADING' ? 'Ausbringung' : 'Transport'}
             </span>
           </div>
         </div>
       </div>
 
-      {/* DIE FIXIERTE INFO- & STEUERUNGSLEISTE (UNTEN) */}
       <div className="bg-white border-t-2 border-slate-200 p-4 pb-safe z-[1001] shadow-[0_-8px_30px_rgb(0,0,0,0.12)] shrink-0">
         <div className="flex items-center justify-between space-x-2">
-          
-          {/* STATS AREA */}
           <div className="flex-1 flex items-center justify-around bg-slate-50 rounded-2xl py-3 px-2 border border-slate-100">
-            <div className="flex flex-col items-center">
-              <span className="text-xl font-mono font-black text-slate-800 leading-none">{duration}</span>
-              <span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Min</span>
-            </div>
-            
+            <div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-slate-800 leading-none">{duration}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Min</span></div>
             <div className="w-px h-8 bg-slate-200"></div>
-            
             {activityType === 'Düngung' && (
-              <>
-                <div className="flex flex-col items-center">
-                  <span className="text-xl font-mono font-black text-amber-600 leading-none">{totalLoads}</span>
-                  <span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Fuhren</span>
-                </div>
-                <div className="w-px h-8 bg-slate-200"></div>
-              </>
+              <><div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-amber-600 leading-none">{totalLoads}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Fuhren</span></div><div className="w-px h-8 bg-slate-200"></div></>
             )}
-
-            <div className="flex flex-col items-center">
-              <span className="text-xl font-mono font-black text-blue-600 leading-none">{speed}</span>
-              <span className="text-[9px] text-slate-400 font-bold uppercase mt-1">km/h</span>
-            </div>
+            <div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-blue-600 leading-none">{speed}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">km/h</span></div>
           </div>
-
-          {/* BUTTON AREA */}
           <div className="flex items-center space-x-3 ml-2">
-            {/* Abbrechen (X) */}
-            <button 
-              onClick={onDiscardClick} 
-              className="w-12 h-14 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-all active:scale-90"
-              title="Abbrechen"
-            >
-              <XCircle size={28} />
-            </button>
-            
-            {/* Stop & Speichern */}
-            <button 
-              onClick={onStopClick} 
-              className="w-20 h-14 bg-red-600 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg shadow-red-200 hover:bg-red-700 active:scale-95 transition-all"
-            >
-              <Square size={20} fill="currentColor" className="mb-0.5"/>
-              <span className="text-[10px] font-black uppercase tracking-tighter">STOP</span>
-            </button>
+            <button onClick={onDiscardClick} className="w-12 h-14 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-all active:scale-90" title="Abbrechen"><XCircle size={28} /></button>
+            <button onClick={onStopClick} className="w-20 h-14 bg-red-600 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg shadow-red-200 hover:bg-red-700 active:scale-95 transition-all"><Square size={20} fill="currentColor" className="mb-0.5"/><span className="text-[10px] font-black uppercase tracking-tighter">STOP</span></button>
           </div>
-
         </div>
-        <div className="mt-2 text-center">
-            <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{activityType} • {subType}</span>
-        </div>
+        <div className="mt-2 text-center"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{activityType} • {subType}</span></div>
       </div>
     </>
   );

@@ -148,6 +148,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         subType={subType} 
         activityType={activityType}
         isTestMode={tracker.isTestMode}
+        activeSourceId={tracker.activeSourceId}
+        storages={storages}
       />
 
       {showSaveConfirm && (
