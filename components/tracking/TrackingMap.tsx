@@ -1,8 +1,8 @@
 
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Circle, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
-import { Field, StorageLocation, TrackPoint, StorageLocation as StorageType, FertilizerType } from '../../types';
+import { Field, StorageLocation, TrackPoint, FertilizerType } from '../../types';
 
 interface Props {
   points: TrackPoint[];
@@ -26,7 +26,6 @@ interface Props {
 const MapController = ({ center, zoom, follow, onZoomChange, isTestMode }: { center: [number, number], zoom: number, follow: boolean, onZoomChange: (z: number) => void, isTestMode: boolean }) => {
   const map = useMap();
   
-  // Im Testmodus verhindern wir das automatische Zentrieren, damit die Zieh-Geste nicht unterbrochen wird
   useEffect(() => { 
     if (center && !isTestMode) {
       map.setView(center, zoom, { animate: follow }); 
@@ -75,7 +74,7 @@ const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot'
   }
   return L.divIcon({ 
     className: 'vehicle-cursor', 
-    html: `<div style="transform:rotate(${rotation}deg);width:100%;height:100%;display:flex;align-items:center;justify-content:center;${isDragging ? 'filter: drop-shadow(0 0 8px rgba(59,130,246,0.6)); scale: 1.1;' : ''}">${content}</div>`, 
+    html: `<div style="transform:rotate(${rotation}deg);width:100%;height:100%;display:flex;align-items:center;justify-content:center;${isDragging ? 'filter: drop-shadow(0 0 12px rgba(59,130,246,0.8)); scale: 1.2;' : ''}">${content}</div>`, 
     iconSize: [size[0], size[1]], 
     iconAnchor: [size[0] / 2, size[1] / 2] 
   });
@@ -86,24 +85,33 @@ const createCustomIcon = (color: string, svgPath: string) => L.divIcon({ classNa
 export const TrackingMap: React.FC<Props> = ({ points, fields, storages, currentLocation, mapStyle, followUser, historyTracks, historyMode, vehicleIconType, onZoomChange, zoom, storageRadius, subType, isTestMode, onSimulateClick }) => {
   const center: [number, number] = currentLocation ? [currentLocation.coords.latitude, currentLocation.coords.longitude] : [47.5, 14.5];
   const markerRef = useRef<L.Marker>(null);
+  const isDraggingInternal = useRef(false);
 
-  // Wir nutzen das 'move' Event statt 'drag', da es flüssiger mit dem State harmoniert
   const eventHandlers = useMemo(() => ({
-    move(e: any) {
-        if (isTestMode && onSimulateClick) {
-            const { lat, lng } = e.latlng;
-            onSimulateClick(lat, lng);
-        }
+    dragstart() {
+      isDraggingInternal.current = true;
+    },
+    drag(e: any) {
+      if (isTestMode && onSimulateClick) {
+        const { lat, lng } = e.target.getLatLng();
+        onSimulateClick(lat, lng);
+      }
+    },
+    dragend() {
+      // Kleiner Delay, damit der letzte State-Update durchlaufen kann, 
+      // bevor React die Position wieder übernimmt
+      setTimeout(() => {
+        isDraggingInternal.current = false;
+      }, 100);
     }
   }), [isTestMode, onSimulateClick]);
 
-  // WICHTIG: Im Testmodus aktualisieren wir die Position des Markers MANUELL über die Ref,
-  // um den React-Render-Loop zu umgehen, der den Marker sonst zurückspringen lässt.
+  // Synchronisation von Außen NUR, wenn wir NICHT gerade ziehen
   useEffect(() => {
-    if (markerRef.current && currentLocation && !isTestMode) {
+    if (markerRef.current && currentLocation && !isDraggingInternal.current) {
       markerRef.current.setLatLng([currentLocation.coords.latitude, currentLocation.coords.longitude]);
     }
-  }, [currentLocation, isTestMode]);
+  }, [currentLocation]);
 
   const trackSegments = useMemo(() => {
     if (points.length < 2) return [];
