@@ -95,18 +95,16 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
   const markerRef = useRef<L.Marker>(null);
   const isDraggingInternal = useRef(false);
 
-  // Dieser State speichert die Position, bei der der Marker laut React stehen soll.
-  // Während des Ziehens im Testmodus verändern wir diesen State NICHT, damit React
-  // nicht versucht, den Marker zurückzusetzen.
-  const [markerStatePos, setMarkerStatePos] = useState<[number, number]>(center);
+  // Diese Position wird nur einmal beim Mounten gesetzt.
+  // Danach steuern wir den Marker NUR noch manuell über markerRef.current.setLatLng.
+  const [stableInitialPos] = useState<[number, number]>(center);
 
+  // Synchronisation von außen (echtes GPS oder Simulations-Updates)
   useEffect(() => {
-    // Wenn wir NICHT gerade aktiv ziehen, synchronisieren wir den Marker-State
-    // mit der echten Position vom GPS/Simulator.
-    if (!isDraggingInternal.current) {
-        setMarkerStatePos(center);
+    if (markerRef.current && currentLocation && !isDraggingInternal.current) {
+      markerRef.current.setLatLng([currentLocation.coords.latitude, currentLocation.coords.longitude]);
     }
-  }, [center]);
+  }, [currentLocation]);
 
   const eventHandlers = useMemo(() => ({
     dragstart() {
@@ -115,17 +113,15 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
     drag(e: any) {
       if (isTestMode && onSimulateClick) {
         const { lat, lng } = e.target.getLatLng();
-        // Logik-Update an den Tracker senden (zeichnet Pfad), 
-        // aber wir lassen den Marker-State-Pos in Ruhe.
+        // Sende Update an den Hook für die Pfadzeichnung
         onSimulateClick(lat, lng);
       }
     },
-    dragend(e: any) {
-      const { lat, lng } = e.target.getLatLng();
-      setMarkerStatePos([lat, lng]);
+    dragend() {
+      // Verzögerte Freigabe, damit der letzte "Snap-Back" nach dem Loslassen verhindert wird
       setTimeout(() => {
         isDraggingInternal.current = false;
-      }, 100);
+      }, 200);
     }
   }), [isTestMode, onSimulateClick]);
 
@@ -158,7 +154,12 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
       
       {currentLocation && (
         <Marker 
-            position={markerStatePos} 
+            /* 
+               WICHTIG: Wir nutzen die stableInitialPos. 
+               Da diese sich nie ändert, versucht React nie den Marker zu verschieben.
+               Die echte visuelle Position steuern wir oben manuell per markerRef.setLatLng()
+            */
+            position={stableInitialPos} 
             ref={markerRef}
             draggable={isTestMode}
             eventHandlers={eventHandlers}

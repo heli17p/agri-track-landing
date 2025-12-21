@@ -180,8 +180,9 @@ export const useTracking = (
         if (prev.length > 0) {
             const last = prev[prev.length - 1];
             const dist = getDistance(last, point);
-            // Kleiner Schwellenwert: Nur Punkte speichern die mind. 0.5m entfernt sind
-            if (dist < 0.5) return prev;
+            // In der Simulation erlauben wir sehr kleine Abstände für flüssige Pfade (0.1m)
+            const minMove = isTestModeRef.current ? 0.1 : 0.5;
+            if (dist < minMove) return prev;
         }
         return [...prev, point];
     });
@@ -190,9 +191,8 @@ export const useTracking = (
   const simulateMovement = useCallback((lat: number, lng: number) => {
     const now = Date.now();
     
-    // DROSSELUNG: Wir erlauben nur alle 70ms ein Update, um den Main-Thread 
-    // für flüssige Leaflet-Animationen frei zu halten.
-    if (lastSimTimeRef.current > 0 && (now - lastSimTimeRef.current) < 70) return;
+    // In der Simulation erlauben wir alle 60ms ein Update für flüssige Geste
+    if (lastSimTimeRef.current > 0 && (now - lastSimTimeRef.current) < 60) return;
 
     let speedMs = 0;
     let heading = 0;
@@ -201,7 +201,7 @@ export const useTracking = (
       const dist = getDistance({ lat, lng }, lastSimPosRef.current);
       const timeSec = (now - lastSimTimeRef.current) / 1000;
       
-      if (timeSec > 0.02) {
+      if (timeSec > 0.01) {
         const instantSpeed = dist / timeSec;
         speedBufferRef.current.push(instantSpeed);
         if (speedBufferRef.current.length > 3) speedBufferRef.current.shift();
