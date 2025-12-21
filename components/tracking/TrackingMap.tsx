@@ -1,3 +1,4 @@
+
 import React, { useEffect, useMemo, useRef, useState, memo } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Circle, Polyline, useMap, useMapEvents, Popup } from 'react-leaflet';
 import L from 'leaflet';
@@ -201,7 +202,7 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
                 color: 'white', 
                 weight: 2, 
                 opacity: 0.9,
-                dashArray: '8, 12', // Gestrichelt für bessere Dynamik
+                dashArray: '10, 15', // Optimierte Abstände für bessere Sichtbarkeit
                 lineCap: 'butt'
               }} 
             />
@@ -238,3 +239,4 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
     </MapContainer>
   );
 };
+

@@ -87,6 +87,7 @@ export const useTracking = (
 
           setStorageWarning(null);
 
+          // Wenn wir bereits an diesem Lager als "aktiv geladen" markiert sind, nichts tun
           if (activeSourceIdRef.current === nearest.id && trackingState === 'LOADING') {
               proximityStartTimeRef.current = null;
               setDetectionCountdown(null);
@@ -124,10 +125,10 @@ export const useTracking = (
           setPendingStorageId(null);
           setDetectionCountdown(null);
 
+          // Statuswechsel von LADEN zu TRANSPORT wenn man wegfährt
+          // WICHTIG: activeSourceIdRef wird hier NICHT mehr genullt, damit die Spurfarbe bleibt!
           if (speedKmh > 3.5 && trackingState === 'LOADING') {
               setTrackingState('TRANSIT');
-              activeSourceIdRef.current = null;
-              setActiveSourceId(null);
           }
       }
     }, 1000);
@@ -154,10 +155,8 @@ export const useTracking = (
         const newState = isSpreading ? 'SPREADING' : (trackingState === 'LOADING' ? 'LOADING' : 'TRANSIT');
         if (newState !== trackingState) setTrackingState(newState);
         
-        if (speedKmh > 3.5 && trackingState === 'LOADING') {
-            activeSourceIdRef.current = null;
-            setActiveSourceId(null);
-        }
+        // Auch hier: Kein automatisches Nullstellen der activeSourceId mehr!
+        // Die ID bleibt "sticky" für die aktuelle Fuhre.
     }
 
     const point: TrackPoint = {
