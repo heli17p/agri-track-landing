@@ -180,7 +180,7 @@ export const useTracking = (
         if (prev.length > 0) {
             const last = prev[prev.length - 1];
             const dist = getDistance(last, point);
-            // In der Simulation erlauben wir sehr kleine Abstände für flüssige Pfade (0.1m)
+            // Mindestentfernung für neue Punkte (0.1m Simulation, 0.5m GPS)
             const minMove = isTestModeRef.current ? 0.1 : 0.5;
             if (dist < minMove) return prev;
         }
@@ -191,8 +191,8 @@ export const useTracking = (
   const simulateMovement = useCallback((lat: number, lng: number) => {
     const now = Date.now();
     
-    // REDUZIERTE DROSSELUNG: 30ms für ultra-flüssiges Zeichnen
-    if (lastSimTimeRef.current > 0 && (now - lastSimTimeRef.current) < 30) return;
+    // Simulations-Takt: Max 20 Updates pro Sekunde (50ms) schont den Render-Zyklus
+    if (lastSimTimeRef.current > 0 && (now - lastSimTimeRef.current) < 50) return;
 
     let speedMs = 0;
     let heading = 0;
@@ -201,7 +201,7 @@ export const useTracking = (
       const dist = getDistance({ lat, lng }, lastSimPosRef.current);
       const timeSec = (now - lastSimTimeRef.current) / 1000;
       
-      if (timeSec > 0.005) {
+      if (timeSec > 0.01) {
         const instantSpeed = dist / timeSec;
         speedBufferRef.current.push(instantSpeed);
         if (speedBufferRef.current.length > 3) speedBufferRef.current.shift();

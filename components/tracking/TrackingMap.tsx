@@ -64,11 +64,11 @@ const getStorageColor = (storageId: string | undefined, allStorages: StorageLoca
   return storage.type === FertilizerType.SLURRY ? SLURRY_PALETTE[Math.max(0, idx) % SLURRY_PALETTE.length] : MANURE_PALETTE[Math.max(0, idx) % MANURE_PALETTE.length];
 };
 
-const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot', isDragging: boolean) => {
+const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot', isTestMode: boolean) => {
   const rotation = heading || 0;
   let content = '';
   let size = [32, 32];
-  const color = isDragging ? '#3b82f6' : '#16a34a';
+  const color = isTestMode ? '#3b82f6' : '#16a34a';
 
   if (type === 'tractor') {
     content = `<svg viewBox="0 0 50 50"><rect x="5" y="30" width="12" height="18" rx="2" fill="#1e293b"/><rect x="33" y="30" width="12" height="18" rx="2" fill="#1e293b"/><rect x="8" y="5" width="8" height="10" rx="2" fill="#1e293b"/><rect x="34" y="5" width="8" height="10" rx="2" fill="#1e293b"/><path d="M20 4 L30 4 L30 20 L34 22 L34 40 L16 40 L16 22 L20 20 Z" fill="${color}"/><rect x="14" y="24" width="22" height="14" rx="1" fill="#fff" fill-opacity="0.9" stroke="#94a3b8" stroke-width="2"/></svg>`;
@@ -82,7 +82,7 @@ const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot'
   }
   return L.divIcon({ 
     className: 'vehicle-cursor', 
-    html: `<div style="transform:rotate(${rotation}deg);width:100%;height:100%;display:flex;align-items:center;justify-content:center;${isDragging ? 'filter: drop-shadow(0 0 12px rgba(59,130,246,0.8)); scale: 1.2;' : ''}">${content}</div>`, 
+    html: `<div style="transform:rotate(${rotation}deg);width:100%;height:100%;display:flex;align-items:center;justify-content:center;${isTestMode ? 'filter: drop-shadow(0 0 8px rgba(59,130,246,0.6));' : ''}">${content}</div>`, 
     iconSize: [size[0], size[1]], 
     iconAnchor: [size[0] / 2, size[1] / 2] 
   });
@@ -93,41 +93,40 @@ const createCustomIcon = (color: string, svgPath: string) => L.divIcon({ classNa
 export const TrackingMap: React.FC<Props> = ({ points, fields, storages, currentLocation, mapStyle, followUser, historyTracks, historyMode, vehicleIconType, onZoomChange, zoom, storageRadius, subType, isTestMode, onSimulateClick }) => {
   const center: [number, number] = currentLocation ? [currentLocation.coords.latitude, currentLocation.coords.longitude] : [47.5, 14.5];
   const markerRef = useRef<L.Marker>(null);
-  const isDraggingInternal = useRef(false);
+  const isDragging = useRef(false);
 
-  // WICHTIGSTER FIX: Wir frieren die Prop-Position ein, wenn die Simulation startet.
-  // Dadurch lässt React den Marker dort "los" und Leaflet kann ihn flüssig ziehen.
-  const [frozenInitialPos, setFrozenInitialPos] = useState<[number, number]>(center);
+  // WICHTIG: Im Testmodus übergeben wir dem Marker eine "eingefrorene" Position als Prop.
+  // Da sich diese Prop für React nicht ändert, lässt React den Marker beim Ziehen gewähren (kein Snap-Back).
+  const [frozenPos, setFrozenPos] = useState<[number, number]>(center);
 
   useEffect(() => {
-    // Wenn Testmodus eingeschaltet wird, setzen wir die Startposition fest.
     if (isTestMode) {
-      setFrozenInitialPos(center);
+      setFrozenPos(center);
     }
   }, [isTestMode]);
 
-  // Synchronisation von außen NUR wenn wir NICHT ziehen.
+  // Manuelle Synchronisation des Markers (nur wenn NICHT gezogen wird)
   useEffect(() => {
-    if (markerRef.current && currentLocation && !isDraggingInternal.current) {
-      markerRef.current.setLatLng([currentLocation.coords.latitude, currentLocation.coords.longitude]);
+    if (markerRef.current && currentLocation && !isDragging.current) {
+        markerRef.current.setLatLng([currentLocation.coords.latitude, currentLocation.coords.longitude]);
     }
   }, [currentLocation]);
 
   const eventHandlers = useMemo(() => ({
     dragstart() {
-      isDraggingInternal.current = true;
+      isDragging.current = true;
     },
     drag(e: any) {
       if (isTestMode && onSimulateClick) {
         const { lat, lng } = e.target.getLatLng();
-        // Das Update an den Tracker sendet Koordinaten für den Pfad (Polyline),
-        // aber verändert NICHT die Marker-Position-Prop, die React sieht.
+        // Sende Update an Hook (für Pfad), aber wir ändern KEINEN State, der den Marker re-rendert
         onSimulateClick(lat, lng);
       }
     },
     dragend() {
+      // Kleiner Delay um den letzten GPS-Sprung abzufangen
       setTimeout(() => {
-        isDraggingInternal.current = false;
+        isDragging.current = false;
       }, 100);
     }
   }), [isTestMode, onSimulateClick]);
@@ -161,11 +160,8 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
       
       {currentLocation && (
         <Marker 
-            /* 
-               WICHTIG: Im Testmodus nutzen wir die eingefrorene Koordinate.
-               Dadurch versucht React nie, den Marker während des Ziehens zu korrigieren.
-            */
-            position={isTestMode ? frozenInitialPos : center} 
+            key={isTestMode ? "sim-marker" : "live-marker"}
+            position={isTestMode ? frozenPos : center} 
             ref={markerRef}
             draggable={isTestMode}
             eventHandlers={eventHandlers}
