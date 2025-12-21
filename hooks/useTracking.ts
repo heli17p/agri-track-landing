@@ -23,6 +23,7 @@ export const useTracking = (
   const [detectionCountdown, setDetectionCountdown] = useState<number | null>(null);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [isTestMode, setIsTestMode] = useState(false);
 
   // Refs for background safety
   const settingsRef = useRef(settings);
@@ -38,13 +39,14 @@ export const useTracking = (
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const activeLoadingStorageRef = useRef<StorageLocation | null>(null);
   const pendingStorageIdRef = useRef<string | null>(null);
+  const lastSimulatedPosRef = useRef<GeoPoint | null>(null);
 
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { fieldsRef.current = fields; }, [fields]);
   useEffect(() => { storagesRef.current = storages; }, [storages]);
   useEffect(() => { activityTypeRef.current = activityType; }, [activityType]);
   useEffect(() => { subTypeRef.current = subType; }, [subType]);
-  useEffect(() => { trackingStateRef.current = trackingState; trackingStateRef.current = trackingState; }, [trackingState]);
+  useEffect(() => { trackingStateRef.current = trackingState; }, [trackingState]);
   useEffect(() => { activeSourceIdRef.current = activeSourceId; }, [activeSourceId]);
 
   const requestWakeLock = async () => {
@@ -140,7 +142,7 @@ export const useTracking = (
     if (isPaused) return;
 
     const { latitude, longitude, speed, accuracy } = pos.coords;
-    if (accuracy > 30) return;
+    if (accuracy > 50 && !isTestMode) return; // Etwas kulanter im Testmodus
 
     const speedKmh = (speed || 0) * 3.6;
     const point: TrackPoint = {
@@ -174,7 +176,24 @@ export const useTracking = (
     }
 
     setTrackPoints(prev => [...prev, point]);
-  }, [isPaused, checkStorageProximity]);
+  }, [isPaused, isTestMode, checkStorageProximity]);
+
+  const simulatePosition = useCallback((lat: number, lng: number) => {
+    // Simuliere 12 km/h = 3.33 m/s
+    const speedMs = 3.33; 
+    const fakePos: any = {
+      coords: {
+        latitude: lat,
+        longitude: lng,
+        accuracy: 5,
+        speed: speedMs,
+        heading: lastSimulatedPosRef.current ? 0 : null // Man könnte Heading berechnen
+      },
+      timestamp: Date.now()
+    };
+    lastSimulatedPosRef.current = { lat, lng };
+    handleNewPosition(fakePos);
+  }, [handleNewPosition]);
 
   const startGPS = async () => {
     if (!navigator.geolocation) { alert("GPS wird nicht unterstützt."); return; }
@@ -191,8 +210,12 @@ export const useTracking = (
       setActiveSourceId(null);
       setIsPaused(false);
       setStorageWarning(null);
+      setIsTestMode(false);
       currentLoadIndexRef.current = 1;
-      watchIdRef.current = navigator.geolocation.watchPosition(handleNewPosition, (err) => console.error(err), { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 });
+      watchIdRef.current = navigator.geolocation.watchPosition((pos) => {
+        // Ignoriere echtes GPS wenn Testmodus aktiv
+        if (!isTestMode) handleNewPosition(pos);
+      }, (err) => console.error(err), { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 });
     } catch (e: any) { alert("GPS Fehler: " + e.message); }
     finally { setGpsLoading(false); }
   };
@@ -201,6 +224,7 @@ export const useTracking = (
     if (watchIdRef.current !== null) { navigator.geolocation.clearWatch(watchIdRef.current); watchIdRef.current = null; }
     if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); countdownIntervalRef.current = null; }
     releaseWakeLock();
+    setIsTestMode(false);
   }, [releaseWakeLock]);
 
   const handleFinishLogic = async (notes: string) => {
@@ -214,7 +238,7 @@ export const useTracking = (
     stopGPS();
     setTrackingState('IDLE');
 
-    // Stats Calculation Logic (Copied from old TrackingPage)
+    // Stats Calculation Logic
     let spreadDist = 0;
     const fieldDistMap: Record<string, number> = {};
     const fieldIds = new Set<string>();
@@ -305,6 +329,9 @@ export const useTracking = (
     detectionCountdown,
     storageWarning,
     gpsLoading,
+    isTestMode,
+    setIsTestMode,
+    simulatePosition,
     startGPS,
     stopGPS,
     handleFinishLogic,

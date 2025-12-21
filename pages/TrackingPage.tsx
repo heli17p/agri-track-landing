@@ -125,7 +125,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           zoom={zoom} 
           storageRadius={settings.storageRadius} 
           activeSourceId={tracker.activeSourceId} 
-          subType={subType} 
+          subType={subType}
+          isTestMode={tracker.isTestMode}
+          onSimulateClick={tracker.simulatePosition}
         />
       </div>
 
@@ -142,10 +144,12 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         onMapStyleToggle={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} 
         onFollowToggle={() => setFollowUser(!followUser)} 
         onHistoryToggle={() => setHistoryMode(prev => prev === 'OFF' ? 'ON' : 'OFF')} 
+        onTestModeToggle={() => tracker.setIsTestMode(!tracker.isTestMode)}
         followUser={followUser} 
         historyMode={historyMode} 
         subType={subType} 
-        activityType={activityType} 
+        activityType={activityType}
+        isTestMode={tracker.isTestMode}
       />
 
       {/* Speicher-Dialog (Überlagernd) */}

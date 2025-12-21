@@ -19,13 +19,24 @@ interface Props {
   storageRadius: number;
   activeSourceId: string | null;
   subType: string;
+  isTestMode: boolean;
+  onSimulateClick?: (lat: number, lng: number) => void;
 }
 
-const MapController = ({ center, zoom, follow, onZoomChange }: { center: [number, number], zoom: number, follow: boolean, onZoomChange: (z: number) => void }) => {
+const MapController = ({ center, zoom, follow, onZoomChange, isTestMode, onSimulateClick }: { center: [number, number], zoom: number, follow: boolean, onZoomChange: (z: number) => void, isTestMode: boolean, onSimulateClick?: (lat: number, lng: number) => void }) => {
   const map = useMap();
   useEffect(() => { if (center) map.setView(center, zoom, { animate: follow }); }, [center, zoom, follow, map]);
   useEffect(() => { const t = setTimeout(() => map.invalidateSize(), 200); return () => clearTimeout(t); }, [map]);
-  useMapEvents({ zoomend: () => onZoomChange(map.getZoom()) });
+  
+  useMapEvents({ 
+    zoomend: () => onZoomChange(map.getZoom()),
+    click: (e) => {
+      if (isTestMode && onSimulateClick) {
+        onSimulateClick(e.latlng.lat, e.latlng.lng);
+      }
+    }
+  });
+  
   return null;
 };
 
@@ -60,7 +71,7 @@ const getCursorIcon = (heading: number | null, type: 'tractor' | 'arrow' | 'dot'
 
 const createCustomIcon = (color: string, svgPath: string) => L.divIcon({ className: 'custom-pin-icon', html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white; position: relative;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${svgPath}</svg></div>`, iconSize: [32, 32], iconAnchor: [16, 32] });
 
-export const TrackingMap: React.FC<Props> = ({ points, fields, storages, currentLocation, mapStyle, followUser, historyTracks, historyMode, vehicleIconType, onZoomChange, zoom, storageRadius, subType }) => {
+export const TrackingMap: React.FC<Props> = ({ points, fields, storages, currentLocation, mapStyle, followUser, historyTracks, historyMode, vehicleIconType, onZoomChange, zoom, storageRadius, subType, isTestMode, onSimulateClick }) => {
   const center: [number, number] = currentLocation ? [currentLocation.coords.latitude, currentLocation.coords.longitude] : [47.5, 14.5];
 
   const trackSegments = useMemo(() => {
@@ -85,7 +96,7 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
   return (
     <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} zoomControl={false}>
       <TileLayer url={mapStyle === 'standard' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} />
-      <MapController center={center} zoom={zoom} follow={followUser} onZoomChange={onZoomChange} />
+      <MapController center={center} zoom={zoom} follow={followUser} onZoomChange={onZoomChange} isTestMode={isTestMode} onSimulateClick={onSimulateClick} />
       {fields.map(f => <Polygon key={f.id} positions={f.boundary.map(p => [p.lat, p.lng])} pathOptions={{ color: f.color || (f.type === 'Acker' ? '#92400E' : '#15803D'), fillOpacity: 0.3, weight: 1 }} />)}
       {historyMode !== 'OFF' && historyTracks.map((act, i) => act.trackPoints && <Polyline key={i} positions={act.trackPoints.map((p: any) => [p.lat, p.lng])} pathOptions={{ color: '#666', weight: 2, opacity: 0.3, dashArray: '5,5' }} />)}
       {trackSegments.map((s, i) => <Polyline key={i} positions={s.points as any} pathOptions={{ color: s.color, weight: s.spread ? 20 : 4, opacity: 0.8 }} />)}

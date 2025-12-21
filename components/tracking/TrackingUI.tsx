@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle } from 'lucide-react';
+import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker } from 'lucide-react';
 
 interface Props {
   trackingState: string;
@@ -14,10 +14,12 @@ interface Props {
   onMapStyleToggle: () => void;
   onFollowToggle: () => void;
   onHistoryToggle: () => void;
+  onTestModeToggle: () => void;
   followUser: boolean;
   historyMode: string;
   subType: string;
   activityType: string;
+  isTestMode: boolean;
 }
 
 export const TrackingUI: React.FC<Props> = ({ 
@@ -32,10 +34,12 @@ export const TrackingUI: React.FC<Props> = ({
   onMapStyleToggle, 
   onFollowToggle, 
   onHistoryToggle, 
+  onTestModeToggle,
   followUser, 
   historyMode, 
   subType, 
-  activityType 
+  activityType,
+  isTestMode
 }) => {
   const totalLoads = Object.values(loadCounts).reduce((a, b) => a + b, 0);
   const speed = ((currentLocation?.coords.speed || 0) * 3.6).toFixed(1);
@@ -54,10 +58,20 @@ export const TrackingUI: React.FC<Props> = ({
         <button onClick={onHistoryToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${historyMode !== 'OFF' ? 'bg-purple-600 text-white' : 'bg-white/95 text-slate-700'}`}>
           <History size={24}/>
         </button>
+        {/* NEU: Test Modus Button */}
+        <button onClick={onTestModeToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${isTestMode ? 'bg-orange-500 text-white animate-pulse' : 'bg-white/95 text-slate-700'}`}>
+          <Beaker size={24}/>
+        </button>
       </div>
 
       {/* Status Anzeige (Oben Mitte) - FIXED POSITION */}
       <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[1000] w-full max-w-[80%] flex flex-col items-center space-y-2 pointer-events-none">
+        {isTestMode && (
+          <div className="bg-orange-600/90 backdrop-blur text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg animate-bounce">
+            Simulation Aktiv: Karte klicken zum Fahren
+          </div>
+        )}
+        
         {storageWarning && (
           <div className="bg-orange-500/95 backdrop-blur text-white px-4 py-2 rounded-xl shadow-xl flex items-center space-x-2 animate-in slide-in-from-top-4 w-full justify-center">
             <Ban size={18}/>
