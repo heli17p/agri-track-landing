@@ -25,18 +25,15 @@ interface Props {
 
 const MapController = ({ center, zoom, follow, onZoomChange, isTestMode }: { center: [number, number], zoom: number, follow: boolean, onZoomChange: (z: number) => void, isTestMode: boolean }) => {
   const map = useMap();
-  // Fix: Use ref to track previous state for one-time events
   const lastTestMode = useRef(isTestMode);
   
   useEffect(() => { 
-    // Im Testmodus folgen wir dem Traktor nicht automatisch per SetView, 
-    // da das Ziehen sonst die Karte verschiebt und die Geste abbricht.
+    // Karte nur zentrieren wenn nicht im Testmodus (verhindert Ruckeln beim Ziehen)
     if (center && !isTestMode) {
       map.setView(center, zoom, { animate: follow }); 
     }
 
-    // Fix: Move centering logic here to avoid accessing protected _map property.
-    // Zentrieren beim Start der Simulation (Wechsel von false auf true)
+    // Einmaliges Zentrieren beim Einschalten der Simulation
     if (isTestMode && !lastTestMode.current && center) {
         map.setView(center, map.getZoom());
     }
@@ -98,16 +95,18 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
   const markerRef = useRef<L.Marker>(null);
   const isDraggingInternal = useRef(false);
 
-  // WICHTIG: Wir frieren die Position ein, sobald isTestMode aktiviert wird.
-  // Das verhindert das "Millimeter-Kleben", weil React den Marker-Zustand während der Geste nicht mehr ändert.
-  const [frozenPos, setFrozenPos] = useState<[number, number]>(center);
+  // Dieser State speichert die Position, bei der der Marker laut React stehen soll.
+  // Während des Ziehens im Testmodus verändern wir diesen State NICHT, damit React
+  // nicht versucht, den Marker zurückzusetzen.
+  const [markerStatePos, setMarkerStatePos] = useState<[number, number]>(center);
 
-  // Fix: Removed direct _map access on markerRef. Centering is now handled in MapController via useMap hook.
   useEffect(() => {
-    if (isTestMode) {
-      setFrozenPos(center);
+    // Wenn wir NICHT gerade aktiv ziehen, synchronisieren wir den Marker-State
+    // mit der echten Position vom GPS/Simulator.
+    if (!isDraggingInternal.current) {
+        setMarkerStatePos(center);
     }
-  }, [isTestMode]);
+  }, [center]);
 
   const eventHandlers = useMemo(() => ({
     dragstart() {
@@ -116,22 +115,19 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
     drag(e: any) {
       if (isTestMode && onSimulateClick) {
         const { lat, lng } = e.target.getLatLng();
+        // Logik-Update an den Tracker senden (zeichnet Pfad), 
+        // aber wir lassen den Marker-State-Pos in Ruhe.
         onSimulateClick(lat, lng);
       }
     },
-    dragend() {
+    dragend(e: any) {
+      const { lat, lng } = e.target.getLatLng();
+      setMarkerStatePos([lat, lng]);
       setTimeout(() => {
         isDraggingInternal.current = false;
-      }, 150);
+      }, 100);
     }
   }), [isTestMode, onSimulateClick]);
-
-  // Manuelle Synchronisation des Markers (nur wenn nicht gezogen wird)
-  useEffect(() => {
-    if (markerRef.current && currentLocation && !isDraggingInternal.current) {
-      markerRef.current.setLatLng([currentLocation.coords.latitude, currentLocation.coords.longitude]);
-    }
-  }, [currentLocation]);
 
   const trackSegments = useMemo(() => {
     if (points.length < 2) return [];
@@ -162,8 +158,7 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
       
       {currentLocation && (
         <Marker 
-            /* Im Testmodus nutzen wir frozenPos, damit React nicht ständig setLatLng aufruft */
-            position={isTestMode ? frozenPos : center} 
+            position={markerStatePos} 
             ref={markerRef}
             draggable={isTestMode}
             eventHandlers={eventHandlers}

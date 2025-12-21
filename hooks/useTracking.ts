@@ -180,7 +180,8 @@ export const useTracking = (
         if (prev.length > 0) {
             const last = prev[prev.length - 1];
             const dist = getDistance(last, point);
-            if (dist < 0.3) return prev;
+            // Kleiner Schwellenwert: Nur Punkte speichern die mind. 0.5m entfernt sind
+            if (dist < 0.5) return prev;
         }
         return [...prev, point];
     });
@@ -188,21 +189,24 @@ export const useTracking = (
 
   const simulateMovement = useCallback((lat: number, lng: number) => {
     const now = Date.now();
+    
+    // DROSSELUNG: Wir erlauben nur alle 70ms ein Update, um den Main-Thread 
+    // für flüssige Leaflet-Animationen frei zu halten.
+    if (lastSimTimeRef.current > 0 && (now - lastSimTimeRef.current) < 70) return;
+
     let speedMs = 0;
     let heading = 0;
-
-    if (lastSimTimeRef.current > 0 && (now - lastSimTimeRef.current) < 80) return;
 
     if (lastSimPosRef.current && lastSimTimeRef.current > 0) {
       const dist = getDistance({ lat, lng }, lastSimPosRef.current);
       const timeSec = (now - lastSimTimeRef.current) / 1000;
       
-      if (timeSec > 0.05) {
+      if (timeSec > 0.02) {
         const instantSpeed = dist / timeSec;
         speedBufferRef.current.push(instantSpeed);
         if (speedBufferRef.current.length > 3) speedBufferRef.current.shift();
         speedMs = speedBufferRef.current.reduce((a, b) => a + b, 0) / speedBufferRef.current.length;
-        if (speedMs > 11.1) speedMs = 11.1; 
+        if (speedMs > 12.5) speedMs = 12.5; 
       }
 
       const dy = lat - lastSimPosRef.current.lat;
@@ -228,7 +232,6 @@ export const useTracking = (
 
   const toggleTestMode = async (enabled: boolean) => {
       if (enabled && !currentLocation) {
-          // Falls wir kein GPS haben, versuchen wir zur Hofstelle zu springen
           const profiles = await dbService.getFarmProfile();
           if (profiles.length > 0 && profiles[0].addressGeo) {
               const p = profiles[0].addressGeo;
