@@ -109,7 +109,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
 
   return (
     <div className="h-full flex flex-col bg-slate-900 overflow-hidden">
-      {/* Karten-Bereich: Nimmt den RESTLICHEN Platz ein (flex-1) */}
       <div className="flex-1 relative overflow-hidden z-0">
         <TrackingMap 
           points={tracker.trackPoints} 
@@ -127,11 +126,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           activeSourceId={tracker.activeSourceId} 
           subType={subType}
           isTestMode={tracker.isTestMode}
-          onSimulateClick={tracker.simulatePosition}
+          onSimulateClick={tracker.simulateMovement}
         />
       </div>
 
-      {/* UI & Controls: Werden UNTER der Karte platziert */}
       <TrackingUI 
         trackingState={tracker.trackingState} 
         startTime={tracker.startTime} 
@@ -152,7 +150,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         isTestMode={tracker.isTestMode}
       />
 
-      {/* Speicher-Dialog (Überlagernd) */}
       {showSaveConfirm && (
         <div className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm p-4 flex items-end pb-24">
           <div className="bg-white w-full rounded-3xl p-6 shadow-2xl space-y-4 animate-in slide-in-from-bottom-10">

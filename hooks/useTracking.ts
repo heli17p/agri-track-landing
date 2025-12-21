@@ -25,13 +25,12 @@ export const useTracking = (
   const [gpsLoading, setGpsLoading] = useState(false);
   const [isTestMode, setIsTestMode] = useState(false);
 
-  // Refs for background safety and closure handling
   const settingsRef = useRef(settings);
   const fieldsRef = useRef(fields);
   const storagesRef = useRef(storages);
   const activityTypeRef = useRef(activityType);
   const subTypeRef = useRef(subType);
-  const isTestModeRef = useRef(false); // WICHTIG: Damit der Watcher den aktuellen Stand kennt
+  const isTestModeRef = useRef(false);
   
   const trackingStateRef = useRef<TrackingState>('IDLE');
   const activeSourceIdRef = useRef<string | null>(null);
@@ -41,7 +40,10 @@ export const useTracking = (
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const activeLoadingStorageRef = useRef<StorageLocation | null>(null);
   const pendingStorageIdRef = useRef<string | null>(null);
-  const lastSimulatedPosRef = useRef<GeoPoint | null>(null);
+  
+  // Refs für die Simulationsberechnung
+  const lastSimPosRef = useRef<GeoPoint | null>(null);
+  const lastSimTimeRef = useRef<number>(0);
 
   useEffect(() => { settingsRef.current = settings; }, [settings]);
   useEffect(() => { fieldsRef.current = fields; }, [fields]);
@@ -50,15 +52,11 @@ export const useTracking = (
   useEffect(() => { subTypeRef.current = subType; }, [subType]);
   useEffect(() => { trackingStateRef.current = trackingState; }, [trackingState]);
   useEffect(() => { activeSourceIdRef.current = activeSourceId; }, [activeSourceId]);
-  
-  // Synchronisiere den Ref mit dem State
   useEffect(() => { isTestModeRef.current = isTestMode; }, [isTestMode]);
 
   const requestWakeLock = async () => {
     try {
-      if ('wakeLock' in navigator) {
-        wakeLockRef.current = await navigator.wakeLock.request('screen');
-      }
+      if ('wakeLock' in navigator) wakeLockRef.current = await navigator.wakeLock.request('screen');
     } catch (err) { console.error('Wake Lock Error:', err); }
   };
 
@@ -133,9 +131,7 @@ export const useTracking = (
       if (speedKmh < 3.0 && pendingStorageIdRef.current !== nearest.id) {
         pendingStorageIdRef.current = nearest.id;
         startDetectionCountdown(nearest);
-      } else if (speedKmh >= 3.0) {
-        cancelDetection();
-      }
+      } else if (speedKmh >= 3.0) cancelDetection();
     } else {
       cancelDetection();
       setStorageWarning(null);
@@ -146,9 +142,7 @@ export const useTracking = (
     setCurrentLocation(pos);
     if (isPaused) return;
 
-    const { latitude, longitude, speed, accuracy } = pos.coords;
-    
-    // Im Testmodus ignorieren wir schlechte Genauigkeit
+    const { latitude, longitude, speed, accuracy, heading } = pos.coords;
     if (accuracy > 50 && !isTestModeRef.current) return; 
 
     const speedKmh = (speed || 0) * 3.6;
@@ -183,22 +177,42 @@ export const useTracking = (
     }
 
     setTrackPoints(prev => [...prev, point]);
-  }, [isPaused, checkStorageProximity]); // isTestMode nicht mehr nötig hier, da wir Ref nutzen
+  }, [isPaused, checkStorageProximity]);
 
-  const simulatePosition = useCallback((lat: number, lng: number) => {
-    // Simuliere 12 km/h = 3.33 m/s
-    const speedMs = 3.33; 
+  const simulateMovement = useCallback((lat: number, lng: number) => {
+    const now = Date.now();
+    let speedMs = 0;
+    let heading = 0;
+
+    if (lastSimPosRef.current && lastSimTimeRef.current > 0) {
+      const dist = getDistance({ lat, lng }, lastSimPosRef.current);
+      const timeSec = (now - lastSimTimeRef.current) / 1000;
+      
+      if (timeSec > 0) {
+        speedMs = dist / timeSec;
+        // Begrenzung auf plausible 50 km/h in der Simulation
+        if (speedMs > 13.8) speedMs = 13.8; 
+      }
+
+      // Heading berechnen (Grob)
+      const dy = lat - lastSimPosRef.current.lat;
+      const dx = lng - lastSimPosRef.current.lng;
+      heading = (Math.atan2(dx, dy) * 180) / Math.PI;
+    }
+
     const fakePos: any = {
       coords: {
         latitude: lat,
         longitude: lng,
         accuracy: 5,
         speed: speedMs,
-        heading: 0
+        heading: heading
       },
-      timestamp: Date.now()
+      timestamp: now
     };
-    lastSimulatedPosRef.current = { lat, lng };
+
+    lastSimPosRef.current = { lat, lng };
+    lastSimTimeRef.current = now;
     handleNewPosition(fakePos);
   }, [handleNewPosition]);
 
@@ -206,7 +220,7 @@ export const useTracking = (
     if (!navigator.geolocation) { alert("GPS wird nicht unterstützt."); return; }
     setGpsLoading(true);
     try {
-      await new Promise((res, rej) => {
+      const initPos: any = await new Promise((res, rej) => {
         navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true, timeout: 8000, maximumAge: 0 });
       });
       await requestWakeLock();
@@ -220,12 +234,12 @@ export const useTracking = (
       setIsTestMode(false);
       currentLoadIndexRef.current = 1;
       
-      // Starte den Watcher
+      // Init Simulation Refs
+      lastSimPosRef.current = { lat: initPos.coords.latitude, lng: initPos.coords.longitude };
+      lastSimTimeRef.current = Date.now();
+
       watchIdRef.current = navigator.geolocation.watchPosition((pos) => {
-        // WICHTIG: Nutze isTestModeRef.current, um Closure-Problem zu vermeiden!
-        if (!isTestModeRef.current) {
-          handleNewPosition(pos);
-        }
+        if (!isTestModeRef.current) handleNewPosition(pos);
       }, (err) => console.error(err), { enableHighAccuracy: true, maximumAge: 1000, timeout: 5000 });
     } catch (e: any) { alert("GPS Fehler: " + e.message); }
     finally { setGpsLoading(false); }
@@ -236,6 +250,8 @@ export const useTracking = (
     if (countdownIntervalRef.current) { clearInterval(countdownIntervalRef.current); countdownIntervalRef.current = null; }
     releaseWakeLock();
     setIsTestMode(false);
+    lastSimPosRef.current = null;
+    lastSimTimeRef.current = 0;
   }, [releaseWakeLock]);
 
   const handleFinishLogic = async (notes: string) => {
@@ -249,7 +265,6 @@ export const useTracking = (
     stopGPS();
     setTrackingState('IDLE');
 
-    // Stats Calculation
     let spreadDist = 0;
     const fieldDistMap: Record<string, number> = {};
     const fieldIds = new Set<string>();
@@ -282,9 +297,7 @@ export const useTracking = (
         storageDistribution[sId] = vol;
         totalAmount += vol;
       });
-    } else if (finalActivity === ActivityType.TILLAGE) {
-      totalAmount = parseFloat(calculatedAreaHa.toFixed(2));
-    }
+    } else if (finalActivity === ActivityType.TILLAGE) totalAmount = parseFloat(calculatedAreaHa.toFixed(2));
 
     const finalFieldDist: Record<string, number> = {};
     if (spreadDist > 0 && totalAmount > 0) {
@@ -331,22 +344,10 @@ export const useTracking = (
   }, [stopGPS]);
 
   return {
-    trackingState,
-    currentLocation,
-    trackPoints,
-    startTime,
-    loadCounts,
-    activeSourceId,
-    detectionCountdown,
-    storageWarning,
-    gpsLoading,
-    isTestMode,
-    setIsTestMode,
-    simulatePosition,
-    startGPS,
-    stopGPS,
-    handleFinishLogic,
-    handleDiscard
+    trackingState, currentLocation, trackPoints, startTime, loadCounts,
+    activeSourceId, detectionCountdown, storageWarning, gpsLoading,
+    isTestMode, setIsTestMode, simulateMovement, startGPS, stopGPS,
+    handleFinishLogic, handleDiscard
   };
 };
 
