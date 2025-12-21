@@ -36,7 +36,6 @@ const getStorageColor = (storageId: string | undefined, allStorages: StorageLoca
   return storage.type === FertilizerType.SLURRY ? SLURRY_PALETTE[Math.max(0, idx) % SLURRY_PALETTE.length] : MANURE_PALETTE[Math.max(0, idx) % MANURE_PALETTE.length];
 };
 
-// Sub-Komponente für den Marker, die sich NICHT bei jedem State-Update neu rendert
 const VehicleMarker = memo(({ 
     initialPos, 
     heading, 
@@ -55,20 +54,25 @@ const VehicleMarker = memo(({
     const markerRef = useRef<L.Marker>(null);
     const isDragging = useRef(false);
 
-    // Synchronisation nur bei echtem GPS (wenn nicht gerade simuliert/gezogen wird)
+    // Wenn nicht im Testmodus: Marker dem echten GPS folgen lassen
     useEffect(() => {
         if (markerRef.current && !isTestMode && !isDragging.current) {
             markerRef.current.setLatLng(externalPos);
         }
     }, [externalPos, isTestMode]);
 
+    // Wenn Testmodus aktiviert wird: Marker sofort auf die initialPos setzen
+    useEffect(() => {
+        if (markerRef.current && isTestMode) {
+            markerRef.current.setLatLng(initialPos);
+        }
+    }, [isTestMode, initialPos]);
+
     const eventHandlers = useMemo(() => ({
         dragstart() { isDragging.current = true; },
         drag(e: any) {
             if (isTestMode && onDrag) {
                 const { lat, lng } = e.target.getLatLng();
-                // Wir melden die Position an die Logik, aber der Marker wird hier 
-                // rein von Leaflet ohne React-Intervention bewegt.
                 onDrag(lat, lng);
             }
         },
@@ -80,11 +84,11 @@ const VehicleMarker = memo(({
     const icon = useMemo(() => {
         const rotation = heading || 0;
         const color = isTestMode ? '#3b82f6' : '#16a34a';
-        let content = `<svg viewBox="0 0 50 50"><rect x="5" y="30" width="12" height="18" rx="2" fill="#1e293b"/><rect x="33" y="30" width="12" height="18" rx="2" fill="#1e293b"/><rect x="8" y="5" width="8" height="10" rx="2" fill="#1e293b"/><rect x="34" y="5" width="8" height="10" rx="2" fill="#1e293b"/><path d="M20 4 L30 4 L30 20 L34 22 L34 40 L16 40 L16 22 L20 20 Z" fill="${color}"/><rect x="14" y="24" width="22" height="14" rx="1" fill="#fff" fill-opacity="0.9" stroke="#94a3b8" stroke-width="2"/></svg>`;
+        const content = `<svg viewBox="0 0 50 50"><rect x="5" y="30" width="12" height="18" rx="2" fill="#1e293b"/><rect x="33" y="30" width="12" height="18" rx="2" fill="#1e293b"/><rect x="8" y="5" width="8" height="10" rx="2" fill="#1e293b"/><rect x="34" y="5" width="8" height="10" rx="2" fill="#1e293b"/><path d="M20 4 L30 4 L30 20 L34 22 L34 40 L16 40 L16 22 L20 20 Z" fill="${color}"/><rect x="14" y="24" width="22" height="14" rx="1" fill="#fff" fill-opacity="0.9" stroke="#94a3b8" stroke-width="2"/></svg>`;
         
         return L.divIcon({ 
             className: 'vehicle-cursor', 
-            html: `<div style="transform:rotate(${rotation}deg);width:100%;height:100%;display:flex;align-items:center;justify-content:center;${isTestMode ? 'filter: drop-shadow(0 0 8px rgba(59,130,246,0.6));' : ''}">${content}</div>`, 
+            html: `<div style="transform:rotate(${rotation}deg);width:100%;height:100%;display:flex;align-items:center;justify-content:center;transition: transform 0.1s linear;${isTestMode ? 'filter: drop-shadow(0 0 8px rgba(59,130,246,0.8)); scale: 1.1;' : ''}">${content}</div>`, 
             iconSize: [36, 36], 
             iconAnchor: [18, 18] 
         });
@@ -92,7 +96,7 @@ const VehicleMarker = memo(({
 
     return (
         <Marker 
-            key={isTestMode ? "sim" : "live"}
+            key={isTestMode ? "sim-marker" : "live-marker"}
             position={isTestMode ? initialPos : externalPos} 
             ref={markerRef}
             draggable={isTestMode}
@@ -131,8 +135,15 @@ const createStorageIcon = (color: string, type: FertilizerType) => {
 export const TrackingMap: React.FC<Props> = ({ points, fields, storages, currentLocation, mapStyle, followUser, historyTracks, historyMode, vehicleIconType, onZoomChange, zoom, storageRadius, isTestMode, onSimulateClick }) => {
   const center: [number, number] = currentLocation ? [currentLocation.coords.latitude, currentLocation.coords.longitude] : [47.5, 14.5];
   
-  // Wir merken uns die Position beim Start der Simulation
-  const [simStartPos] = useState<[number, number]>(center);
+  // Dynamische Startposition für die Simulation
+  const [simStartPos, setSimStartPos] = useState<[number, number]>(center);
+
+  // Wenn der Testmodus aktiviert wird, nehmen wir die AKTUELLEN Koordinaten als Anker
+  useEffect(() => {
+    if (isTestMode && currentLocation) {
+        setSimStartPos([currentLocation.coords.latitude, currentLocation.coords.longitude]);
+    }
+  }, [isTestMode]);
 
   const trackSegments = useMemo(() => {
     if (points.length < 2) return [];
