@@ -191,8 +191,8 @@ export const useTracking = (
   const simulateMovement = useCallback((lat: number, lng: number) => {
     const now = Date.now();
     
-    // In der Simulation erlauben wir alle 60ms ein Update für flüssige Geste
-    if (lastSimTimeRef.current > 0 && (now - lastSimTimeRef.current) < 60) return;
+    // REDUZIERTE DROSSELUNG: 30ms für ultra-flüssiges Zeichnen
+    if (lastSimTimeRef.current > 0 && (now - lastSimTimeRef.current) < 30) return;
 
     let speedMs = 0;
     let heading = 0;
@@ -201,7 +201,7 @@ export const useTracking = (
       const dist = getDistance({ lat, lng }, lastSimPosRef.current);
       const timeSec = (now - lastSimTimeRef.current) / 1000;
       
-      if (timeSec > 0.01) {
+      if (timeSec > 0.005) {
         const instantSpeed = dist / timeSec;
         speedBufferRef.current.push(instantSpeed);
         if (speedBufferRef.current.length > 3) speedBufferRef.current.shift();

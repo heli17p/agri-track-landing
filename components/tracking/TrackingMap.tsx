@@ -95,11 +95,18 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
   const markerRef = useRef<L.Marker>(null);
   const isDraggingInternal = useRef(false);
 
-  // Diese Position wird nur einmal beim Mounten gesetzt.
-  // Danach steuern wir den Marker NUR noch manuell über markerRef.current.setLatLng.
-  const [stableInitialPos] = useState<[number, number]>(center);
+  // WICHTIGSTER FIX: Wir frieren die Prop-Position ein, wenn die Simulation startet.
+  // Dadurch lässt React den Marker dort "los" und Leaflet kann ihn flüssig ziehen.
+  const [frozenInitialPos, setFrozenInitialPos] = useState<[number, number]>(center);
 
-  // Synchronisation von außen (echtes GPS oder Simulations-Updates)
+  useEffect(() => {
+    // Wenn Testmodus eingeschaltet wird, setzen wir die Startposition fest.
+    if (isTestMode) {
+      setFrozenInitialPos(center);
+    }
+  }, [isTestMode]);
+
+  // Synchronisation von außen NUR wenn wir NICHT ziehen.
   useEffect(() => {
     if (markerRef.current && currentLocation && !isDraggingInternal.current) {
       markerRef.current.setLatLng([currentLocation.coords.latitude, currentLocation.coords.longitude]);
@@ -113,15 +120,15 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
     drag(e: any) {
       if (isTestMode && onSimulateClick) {
         const { lat, lng } = e.target.getLatLng();
-        // Sende Update an den Hook für die Pfadzeichnung
+        // Das Update an den Tracker sendet Koordinaten für den Pfad (Polyline),
+        // aber verändert NICHT die Marker-Position-Prop, die React sieht.
         onSimulateClick(lat, lng);
       }
     },
     dragend() {
-      // Verzögerte Freigabe, damit der letzte "Snap-Back" nach dem Loslassen verhindert wird
       setTimeout(() => {
         isDraggingInternal.current = false;
-      }, 200);
+      }, 100);
     }
   }), [isTestMode, onSimulateClick]);
 
@@ -155,11 +162,10 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
       {currentLocation && (
         <Marker 
             /* 
-               WICHTIG: Wir nutzen die stableInitialPos. 
-               Da diese sich nie ändert, versucht React nie den Marker zu verschieben.
-               Die echte visuelle Position steuern wir oben manuell per markerRef.setLatLng()
+               WICHTIG: Im Testmodus nutzen wir die eingefrorene Koordinate.
+               Dadurch versucht React nie, den Marker während des Ziehens zu korrigieren.
             */
-            position={stableInitialPos} 
+            position={isTestMode ? frozenInitialPos : center} 
             ref={markerRef}
             draggable={isTestMode}
             eventHandlers={eventHandlers}
