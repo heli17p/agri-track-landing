@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker } from 'lucide-react';
+import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer } from 'lucide-react';
 import { StorageLocation } from '../../types';
 
 interface Props {
@@ -71,8 +71,19 @@ export const TrackingUI: React.FC<Props> = ({
             <Ban size={18}/><span className="font-bold text-xs">{storageWarning}</span>
           </div>
         )}
+
+        {/* --- COUNTDOWN ANZEIGE --- */}
+        {detectionCountdown !== null && (
+          <div className="bg-blue-600 text-white px-6 py-3 rounded-2xl shadow-2xl flex items-center space-x-3 animate-pulse border-2 border-white scale-110">
+             <Timer size={24} className="animate-spin-slow"/>
+             <div className="flex flex-col">
+                <span className="text-[10px] font-bold uppercase opacity-80 leading-none">Lager wird erkannt...</span>
+                <span className="text-xl font-black">Noch {detectionCountdown}s</span>
+             </div>
+          </div>
+        )}
         
-        <div className="bg-white/95 backdrop-blur shadow-2xl border border-slate-300 rounded-full px-5 py-2.5 flex items-center space-x-3 pointer-events-auto transition-all w-fit">
+        <div className={`bg-white/95 backdrop-blur shadow-2xl border border-slate-300 rounded-full px-5 py-2.5 flex items-center space-x-3 pointer-events-auto transition-all w-fit ${detectionCountdown !== null ? 'opacity-40 scale-90' : 'opacity-100'}`}>
           <div className={`p-2 rounded-full text-white ${trackingState === 'LOADING' ? 'bg-amber-500 animate-pulse' : trackingState === 'SPREADING' ? 'bg-green-600 animate-pulse' : 'bg-blue-500'}`}>
             {trackingState === 'LOADING' ? <Database size={18}/> : trackingState === 'SPREADING' ? <Droplets size={18}/> : <Truck size={18}/>}
           </div>

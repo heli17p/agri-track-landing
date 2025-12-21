@@ -37,6 +37,10 @@ export const useTracking = (
   const watchIdRef = useRef<number | null>(null);
   const lastSimPosRef = useRef<GeoPoint | null>(null);
   const lastSimTimeRef = useRef<number>(0);
+  
+  // Refs für Countdown-Logik
+  const proximityStartTimeRef = useRef<number | null>(null);
+  const pendingStorageIdRef = useRef<string | null>(null);
 
   useEffect(() => { 
     settingsRef.current = settings; 
@@ -58,22 +62,59 @@ export const useTracking = (
       if (dist < minDist) { minDist = dist; nearest = s; }
     });
 
-    if (nearest && minDist <= rad) {
-        if (nearest.type !== (subTypeRef.current === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE)) {
+    // Bedingung für Erkennung: Nah dran UND langsam
+    if (nearest && minDist <= rad && speedKmh < 2.5) {
+        // Richtiger Düngertyp Check
+        const isCorrectType = nearest.type === (subTypeRef.current === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE);
+        
+        if (!isCorrectType) {
             setStorageWarning(`${nearest.name} erkannt, aber falscher Typ!`);
+            proximityStartTimeRef.current = null;
+            setDetectionCountdown(null);
             return;
         }
+
         setStorageWarning(null);
-        if (speedKmh < 2.0 && activeSourceIdRef.current !== nearest.id) {
+
+        // Wenn wir bereits in diesem Lager laden, nichts tun
+        if (activeSourceIdRef.current === nearest.id && trackingState === 'LOADING') {
+            proximityStartTimeRef.current = null;
+            setDetectionCountdown(null);
+            return;
+        }
+
+        // Countdown Logik starten
+        if (pendingStorageIdRef.current !== nearest.id) {
+            pendingStorageIdRef.current = nearest.id;
+            proximityStartTimeRef.current = Date.now();
+        }
+
+        const elapsed = Date.now() - (proximityStartTimeRef.current || Date.now());
+        const remaining = Math.max(0, Math.ceil((5000 - elapsed) / 1000));
+
+        if (remaining > 0) {
+            setDetectionCountdown(remaining);
+        } else {
+            // Countdown abgelaufen -> Laden triggern
             activeSourceIdRef.current = nearest.id;
             setActiveSourceId(nearest.id);
             setLoadCounts(prev => ({ ...prev, [nearest!.id]: (prev[nearest!.id] || 0) + 1 }));
             currentLoadIndexRef.current++;
             setTrackingState('LOADING');
+            setDetectionCountdown(null);
+            proximityStartTimeRef.current = null;
+            pendingStorageIdRef.current = null;
         }
     } else {
+        // Außerhalb des Radius oder zu schnell -> Reset Countdown
         setStorageWarning(null);
-        if (speedKmh > 3.0 && trackingState === 'LOADING') setTrackingState('TRANSIT');
+        proximityStartTimeRef.current = null;
+        pendingStorageIdRef.current = null;
+        setDetectionCountdown(null);
+
+        if (speedKmh > 3.5 && trackingState === 'LOADING') {
+            setTrackingState('TRANSIT');
+        }
     }
   };
 
@@ -91,8 +132,11 @@ export const useTracking = (
     let isSpreading = false;
     if (inField && speedKmh >= (settingsRef.current.minSpeed || 2.0)) isSpreading = true;
 
-    const newState = isSpreading ? 'SPREADING' : (trackingState === 'LOADING' ? 'LOADING' : 'TRANSIT');
-    if (newState !== trackingState) setTrackingState(newState);
+    // Statuswechsel Logik (Countdown hat Vorrang)
+    if (trackingState !== 'LOADING' || speedKmh > 3.0) {
+        const newState = isSpreading ? 'SPREADING' : (trackingState === 'LOADING' ? 'LOADING' : 'TRANSIT');
+        if (newState !== trackingState) setTrackingState(newState);
+    }
 
     const point: TrackPoint = {
       lat: latitude, lng: longitude, timestamp: pos.timestamp, speed: speedKmh,
@@ -152,7 +196,6 @@ export const useTracking = (
     if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
     const durationMin = startTime ? Math.round((Date.now() - startTime) / 60000) : 0;
     
-    // Ermittle alle beteiligten Schläge basierend auf den Ausbringungspunkten
     const involvedFieldIds = new Set<string>();
     trackPoints.forEach(p => {
       if (p.isSpreading) {
@@ -177,7 +220,6 @@ export const useTracking = (
       totalAmt = Math.round(totalAmt * 100) / 100;
     }
 
-    // --- NEU: Präzise Zuordnung Lager -> Feld ---
     const detailedFieldSources: Record<string, Record<string, number>> = {};
     const fieldDist: Record<string, number> = {};
     
@@ -197,7 +239,6 @@ export const useTracking = (
             }
         });
 
-        // Runden der berechneten Werte
         Object.keys(fieldDist).forEach(fid => fieldDist[fid] = Math.round(fieldDist[fid] * 10) / 10);
         Object.keys(detailedFieldSources).forEach(fid => {
             Object.keys(detailedFieldSources[fid]).forEach(sid => {
