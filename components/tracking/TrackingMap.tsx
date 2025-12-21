@@ -1,5 +1,5 @@
 
-import React, { useEffect, useMemo, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Circle, Polyline, useMap, useMapEvents } from 'react-leaflet';
 import L from 'leaflet';
 import { Field, StorageLocation, TrackPoint, FertilizerType } from '../../types';
@@ -27,8 +27,6 @@ const MapController = ({ center, zoom, follow, onZoomChange, isTestMode }: { cen
   const map = useMap();
   
   useEffect(() => { 
-    // Im Testmodus folgen wir dem Traktor nicht automatisch per SetView, 
-    // da das Ziehen sonst die Karte verschiebt und die Geste abbricht.
     if (center && !isTestMode) {
       map.setView(center, zoom, { animate: follow }); 
     }
@@ -89,31 +87,32 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
   const markerRef = useRef<L.Marker>(null);
   const isDraggingInternal = useRef(false);
 
+  // WICHTIG: Wir speichern die Position, bei der die Simulation gestartet wurde,
+  // um React davon abzuhalten, den Marker ständig neu zu setzen.
+  const [initialSimPos] = useState<[number, number]>(center);
+
   const eventHandlers = useMemo(() => ({
     dragstart() {
       isDraggingInternal.current = true;
     },
-    drag(e: any) {
-      if (isTestMode && onSimulateClick) {
+    move(e: any) {
+      if (isTestMode && onSimulateClick && isDraggingInternal.current) {
         const { lat, lng } = e.target.getLatLng();
         onSimulateClick(lat, lng);
       }
     },
     dragend() {
-      // Kleiner Timeout, um sicherzustellen, dass das letzte Event verarbeitet wurde, 
-      // bevor React wieder die Positions-Kontrolle übernimmt.
-      setTimeout(() => {
-        isDraggingInternal.current = false;
-      }, 50);
+      isDraggingInternal.current = false;
     }
   }), [isTestMode, onSimulateClick]);
 
-  // Externe Synchronisation: Nur aktualisieren, wenn der User NICHT gerade zieht.
+  // Synchronisation von Außen (echtes GPS):
+  // Nur anwenden, wenn wir NICHT im Testmodus sind. Im Testmodus verwaltet Leaflet die Position intern.
   useEffect(() => {
-    if (markerRef.current && currentLocation && !isDraggingInternal.current) {
+    if (markerRef.current && currentLocation && !isTestMode) {
       markerRef.current.setLatLng([currentLocation.coords.latitude, currentLocation.coords.longitude]);
     }
-  }, [currentLocation]);
+  }, [currentLocation, isTestMode]);
 
   const trackSegments = useMemo(() => {
     if (points.length < 2) return [];
@@ -144,7 +143,8 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
       
       {currentLocation && (
         <Marker 
-            position={center} 
+            /* Im Testmodus nutzen wir initialSimPos, damit React nicht ständig setLatLng aufruft */
+            position={isTestMode ? initialSimPos : center} 
             ref={markerRef}
             draggable={isTestMode}
             eventHandlers={eventHandlers}

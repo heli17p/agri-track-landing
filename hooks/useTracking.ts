@@ -176,13 +176,12 @@ export const useTracking = (
       if (activeLoadingStorageRef.current) point.storageId = activeLoadingStorageRef.current.id;
     }
 
-    // Performance & Glättung: Nur Punkte speichern, die eine Mindestdistanz haben (besonders wichtig im Testmodus)
     setTrackPoints(prev => {
         if (prev.length > 0) {
             const last = prev[prev.length - 1];
             const dist = getDistance(last, point);
-            const minMove = isTestModeRef.current ? 1.0 : 0.5; // Im Testmodus etwas grober, um DB zu schonen
-            if (dist < minMove) return prev;
+            // Kleiner Schwellenwert: Nur Punkte speichern die mind. 0.5m entfernt sind
+            if (dist < 0.5) return prev;
         }
         return [...prev, point];
     });
@@ -197,17 +196,14 @@ export const useTracking = (
       const dist = getDistance({ lat, lng }, lastSimPosRef.current);
       const timeSec = (now - lastSimTimeRef.current) / 1000;
       
-      // Geschwindigkeits-Glättung: Wir begrenzen die Beschleunigung
-      if (timeSec > 0.05) { // Nur bei nennenswerten Zeitabständen rechnen
+      // Geschwindigkeits-Berechnung glätten
+      if (timeSec > 0.01) {
         const instantSpeed = dist / timeSec;
-        
-        // Rolling Average Buffer (3 Werte)
         speedBufferRef.current.push(instantSpeed);
-        if (speedBufferRef.current.length > 3) speedBufferRef.current.shift();
-        
+        if (speedBufferRef.current.length > 5) speedBufferRef.current.shift();
         speedMs = speedBufferRef.current.reduce((a, b) => a + b, 0) / speedBufferRef.current.length;
         
-        // Deckelung auf realistische 40 km/h im Testmodus für bessere Kontrolle
+        // Deckelung auf realistische 40 km/h in der Simulation
         if (speedMs > 11.1) speedMs = 11.1; 
       }
 
