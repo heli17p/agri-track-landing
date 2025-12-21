@@ -22,16 +22,22 @@ interface Props {
   onSimulateClick?: (lat: number, lng: number) => void;
 }
 
+// --- FARBPALETTEN FÜR LAGERSTÄTTEN (Synchron mit Detailansichten) ---
 const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
 const MANURE_PALETTE = ['#d97706', '#ea580c', '#f59e0b', '#c2410c', '#fb923c'];
 
 const getStorageColor = (storageId: string | undefined, allStorages: StorageLocation[]) => {
-  if (!storageId) return '#3b82f6'; // Blau für Transport/Ohne Zuordnung
+  if (!storageId) return '#3b82f6'; // Blau für reinen Transport ohne aktive Quelle
   const storage = allStorages.find(s => s.id === storageId);
   if (!storage) return '#64748b';
+  
   const sameType = allStorages.filter(s => s.type === storage.type).sort((a, b) => a.id.localeCompare(b.id));
   const idx = sameType.findIndex(s => s.id === storageId);
-  return storage.type === FertilizerType.SLURRY ? SLURRY_PALETTE[Math.max(0, idx) % SLURRY_PALETTE.length] : MANURE_PALETTE[Math.max(0, idx) % MANURE_PALETTE.length];
+  const safeIdx = Math.max(0, idx);
+  
+  return storage.type === FertilizerType.SLURRY 
+    ? SLURRY_PALETTE[safeIdx % SLURRY_PALETTE.length] 
+    : MANURE_PALETTE[safeIdx % MANURE_PALETTE.length];
 };
 
 const VehicleMarker = memo(({ 
@@ -139,9 +145,11 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
     }
   }, [isTestMode]);
 
+  // Verbesserte Segmentierung: Bricht Segment bei Status- ODER Lagerwechsel
   const trackSegments = useMemo(() => {
     if (points.length < 2) return [];
     const segments = [];
+    
     let current = [[points[0].lat, points[0].lng]];
     let color = getStorageColor(points[0].storageId, storages);
     let spread = points[0].isSpreading;
@@ -149,12 +157,16 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
     for (let i = 1; i < points.length; i++) {
       const p = points[i];
       const c = getStorageColor(p.storageId, storages);
+      
+      // Segmentbruch wenn: Ausbringungsstatus ändert ODER Lagerfarbe ändert
       if (p.isSpreading !== spread || c !== color) {
         segments.push({ points: current, spread, color });
         current = [[points[i - 1].lat, points[i - 1].lng], [p.lat, p.lng]];
         spread = p.isSpreading;
         color = c;
-      } else { current.push([p.lat, p.lng]); }
+      } else { 
+        current.push([p.lat, p.lng]); 
+      }
     }
     segments.push({ points: current, spread, color });
     return segments;
@@ -171,13 +183,15 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
       
       {trackSegments.map((s, i) => (
         <React.Fragment key={i}>
+          {/* SPREADING DESIGN: Breite Farbreihe + weiße Mittellinie */}
           <Polyline 
             positions={s.points as any} 
             pathOptions={{ 
               color: s.color, 
               weight: s.spread ? 15 : 3, 
-              opacity: 0.7,
-              lineCap: 'round'
+              opacity: s.spread ? 0.8 : 0.6,
+              lineCap: 'round',
+              lineJoin: 'round'
             }} 
           />
           {s.spread && (
@@ -187,7 +201,8 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
                 color: 'white', 
                 weight: 2, 
                 opacity: 0.9,
-                dashArray: '5, 10'
+                dashArray: '8, 12', // Gestrichelt für bessere Dynamik
+                lineCap: 'butt'
               }} 
             />
           )}
