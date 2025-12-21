@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { dbService, generateId } from '../services/db';
-import { Field, StorageLocation, TrackPoint, ActivityType, FertilizerType, AppSettings, ActivityRecord, GeoPoint, FarmProfile } from '../types';
+import { Field, StorageLocation, TrackPoint, ActivityType, FertilizerType, AppSettings, ActivityRecord, GeoPoint } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
 
 type TrackingState = 'IDLE' | 'LOADING' | 'TRANSIT' | 'SPREADING';
@@ -32,15 +32,10 @@ export const useTracking = (
   const subTypeRef = useRef(subType);
   const isTestModeRef = useRef(false);
   
-  const trackingStateRef = useRef<TrackingState>('IDLE');
   const activeSourceIdRef = useRef<string | null>(null);
   const currentLoadIndexRef = useRef<number>(1);
   const watchIdRef = useRef<number | null>(null);
   const countdownIntervalRef = useRef<any>(null);
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-  const activeLoadingStorageRef = useRef<StorageLocation | null>(null);
-  const pendingStorageIdRef = useRef<string | null>(null);
-  
   const lastSimPosRef = useRef<GeoPoint | null>(null);
   const lastSimTimeRef = useRef<number>(0);
 
@@ -49,9 +44,39 @@ export const useTracking = (
   useEffect(() => { storagesRef.current = storages; }, [storages]);
   useEffect(() => { activityTypeRef.current = activityType; }, [activityType]);
   useEffect(() => { subTypeRef.current = subType; }, [subType]);
-  useEffect(() => { trackingStateRef.current = trackingState; }, [trackingState]);
-  useEffect(() => { activeSourceIdRef.current = activeSourceId; }, [activeSourceId]);
   useEffect(() => { isTestModeRef.current = isTestMode; }, [isTestMode]);
+
+  const checkStorageProximity = (lat: number, lng: number, speedKmh: number) => {
+    if (activityTypeRef.current !== ActivityType.FERTILIZATION) return;
+    const rad = settingsRef.current.storageRadius || 20;
+
+    let nearest: StorageLocation | null = null;
+    let minDist = Infinity;
+    storagesRef.current.forEach(s => {
+      const dist = getDistance({ lat, lng }, s.geo);
+      if (dist < minDist) { minDist = dist; nearest = s; }
+    });
+
+    if (nearest && minDist <= rad) {
+        if (nearest.type !== (subTypeRef.current === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE)) {
+            setStorageWarning(`${nearest.name} erkannt, aber falscher Typ!`);
+            return;
+        }
+        setStorageWarning(null);
+        if (speedKmh < 2.0 && activeSourceIdRef.current !== nearest.id) {
+            activeSourceIdRef.current = nearest.id;
+            setActiveSourceId(nearest.id);
+            setLoadCounts(prev => ({ ...prev, [nearest!.id]: (prev[nearest!.id] || 0) + 1 }));
+            currentLoadIndexRef.current++;
+            setTrackingState('LOADING');
+        }
+    } else {
+        setStorageWarning(null);
+        if (speedKmh > 3.0 && trackingState === 'LOADING') {
+            setTrackingState('TRANSIT');
+        }
+    }
+  };
 
   const handleNewPosition = useCallback((pos: GeolocationPosition) => {
     setCurrentLocation(pos);
@@ -61,38 +86,35 @@ export const useTracking = (
     if (accuracy > 50 && !isTestModeRef.current) return; 
 
     const speedKmh = (speed || 0) * 3.6;
+    checkStorageProximity(latitude, longitude, speedKmh);
+
+    const inField = fieldsRef.current.some(f => isPointInPolygon({ lat: latitude, lng: longitude }, f.boundary));
+    let isSpreading = false;
+    if (inField && speedKmh >= (settingsRef.current.minSpeed || 2.0)) isSpreading = true;
+
+    const newState = isSpreading ? 'SPREADING' : (trackingState === 'LOADING' ? 'LOADING' : 'TRANSIT');
+    if (newState !== trackingState) setTrackingState(newState);
+
     const point: TrackPoint = {
       lat: latitude,
       lng: longitude,
       timestamp: pos.timestamp,
       speed: speedKmh,
-      isSpreading: false,
+      isSpreading,
       storageId: activeSourceIdRef.current || undefined,
       loadIndex: currentLoadIndexRef.current
     };
-
-    if (trackingStateRef.current !== 'LOADING') {
-      const inField = fieldsRef.current.some(f => isPointInPolygon(point, f.boundary));
-      let isSpreading = false;
-      if (activityTypeRef.current === ActivityType.FERTILIZATION || activityTypeRef.current === ActivityType.TILLAGE) {
-        const minS = settingsRef.current.minSpeed || 2.0;
-        if (inField && speedKmh >= minS) isSpreading = true;
-      }
-      const newState = isSpreading ? 'SPREADING' : 'TRANSIT';
-      if (newState !== trackingStateRef.current) setTrackingState(newState);
-      point.isSpreading = isSpreading;
-    }
 
     setTrackPoints(prev => {
         if (prev.length > 0) {
             const last = prev[prev.length - 1];
             const dist = getDistance(last, point);
-            const minMove = isTestModeRef.current ? 0.05 : 0.5; // Extrem feine Auflösung für Simulation
+            const minMove = isTestModeRef.current ? 0.2 : 0.5; 
             if (dist < minMove) return prev;
         }
         return [...prev, point];
     });
-  }, [isPaused]);
+  }, [isPaused, trackingState]);
 
   const simulateMovement = useCallback((lat: number, lng: number) => {
     const now = Date.now();
@@ -110,13 +132,7 @@ export const useTracking = (
     }
 
     const fakePos: any = {
-      coords: {
-        latitude: lat,
-        longitude: lng,
-        accuracy: 5,
-        speed: speedMs > 12 ? 12 : speedMs, // Cap speed at ~43km/h for logic
-        heading: heading
-      },
+      coords: { latitude: lat, longitude: lng, accuracy: 5, speed: speedMs, heading: heading },
       timestamp: now
     };
 
@@ -124,10 +140,6 @@ export const useTracking = (
     lastSimTimeRef.current = now;
     handleNewPosition(fakePos);
   }, [handleNewPosition]);
-
-  const toggleTestMode = async (enabled: boolean) => {
-      setIsTestMode(enabled);
-  };
 
   const startGPS = async () => {
     if (!navigator.geolocation) return;
@@ -140,6 +152,7 @@ export const useTracking = (
       setTrackingState('TRANSIT');
       setTrackPoints([]);
       setLoadCounts({});
+      activeSourceIdRef.current = null;
       setActiveSourceId(null);
       setIsPaused(false);
       setIsTestMode(false);
@@ -164,18 +177,32 @@ export const useTracking = (
     const finalPoints = [...trackPoints];
     stopGPS();
     setTrackingState('IDLE');
+    
+    // Berechnung der Werte
+    let totalAmount = 0;
+    const loadSize = subTypeRef.current === 'Gülle' ? settingsRef.current.slurryLoadSize : settingsRef.current.manureLoadSize;
+    const totalLoads = Object.values(loadCounts).reduce((a,b) => a+b, 0);
+    totalAmount = totalLoads * loadSize;
+
     const record: ActivityRecord = {
       id: generateId(),
       date: new Date().toISOString(),
       type: activityTypeRef.current,
-      fieldIds: [],
-      amount: 0,
+      fertilizerType: activityTypeRef.current === ActivityType.FERTILIZATION ? (subTypeRef.current === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE) : undefined,
+      fieldIds: Array.from(new Set(finalPoints.filter(p => p.isSpreading).map(p => {
+          const f = fieldsRef.current.find(field => isPointInPolygon(p, field.boundary));
+          return f ? f.id : null;
+      }).filter(id => id !== null) as string[])),
+      amount: totalAmount,
       unit: 'm³',
       trackPoints: finalPoints,
+      loadCount: totalLoads,
+      storageDistribution: loadCounts,
       year: new Date().getFullYear(),
-      notes: notes
+      notes: notes + `\nAutomatisch erfasst. Dauer: ${startTime ? Math.round((Date.now()-startTime)/60000) : 0} min`
     };
     await dbService.saveActivity(record);
+    if (Object.keys(loadCounts).length > 0) await dbService.updateStorageLevels(loadCounts);
     return record;
   };
 
@@ -188,7 +215,7 @@ export const useTracking = (
   return {
     trackingState, currentLocation, trackPoints, startTime, loadCounts,
     activeSourceId, detectionCountdown, storageWarning, gpsLoading,
-    isTestMode, setIsTestMode: toggleTestMode, simulateMovement, startGPS, stopGPS,
+    isTestMode, setIsTestMode: (v: boolean) => { setIsTestMode(v); isTestModeRef.current = v; }, simulateMovement, startGPS, stopGPS,
     handleFinishLogic, handleDiscard
   };
 };
