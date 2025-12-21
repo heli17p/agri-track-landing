@@ -1,4 +1,3 @@
-
 import React, { useEffect, useMemo, useRef, useState, memo } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Circle, Polyline, useMap, useMapEvents, Popup } from 'react-leaflet';
 import L from 'leaflet';
@@ -23,12 +22,11 @@ interface Props {
   onSimulateClick?: (lat: number, lng: number) => void;
 }
 
-// --- FARBPALETTEN ---
 const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
 const MANURE_PALETTE = ['#d97706', '#ea580c', '#f59e0b', '#c2410c', '#fb923c'];
 
 const getStorageColor = (storageId: string | undefined, allStorages: StorageLocation[]) => {
-  if (!storageId) return '#3b82f6';
+  if (!storageId) return '#3b82f6'; // Blau für Transport/Ohne Zuordnung
   const storage = allStorages.find(s => s.id === storageId);
   if (!storage) return '#64748b';
   const sameType = allStorages.filter(s => s.type === storage.type).sort((a, b) => a.id.localeCompare(b.id));
@@ -54,14 +52,12 @@ const VehicleMarker = memo(({
     const markerRef = useRef<L.Marker>(null);
     const isDragging = useRef(false);
 
-    // Wenn nicht im Testmodus: Marker dem echten GPS folgen lassen
     useEffect(() => {
         if (markerRef.current && !isTestMode && !isDragging.current) {
             markerRef.current.setLatLng(externalPos);
         }
     }, [externalPos, isTestMode]);
 
-    // Wenn Testmodus aktiviert wird: Marker sofort auf die initialPos setzen
     useEffect(() => {
         if (markerRef.current && isTestMode) {
             markerRef.current.setLatLng(initialPos);
@@ -135,10 +131,8 @@ const createStorageIcon = (color: string, type: FertilizerType) => {
 export const TrackingMap: React.FC<Props> = ({ points, fields, storages, currentLocation, mapStyle, followUser, historyTracks, historyMode, vehicleIconType, onZoomChange, zoom, storageRadius, isTestMode, onSimulateClick }) => {
   const center: [number, number] = currentLocation ? [currentLocation.coords.latitude, currentLocation.coords.longitude] : [47.5, 14.5];
   
-  // Dynamische Startposition für die Simulation
   const [simStartPos, setSimStartPos] = useState<[number, number]>(center);
 
-  // Wenn der Testmodus aktiviert wird, nehmen wir die AKTUELLEN Koordinaten als Anker
   useEffect(() => {
     if (isTestMode && currentLocation) {
         setSimStartPos([currentLocation.coords.latitude, currentLocation.coords.longitude]);
@@ -176,11 +170,28 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
       {historyMode !== 'OFF' && historyTracks.map((act, i) => act.trackPoints && <Polyline key={i} positions={act.trackPoints.map((p: any) => [p.lat, p.lng])} pathOptions={{ color: '#666', weight: 2, opacity: 0.3, dashArray: '5,5' }} />)}
       
       {trackSegments.map((s, i) => (
+        <React.Fragment key={i}>
           <Polyline 
-            key={i} 
             positions={s.points as any} 
-            pathOptions={{ color: s.color, weight: s.spread ? 15 : 3, opacity: 0.7 }} 
+            pathOptions={{ 
+              color: s.color, 
+              weight: s.spread ? 15 : 3, 
+              opacity: 0.7,
+              lineCap: 'round'
+            }} 
           />
+          {s.spread && (
+            <Polyline 
+              positions={s.points as any} 
+              pathOptions={{ 
+                color: 'white', 
+                weight: 2, 
+                opacity: 0.9,
+                dashArray: '5, 10'
+              }} 
+            />
+          )}
+        </React.Fragment>
       ))}
       
       {storages.map(s => {
@@ -212,4 +223,3 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
     </MapContainer>
   );
 };
-
