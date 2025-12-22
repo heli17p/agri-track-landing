@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer } from 'lucide-react';
-import { StorageLocation, FertilizerType } from '../../types';
+import { StorageLocation, FertilizerType, ActivityType } from '../../types';
 import { HistoryFilterMode } from '../../pages/TrackingPage';
 
 interface Props {
@@ -72,7 +72,7 @@ export const TrackingUI: React.FC<Props> = ({
 
   return (
     <>
-      <div className="fixed top-20 right-4 flex flex-col space-y-3 z-[1000]">
+      <div className="fixed top-20 right-4 flex flex-col space-y-3 z-[1100]">
         <button onClick={onMapStyleToggle} className="bg-white/95 p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur text-slate-700 active:scale-95 transition-all"><Layers size={24} /></button>
         <button onClick={onFollowToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${followUser ? 'bg-blue-600 text-white' : 'bg-white/95 text-slate-700'}`}><LocateFixed size={24}/></button>
         
@@ -88,7 +88,7 @@ export const TrackingUI: React.FC<Props> = ({
         <button onClick={onTestModeToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${isTestMode ? 'bg-orange-500 text-white animate-pulse' : 'bg-white/95 text-slate-700'}`}><Beaker size={24}/></button>
       </div>
 
-      <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[1000] w-full max-w-[85%] flex flex-col items-center space-y-3 pointer-events-none">
+      <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[1100] w-full max-w-[85%] flex flex-col items-center space-y-3 pointer-events-none">
         {isTestMode && (
           <div className="bg-orange-600/90 backdrop-blur text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg animate-bounce text-center">Simulation Aktiv: Karte klicken zum Fahren</div>
         )}
@@ -100,7 +100,7 @@ export const TrackingUI: React.FC<Props> = ({
         )}
 
         {detectionCountdown !== null && (
-          <div className="bg-blue-600 text-white px-8 py-4 rounded-[2rem] shadow-[0_20px_50px_rgba(37,99,235,0.4)] flex flex-col items-center space-y-1 animate-in zoom-in-95 border-4 border-white">
+          <div className="bg-blue-600 text-white px-8 py-4 rounded-[2rem] shadow-[0_20px_50px_rgba(37,99,235,0.4)] flex flex-col items-center space-y-1 animate-in zoom-in-95 border-4 border-white pointer-events-auto">
              <div className="flex flex-col items-center">
                 <div className="flex items-center space-x-2 mb-1">
                     <Timer size={22} className="animate-spin-slow text-blue-200"/>
@@ -138,36 +138,39 @@ export const TrackingUI: React.FC<Props> = ({
         </div>
       </div>
 
-      <div className="fixed bottom-24 left-0 right-0 z-[1000] px-4 pointer-events-none">
-          <div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">
-              {usedStorages.length > 0 && usedStorages.map(([sId, count]) => {
-                  const s = storages.find(st => st.id === sId);
-                  const color = getStorageColor(sId, storages);
-                  return (
-                      <div key={sId} className="bg-white/95 backdrop-blur shadow-lg border border-slate-200 rounded-full pl-1.5 pr-3 py-1 flex items-center space-x-2 animate-in slide-in-from-bottom-2">
-                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-white" style={{backgroundColor: color}}>
-                              <span className="text-[10px] font-black">{count}</span>
+      {/* VERBESSERTER CONTAINER FÜR EINZELSPEICHER-ZÄHLER */}
+      {activityType === ActivityType.FERTILIZATION && usedStorages.length > 0 && (
+          <div className="fixed bottom-28 left-0 right-0 z-[1150] px-4 pointer-events-none">
+              <div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">
+                  {usedStorages.map(([sId, count]) => {
+                      const s = storages.find(st => st.id === sId);
+                      const color = getStorageColor(sId, storages);
+                      return (
+                          <div key={sId} className="bg-white/90 backdrop-blur-md shadow-lg border border-slate-200 rounded-full pl-1 pr-3 py-1 flex items-center space-x-2 animate-in slide-in-from-bottom-4 duration-300 pointer-events-auto">
+                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white shadow-sm" style={{backgroundColor: color}}>
+                                  <span className="text-[11px] font-black">{count}</span>
+                              </div>
+                              <span className="text-[10px] font-black text-slate-700 tracking-tight uppercase">{s?.name || 'Unbekannt'}</span>
                           </div>
-                          <span className="text-[10px] font-bold text-slate-700">{s?.name || 'Unbekannt'}</span>
-                      </div>
-                  );
-              })}
+                      );
+                  })}
+              </div>
           </div>
-      </div>
+      )}
 
-      <div className="bg-white border-t-2 border-slate-200 p-4 pb-safe z-[1001] shadow-[0_-8px_30px_rgb(0,0,0,0.12)] shrink-0">
+      <div className="bg-white border-t-2 border-slate-200 p-4 pb-safe z-[1200] shadow-[0_-8px_30px_rgb(0,0,0,0.15)] shrink-0 relative">
         <div className="flex items-center justify-between space-x-2">
-          <div className="flex-1 flex items-center justify-around bg-slate-50 rounded-2xl py-3 px-2 border border-slate-100">
+          <div className="flex-1 flex items-center justify-around bg-slate-50 rounded-2xl py-3 px-2 border border-slate-100 shadow-inner">
             <div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-slate-800 leading-none">{duration}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Min</span></div>
             <div className="w-px h-8 bg-slate-200"></div>
-            {activityType === 'Düngung' && (
+            {activityType === ActivityType.FERTILIZATION && (
               <><div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-amber-600 leading-none">{totalLoads}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Gesamt</span></div><div className="w-px h-8 bg-slate-200"></div></>
             )}
             <div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-blue-600 leading-none">{speed}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">km/h</span></div>
           </div>
           <div className="flex items-center space-x-3 ml-2">
-            <button onClick={onDiscardClick} className="w-12 h-14 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-all active:scale-90" title="Abbrechen"><XCircle size={28} /></button>
-            <button onClick={onStopClick} className="w-20 h-14 bg-red-600 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg shadow-red-200 hover:bg-red-700 active:scale-95 transition-all"><Square size={20} fill="currentColor" className="mb-0.5"/><span className="text-[10px] font-black uppercase tracking-tighter">STOP</span></button>
+            <button onClick={onDiscardClick} className="w-12 h-14 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-all active:scale-90 shadow-sm" title="Abbrechen"><XCircle size={28} /></button>
+            <button onClick={onStopClick} className="w-20 h-14 bg-red-600 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg shadow-red-200 hover:bg-red-700 active:scale-95 transition-all border-b-4 border-red-800"><Square size={20} fill="currentColor" className="mb-0.5"/><span className="text-[10px] font-black uppercase tracking-tighter">STOP</span></button>
           </div>
         </div>
         <div className="mt-2 text-center"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{activityType} • {subType}</span></div>
