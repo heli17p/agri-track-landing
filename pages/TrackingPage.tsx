@@ -1,8 +1,8 @@
 
 import { useState, useEffect, useMemo } from 'react';
-import { Navigation, Play, Loader2, Truck, Hammer, Wheat, AlertTriangle, Settings, RefreshCw, Wrench } from 'lucide-react';
+import { Navigation, Play, Loader2, Truck, Hammer, Wheat, AlertTriangle, Settings, RefreshCw, Wrench, Tag } from 'lucide-react';
 import { dbService } from '../services/db';
-import { Field, StorageLocation, ActivityType, DEFAULT_SETTINGS, ActivityRecord, Equipment } from '../types';
+import { Field, StorageLocation, ActivityType, DEFAULT_SETTINGS, ActivityRecord, Equipment, EquipmentCategory } from '../types';
 import { useTracking } from '../hooks/useTracking';
 import { TrackingMap } from '../components/tracking/TrackingMap';
 import { TrackingUI } from '../components/tracking/TrackingUI';
@@ -20,11 +20,12 @@ export type HistoryFilterMode = 'OFF' | 'YEAR' | '12M';
 export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTrackingStateChange }) => {
   const [fields, setFields] = useState<Field[]>([]);
   const [storages, setStorages] = useState<StorageLocation[]>([]);
-  const [equipment, setEquipment] = useState<Equipment[]>([]); // NEU
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
+  const [categories, setCategories] = useState<EquipmentCategory[]>([]); // NEU
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [activityType, setActivityType] = useState<ActivityType>(ActivityType.FERTILIZATION);
   const [subType, setSubType] = useState<string>('Gülle');
-  const [selectedEquipId, setSelectedEquipId] = useState<string>('default'); // NEU
+  const [selectedEquipId, setSelectedEquipId] = useState<string>('default');
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
   const [followUser, setFollowUser] = useState(true);
   const [historyMode, setHistoryMode] = useState<HistoryFilterMode>('OFF');
@@ -45,10 +46,17 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
     const init = async () => {
       setFields(await dbService.getFields());
       setStorages(await dbService.getStorageLocations());
-      setEquipment(await dbService.getEquipment()); // NEU
+      setEquipment(await dbService.getEquipment());
+      const cats = await dbService.getEquipmentCategories(); // NEU
+      setCategories(cats);
       setSettings(await dbService.getSettings());
       const allActs = await dbService.getActivities();
       setAllHistoryTracks(allActs.filter(a => a.trackPoints && a.trackPoints.length > 0));
+
+      // Standard-SubTyp setzen falls leer
+      if (activityType === ActivityType.TILLAGE && cats.length > 0) {
+          setSubType(cats[0].name);
+      }
     };
     init();
     return dbService.onDatabaseChange(init);
@@ -148,21 +156,31 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
             <div className="space-y-4">
               <div className="grid grid-cols-2 gap-2">
                 <button onClick={() => { setActivityType(ActivityType.FERTILIZATION); setSubType('Gülle'); }} className={`py-3 rounded-lg border-2 font-bold transition-all ${activityType === ActivityType.FERTILIZATION ? 'border-green-600 bg-white text-green-700 shadow-sm' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>Düngung</button>
-                <button onClick={() => { setActivityType(ActivityType.TILLAGE); setSubType('Wiesenegge'); }} className={`py-3 rounded-lg border-2 font-bold transition-all ${activityType === ActivityType.TILLAGE ? 'border-green-600 bg-white text-green-700 shadow-sm' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>Boden</button>
+                <button onClick={() => { setActivityType(ActivityType.TILLAGE); if(categories.length > 0) setSubType(categories[0].name); }} className={`py-3 rounded-lg border-2 font-bold transition-all ${activityType === ActivityType.TILLAGE ? 'border-green-600 bg-white text-green-700 shadow-sm' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>Boden</button>
               </div>
               
               <div className="space-y-3">
-                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Kategorie / Art</label>
+                <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center">
+                    <Tag size={12} className="mr-1"/> Kategorie / Art
+                </label>
                 <select value={subType} onChange={e => { setSubType(e.target.value); setSelectedEquipId('default'); }} className="w-full p-3 rounded-xl border border-green-200 bg-white font-bold outline-none focus:ring-2 focus:ring-green-500 shadow-sm appearance-none">
-                  {activityType === ActivityType.FERTILIZATION ? <><option value="Gülle">Gülle</option><option value="Mist">Mist</option></> : <><option value="Wiesenegge">Wiesenegge</option><option value="Schlegeln">Schlegeln</option><option value="Striegel">Striegel</option><option value="Nachsaat">Nachsaat</option></>}
+                  {activityType === ActivityType.FERTILIZATION ? (
+                      <><option value="Gülle">Gülle</option><option value="Mist">Mist</option></>
+                  ) : (
+                      categories.length > 0 ? (
+                        categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)
+                      ) : (
+                        <option value="" disabled>Keine Kategorien definiert</option>
+                      )
+                  )}
                 </select>
               </div>
 
-              {/* NEU: Geräteauswahl */}
-              {activityType === ActivityType.TILLAGE && filteredEquipment.length > 0 && (
+              {/* Geräteauswahl */}
+              {activityType === ActivityType.TILLAGE && (
                 <div className="space-y-3 animate-in fade-in duration-300">
                   <label className="block text-xs font-black text-slate-400 uppercase tracking-widest ml-1 flex items-center">
-                    <Wrench size={12} className="mr-1"/> Spezifisches Gerät (für genaue Hektar)
+                    <Wrench size={12} className="mr-1"/> Gerät wählen
                   </label>
                   <select 
                     value={selectedEquipId} 
@@ -177,7 +195,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                 </div>
               )}
 
-              <button onClick={tracker.startGPS} disabled={tracker.gpsLoading} className={`w-full py-4 text-white rounded-xl font-bold flex items-center justify-center shadow-lg active:scale-[0.98] transition-all disabled:opacity-70 ${tracker.gpsError ? 'bg-slate-400' : 'bg-green-600'}`}>{tracker.gpsLoading ? <Loader2 className="animate-spin mr-2"/> : <Play size={24} className="mr-2 fill-white"/>} {tracker.gpsLoading ? 'GPS wird gesucht...' : 'Starten'}</button>
+              <button onClick={tracker.startGPS} disabled={tracker.gpsLoading || (activityType === ActivityType.TILLAGE && categories.length === 0)} className={`w-full py-4 text-white rounded-xl font-bold flex items-center justify-center shadow-lg active:scale-[0.98] transition-all disabled:opacity-70 ${tracker.gpsError ? 'bg-slate-400' : 'bg-green-600'}`}>{tracker.gpsLoading ? <Loader2 className="animate-spin mr-2"/> : <Play size={24} className="mr-2 fill-white"/>} {tracker.gpsLoading ? 'GPS wird gesucht...' : 'Starten'}</button>
             </div>
           </div>
           <div className="space-y-3">

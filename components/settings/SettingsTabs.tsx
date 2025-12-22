@@ -1,7 +1,7 @@
 
-import React, { useState } from 'react';
-import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2 } from 'lucide-react';
-import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, TillageType } from '../../types';
+import React, { useState, useEffect } from 'react';
+import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown } from 'lucide-react';
+import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, EquipmentCategory } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
 import { dbService, generateId } from '../../services/db';
 
@@ -20,17 +20,46 @@ export const ProfileTab: React.FC<{ profile: FarmProfile, setProfile: (p: any) =
     </div>
 );
 
-// NEU: Geräteverwaltung Tab
+// NEU: Geräteverwaltung Tab mit Kategorien
 export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => void }> = ({ equipment, onUpdate }) => {
   const [showAdd, setShowAdd] = useState(false);
-  const [newEquip, setNewEquip] = useState<Equipment>({ id: '', name: '', type: TillageType.HARROW, width: 6 });
+  const [showCatManager, setShowCatManager] = useState(false);
+  const [categories, setCategories] = useState<EquipmentCategory[]>([]);
+  const [newEquip, setNewEquip] = useState<Equipment>({ id: '', name: '', type: '', width: 6 });
+  const [newCatName, setNewCatName] = useState('');
+
+  const loadCats = async () => {
+    const c = await dbService.getEquipmentCategories();
+    setCategories(c);
+    if (!newEquip.type && c.length > 0) {
+        setNewEquip(prev => ({ ...prev, type: c[0].name }));
+    }
+  };
+
+  useEffect(() => {
+    loadCats();
+  }, []);
 
   const handleSave = async () => {
-    if (!newEquip.name) return;
+    if (!newEquip.name || !newEquip.type) return;
     await dbService.saveEquipment({ ...newEquip, id: newEquip.id || generateId() });
     setShowAdd(false);
-    setNewEquip({ id: '', name: '', type: TillageType.HARROW, width: 6 });
+    setNewEquip({ id: '', name: '', type: categories[0]?.name || '', width: 6 });
     onUpdate();
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCatName.trim()) return;
+    await dbService.saveEquipmentCategory({ id: generateId(), name: newCatName.trim() });
+    setNewCatName('');
+    loadCats();
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    if (confirm("Kategorie wirklich löschen?")) {
+      await dbService.deleteEquipmentCategory(id);
+      loadCats();
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -41,7 +70,55 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
   };
 
   return (
-    <div className="space-y-4 max-w-lg mx-auto">
+    <div className="space-y-4 max-w-lg mx-auto pb-10">
+        
+        {/* KATEGORIEN MANAGER */}
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden transition-all">
+            <button 
+                onClick={() => setShowCatManager(!showCatManager)}
+                className="w-full p-5 flex justify-between items-center hover:bg-slate-50 transition-colors"
+            >
+                <div className="flex items-center">
+                    <div className="p-2 bg-purple-50 text-purple-600 rounded-lg mr-3"><Tag size={18}/></div>
+                    <div className="text-left">
+                        <h3 className="font-bold text-slate-800 leading-none">Typen / Kategorien</h3>
+                        <p className="text-[10px] text-slate-400 font-bold uppercase mt-1 tracking-tighter">Geräte-Gruppen verwalten</p>
+                    </div>
+                </div>
+                {showCatManager ? <ChevronDown size={20} className="text-slate-400"/> : <ChevronRight size={20} className="text-slate-400"/>}
+            </button>
+
+            {showCatManager && (
+                <div className="p-5 border-t border-slate-100 bg-slate-50/50 space-y-4 animate-in slide-in-from-top-2">
+                    <div className="flex space-x-2">
+                        <input 
+                            type="text" 
+                            value={newCatName} 
+                            onChange={e => setNewCatName(e.target.value)} 
+                            className="flex-1 p-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-purple-500 font-bold text-sm" 
+                            placeholder="z.B. Grubber..." 
+                        />
+                        <button 
+                            onClick={handleAddCategory}
+                            className="bg-purple-600 text-white px-4 py-2.5 rounded-xl font-bold text-xs"
+                        >
+                            Hinzufügen
+                        </button>
+                    </div>
+                    <div className="flex flex-wrap gap-2">
+                        {categories.map(cat => (
+                            <div key={cat.id} className="bg-white border border-slate-200 pl-3 pr-1 py-1 rounded-full flex items-center shadow-sm">
+                                <span className="text-xs font-black text-slate-700 uppercase tracking-tighter mr-2">{cat.name}</span>
+                                <button onClick={() => handleDeleteCategory(cat.id)} className="p-1.5 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={12}/></button>
+                            </div>
+                        ))}
+                    </div>
+                    <p className="text-[9px] text-slate-400 italic">Diese Typen stehen beim Start des Trackings zur Auswahl.</p>
+                </div>
+            )}
+        </div>
+
+        {/* MASCHINEN LISTE */}
         <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
             <div className="flex justify-between items-center mb-6">
                 <h3 className="font-bold text-lg text-slate-800 flex items-center"><Wrench className="mr-2 text-blue-600"/> Maschinenpark</h3>
@@ -59,11 +136,13 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
                         <div className="grid grid-cols-2 gap-4">
                             <div>
                                 <label className="block text-xs font-bold text-slate-600 mb-1">Typ</label>
-                                <select value={newEquip.type} onChange={e => setNewEquip({...newEquip, type: e.target.value as TillageType})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-bold">
-                                    <option value={TillageType.HARROW}>Wiesenegge</option>
-                                    <option value={TillageType.MULCH}>Schlegeln</option>
-                                    <option value={TillageType.WEEDER}>Striegel</option>
-                                    <option value={TillageType.RESEEDING}>Nachsaat</option>
+                                <select 
+                                    value={newEquip.type} 
+                                    onChange={e => setNewEquip({...newEquip, type: e.target.value})} 
+                                    className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-bold text-sm appearance-none"
+                                >
+                                    <option value="" disabled>Wählen...</option>
+                                    {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
                                 </select>
                             </div>
                             <div>

@@ -2,7 +2,7 @@
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import { auth, db, isCloudConfigured, saveData, loadLocalData, fetchCloudData, loadSettings, saveSettings as saveStorageSettings, fetchCloudSettings, hardReset as storageHardReset, fetchFarmMasterSettings } from './storage';
-import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, FeedbackTicket, DEFAULT_SETTINGS, Equipment } from '../types';
+import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, FeedbackTicket, DEFAULT_SETTINGS, Equipment, EquipmentCategory } from '../types';
 
 export const generateId = () => {
   return Math.random().toString(36).substr(2, 9);
@@ -132,6 +132,45 @@ export const dbService = {
         localStorage.setItem('agritrack_equipment', JSON.stringify(items));
         if (isCloudConfigured()) {
             try { await db.collection("equipment").doc(id).delete(); } catch(e) {}
+        }
+        notifyDbChange();
+    },
+
+    // --- Equipment Categories (Typen) ---
+    getEquipmentCategories: async (): Promise<EquipmentCategory[]> => {
+        let cats = loadLocalData('tillage_categories' as any);
+        if (!cats || cats.length === 0) {
+            // Initialbefüllung mit Standards
+            cats = [
+                { id: 'harrow', name: 'Wiesenegge' },
+                { id: 'mulch', name: 'Schlegeln' },
+                { id: 'weeder', name: 'Striegel' },
+                { id: 'reseed', name: 'Nachsaat' },
+                { id: 'plow', name: 'Pflug' }
+            ];
+            localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cats));
+        }
+        return cats;
+    },
+
+    saveEquipmentCategory: async (category: EquipmentCategory) => {
+        let cats = loadLocalData('tillage_categories' as any);
+        const idx = cats.findIndex((c: any) => c.id === category.id);
+        if (idx >= 0) cats[idx] = category; else cats.push(category);
+        localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cats));
+        
+        if (isCloudConfigured()) {
+            try { await db.collection("tillage_categories").doc(category.id).set(category); } catch(e) {}
+        }
+        notifyDbChange();
+    },
+
+    deleteEquipmentCategory: async (id: string) => {
+        let cats = loadLocalData('tillage_categories' as any);
+        cats = cats.filter((c: any) => c.id !== id);
+        localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cats));
+        if (isCloudConfigured()) {
+            try { await db.collection("tillage_categories").doc(id).delete(); } catch(e) {}
         }
         notifyDbChange();
     },
@@ -268,13 +307,15 @@ export const dbService = {
         const cloudFields = await fetchCloudData('field', true);
         const cloudStorages = await fetchCloudData('storage', true);
         const cloudProfiles = await fetchCloudData('profile', true);
-        const cloudEquipment = await fetchCloudData('equipment', true); // NEU
+        const cloudEquipment = await fetchCloudData('equipment', true);
+        const cloudCategories = await fetchCloudData('tillage_categories' as any, true);
         
         if (cloudActivities.length > 0) localStorage.setItem('agritrack_activities', JSON.stringify(cloudActivities));
         if (cloudFields.length > 0) localStorage.setItem('agritrack_fields', JSON.stringify(cloudFields));
         if (cloudStorages.length > 0) localStorage.setItem('agritrack_storage', JSON.stringify(cloudStorages));
         if (cloudProfiles.length > 0) localStorage.setItem('agritrack_profile', JSON.stringify(cloudProfiles[0]));
         if (cloudEquipment.length > 0) localStorage.setItem('agritrack_equipment', JSON.stringify(cloudEquipment));
+        if (cloudCategories.length > 0) localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cloudCategories));
 
         const currentLocalSettings = loadSettings();
         if (currentLocalSettings.farmId) {
@@ -370,6 +411,7 @@ export const dbService = {
         const fields = loadLocalData('field') || [];
         const storages = loadLocalData('storage') || [];
         const equipment = loadLocalData('equipment') || [];
+        const categories = loadLocalData('tillage_categories' as any) || [];
         const profile = loadLocalData('profile');
         
         const allItems = [
@@ -377,6 +419,7 @@ export const dbService = {
             ...fields.map((i: any) => ({ type: 'field', data: i })),
             ...storages.map((i: any) => ({ type: 'storage', data: i })),
             ...equipment.map((i: any) => ({ type: 'equipment', data: i })),
+            ...categories.map((i: any) => ({ type: 'tillage_categories', data: i })),
         ];
         if (profile) allItems.push({ type: 'profile', data: profile });
 
@@ -429,7 +472,7 @@ export const dbService = {
     deleteEntireFarm: async (farmId: string, pin: string, progressCb: (msg: string) => void) => {
         if (!isCloudConfigured()) throw new Error("Offline");
         
-        const collections = ['activities', 'fields', 'storages', 'profiles', 'settings', 'equipment'];
+        const collections = ['activities', 'fields', 'storages', 'profiles', 'settings', 'equipment', 'tillage_categories'];
         let deletedCount = 0;
 
         const idsToCheck = [String(farmId)];
@@ -467,15 +510,16 @@ export const dbService = {
             const numId = Number(farmId);
             if(!isNaN(numId) && String(numId) === String(farmId)) idsToCheck.push(numId as any);
 
-            const res: any = { activities: [], fields: [], storages: [], profiles: [], equipment: [] };
+            const res: any = { activities: [], fields: [], storages: [], profiles: [], equipment: [], categories: [] };
             
             await Promise.all(idsToCheck.map(async (id) => {
-                const [a, f, s, p, e] = await Promise.all([
+                const [a, f, s, p, e, c] = await Promise.all([
                     db.collection("activities").where("farmId", "==", id).get(),
                     db.collection("fields").where("farmId", "==", id).get(),
                     db.collection("storages").where("farmId", "==", id).get(),
                     db.collection("profiles").where("farmId", "==", id).get(),
-                    db.collection("equipment").where("farmId", "==", id).get()
+                    db.collection("equipment").where("farmId", "==", id).get(),
+                    db.collection("tillage_categories").where("farmId", "==", id).get()
                 ]);
 
                 a.docs.forEach(d => res.activities.push({id: d.id, ...d.data()}));
@@ -483,6 +527,7 @@ export const dbService = {
                 s.docs.forEach(d => res.storages.push({id: d.id, ...d.data()}));
                 p.docs.forEach(d => res.profiles.push({id: d.id, ...d.data()}));
                 e.docs.forEach(d => res.equipment.push({id: d.id, ...d.data()}));
+                c.docs.forEach(d => res.categories.push({id: d.id, ...d.data()}));
             }));
 
             return res;
@@ -572,7 +617,7 @@ export const dbService = {
         const numId = Number(farmId);
         if (isNaN(numId)) return "Farm ID ist keine Zahl, keine Reparatur nötig.";
 
-        const collections = ['activities', 'fields', 'storages', 'settings', 'equipment']; 
+        const collections = ['activities', 'fields', 'storages', 'settings', 'equipment', 'tillage_categories']; 
         let totalFixed = 0;
 
         for (const col of collections) {
