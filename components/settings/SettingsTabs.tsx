@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe } from 'lucide-react';
+import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2 } from 'lucide-react';
 import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, EquipmentCategory, ActivityType } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
 import { dbService, generateId } from '../../services/db';
@@ -25,6 +25,7 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
   const [showCatManager, setShowCatManager] = useState(false);
   const [categories, setCategories] = useState<EquipmentCategory[]>([]);
   const [newEquip, setNewEquip] = useState<Equipment>({ id: '', name: '', type: '', width: 6 });
+  const [editingId, setEditingId] = useState<string | null>(null); // Trackt, ob wir gerade bearbeiten
   const [newCatName, setNewCatName] = useState('');
   const [newCatParent, setNewCatParent] = useState<ActivityType>(ActivityType.TILLAGE);
 
@@ -41,9 +42,22 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
   const handleSave = async () => {
     if (!newEquip.name || !newEquip.type) return;
     await dbService.saveEquipment({ ...newEquip, id: newEquip.id || generateId() });
-    setShowAdd(false);
-    setNewEquip({ id: '', name: '', type: categories[0]?.name || '', width: 6 });
+    resetForm();
     onUpdate();
+  };
+
+  const resetForm = () => {
+    setShowAdd(false);
+    setEditingId(null);
+    setNewEquip({ id: '', name: '', type: categories[0]?.name || '', width: 6 });
+  };
+
+  const handleEdit = (e: Equipment) => {
+    setNewEquip({ ...e });
+    setEditingId(e.id);
+    setShowAdd(true);
+    // Scroll zum Formular
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleAddCategory = async () => {
@@ -129,7 +143,9 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
 
             {showAdd && (
                 <div className="mb-8 p-5 bg-slate-50 rounded-2xl border-2 border-blue-100 animate-in slide-in-from-top-4">
-                    <h4 className="font-black text-[10px] uppercase text-slate-400 tracking-widest mb-4">Neues Gerät anlegen</h4>
+                    <h4 className="font-black text-[10px] uppercase text-slate-400 tracking-widest mb-4">
+                        {editingId ? 'Gerät bearbeiten' : 'Neues Gerät anlegen'}
+                    </h4>
                     <div className="space-y-4">
                         <div>
                             <label className="block text-xs font-bold text-slate-600 mb-1">Bezeichnung</label>
@@ -149,8 +165,10 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
                             </div>
                         </div>
                         <div className="flex space-x-3 pt-2">
-                            <button onClick={() => setShowAdd(false)} className="flex-1 py-3 text-slate-500 font-bold text-sm">Abbrechen</button>
-                            <button onClick={handleSave} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-100">Speichern</button>
+                            <button onClick={resetForm} className="flex-1 py-3 text-slate-500 font-bold text-sm">Abbrechen</button>
+                            <button onClick={handleSave} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-100">
+                                {editingId ? 'Aktualisieren' : 'Speichern'}
+                            </button>
                         </div>
                     </div>
                 </div>
@@ -161,7 +179,7 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
                     <div className="text-center py-10 text-slate-400 italic text-sm">Keine Geräte angelegt. Nutze oben "Neu".</div>
                 ) : (
                     equipment.map(e => (
-                        <div key={e.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center group">
+                        <div key={e.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center group hover:border-blue-300 transition-all cursor-pointer" onClick={() => handleEdit(e)}>
                             <div className="flex items-center">
                                 <div className="p-2 bg-white rounded-lg border border-slate-200 mr-4 text-blue-600 shadow-sm"><Hammer size={18}/></div>
                                 <div>
@@ -171,7 +189,10 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
                                     </div>
                                 </div>
                             </div>
-                            <button onClick={() => handleDelete(e.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                            <div className="flex items-center space-x-2">
+                                <div className="p-2 text-slate-300 group-hover:text-blue-500 transition-colors"><Edit2 size={16}/></div>
+                                <button onClick={(event) => { event.stopPropagation(); handleDelete(e.id); }} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                            </div>
                         </div>
                     ))
                 )}
