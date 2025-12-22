@@ -140,14 +140,12 @@ export const dbService = {
     getEquipmentCategories: async (): Promise<EquipmentCategory[]> => {
         let cats = loadLocalData('tillage_categories' as any);
         if (!cats || cats.length === 0) {
-            // Initialbefüllung mit Standards für alle Bereiche
+            // Vordefinierte Gruppen für AgriTrack Austria
             cats = [
                 { id: 'cat_slurry', name: 'Gülle', parentType: ActivityType.FERTILIZATION },
                 { id: 'cat_manure', name: 'Mist', parentType: ActivityType.FERTILIZATION },
                 { id: 'cat_harrow', name: 'Wiesenegge', parentType: ActivityType.TILLAGE },
                 { id: 'cat_mulch', name: 'Schlegeln', parentType: ActivityType.TILLAGE },
-                { id: 'cat_weeder', name: 'Striegel', parentType: ActivityType.TILLAGE },
-                { id: 'cat_plow', name: 'Pflug', parentType: ActivityType.TILLAGE },
                 { id: 'cat_mower', name: 'Mähwerk', parentType: ActivityType.HARVEST }
             ];
             localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cats));
@@ -158,7 +156,11 @@ export const dbService = {
     saveEquipmentCategory: async (category: EquipmentCategory) => {
         let cats = loadLocalData('tillage_categories' as any);
         const idx = cats.findIndex((c: any) => c.id === category.id);
-        if (idx >= 0) cats[idx] = category; else cats.push(category);
+        if (idx >= 0) {
+            cats[idx] = category;
+        } else {
+            cats.push(category);
+        }
         localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cats));
         
         if (isCloudConfigured()) {

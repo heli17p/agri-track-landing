@@ -27,7 +27,7 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
   const [newEquip, setNewEquip] = useState<Equipment>({ id: '', name: '', type: '', width: 6 });
   const [editingId, setEditingId] = useState<string | null>(null);
   
-  // Kategorie Management States
+  // Kategorie Management
   const [newCatName, setNewCatName] = useState('');
   const [newCatParent, setNewCatParent] = useState<ActivityType>(ActivityType.TILLAGE);
   const [editingCatId, setEditingCatId] = useState<string | null>(null);
@@ -74,7 +74,7 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
     loadCats();
   };
 
-  const handleEditCategoryStart = (cat: EquipmentCategory) => {
+  const handleEditCategory = (cat: EquipmentCategory) => {
       setNewCatName(cat.name);
       setNewCatParent(cat.parentType);
       setEditingCatId(cat.id);
@@ -115,38 +115,18 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
 
             {showCatManager && (
                 <div className="p-5 border-t border-slate-100 bg-slate-50/50 space-y-4 animate-in slide-in-from-top-2">
-                    <div className={`p-4 rounded-xl border space-y-3 transition-all ${editingCatId ? 'bg-amber-50 border-amber-200 ring-2 ring-amber-100' : 'bg-white border-slate-200'}`}>
-                        <div className="flex justify-between items-center">
-                            <label className={`text-[10px] font-black uppercase tracking-widest ${editingCatId ? 'text-amber-600' : 'text-slate-400'}`}>
-                                {editingCatId ? 'Gruppe umbenennen' : 'Neue Gruppe anlegen'}
-                            </label>
-                            {editingCatId && (
-                                <button onClick={() => { setEditingCatId(null); setNewCatName(''); }} className="text-[10px] font-bold text-amber-700 underline">Abbrechen</button>
-                            )}
-                        </div>
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
+                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                            {editingCatId ? 'Gruppe umbenennen' : 'Neue Gruppe anlegen'}
+                        </label>
                         <div className="flex space-x-2">
-                            <input 
-                                type="text" 
-                                value={newCatName} 
-                                onChange={e => setNewCatName(e.target.value)} 
-                                className="flex-1 p-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 font-bold text-sm" 
-                                placeholder="z.B. Walze..." 
-                            />
-                            <select 
-                                value={newCatParent} 
-                                onChange={e => setNewCatParent(e.target.value as ActivityType)} 
-                                className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none"
-                            >
+                            <input type="text" value={newCatName} onChange={e => setNewCatName(e.target.value)} className="flex-1 p-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 font-bold text-sm" placeholder="z.B. Walze..." />
+                            <select value={newCatParent} onChange={e => setNewCatParent(e.target.value as ActivityType)} className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold">
                                 <option value={ActivityType.TILLAGE}>Boden</option>
                                 <option value={ActivityType.FERTILIZATION}>Düngung</option>
                                 <option value={ActivityType.HARVEST}>Ernte</option>
                             </select>
-                            <button 
-                                onClick={handleAddCategory} 
-                                className={`${editingCatId ? 'bg-amber-600' : 'bg-purple-600'} text-white px-3 py-2 rounded-lg font-bold text-xs shadow-sm`}
-                            >
-                                {editingCatId ? 'OK' : 'Hinzufügen'}
-                            </button>
+                            <button onClick={handleAddCategory} className="bg-purple-600 text-white px-3 py-2 rounded-lg font-bold text-xs">{editingCatId ? 'OK' : 'OK'}</button>
                         </div>
                     </div>
                     
@@ -156,21 +136,14 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
                                 <h4 className="text-[9px] font-black text-slate-400 uppercase mb-2 flex items-center">{getParentIcon(parent)} {parent}</h4>
                                 <div className="flex flex-wrap gap-2">
                                     {categories.filter(c => c.parentType === parent).map(cat => (
-                                        <div 
-                                            key={cat.id} 
-                                            className={`border pl-3 pr-1 py-1 rounded-full flex items-center shadow-sm transition-all group cursor-pointer ${editingCatId === cat.id ? 'bg-amber-100 border-amber-400 scale-105' : 'bg-white border-slate-200 hover:border-purple-300'}`}
-                                            onClick={() => handleEditCategoryStart(cat)}
-                                        >
-                                            <span className="text-[10px] font-black text-slate-700 uppercase tracking-tighter mr-2">{cat.name}</span>
-                                            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
-                                                <button className="p-1 text-slate-400 hover:text-blue-500 mr-0.5"><Edit2 size={10}/></button>
-                                                <button 
-                                                    onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }} 
-                                                    className="p-1 text-slate-300 hover:text-red-500"
-                                                >
-                                                    <Trash2 size={10}/>
-                                                </button>
-                                            </div>
+                                        <div key={cat.id} className="bg-white border border-slate-200 pl-3 pr-1 py-1 rounded-full flex items-center shadow-sm">
+                                            <span 
+                                                className="text-[10px] font-black text-slate-700 uppercase tracking-tighter mr-2 cursor-pointer hover:text-purple-600"
+                                                onClick={() => handleEditCategory(cat)}
+                                            >
+                                                {cat.name}
+                                            </span>
+                                            <button onClick={() => handleDeleteCategory(cat.id)} className="p-1 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={10}/></button>
                                         </div>
                                     ))}
                                 </div>
@@ -317,17 +290,17 @@ export const GeneralTab: React.FC<{ settings: AppSettings, setSettings: (s: any)
 export const SyncTab: React.FC<{ authState: any, settings: AppSettings, cloudStats: any, localStats: any, connectMode: string, setConnectMode: (m: any) => void, inputFarmId: string, setInputFarmId: (v: string) => void, inputPin: string, setInputPin: (v: string) => void, searchStatus: string, foundOwnerEmail: string | null, connectError: string | null, onSearch: () => void, onJoin: () => void, onCreate: () => void, onForceUpload: () => void, onManualDownload: () => void, onShowDiagnose: () => void, onLogout: () => void }> = (props) => (
     <div className="space-y-6 max-w-lg mx-auto">
         
-        {/* UNRAID / SERVER INFO CARD */}
-        <div className="bg-slate-900 text-white p-6 rounded-2xl shadow-xl overflow-hidden relative">
-            <div className="absolute top-0 right-0 p-4 opacity-10"><Server size={80}/></div>
+        {/* AGRICLOUD / FIREBASE INFO CARD */}
+        <div className="bg-gradient-to-br from-green-600 to-green-800 text-white p-6 rounded-2xl shadow-xl overflow-hidden relative">
+            <div className="absolute top-0 right-0 p-4 opacity-10"><Cloud size={80}/></div>
             <div className="relative z-10">
-                <div className="flex items-center space-x-2 mb-2 text-blue-400 font-bold uppercase text-[10px] tracking-[0.2em]"><Globe size={14}/> <span>Lokal-Server Sync</span></div>
-                <h3 className="text-xl font-black mb-2 italic">AgriTrack Austria <span className="text-blue-500">PRO</span></h3>
-                <p className="text-slate-400 text-xs leading-relaxed mb-4">Deine Daten werden automatisch mit deiner privaten <span className="text-white font-bold">AgriCloud</span> Instanz auf deinem <span className="text-blue-400 font-bold underline">Unraid Server</span> abgeglichen.</p>
+                <div className="flex items-center space-x-2 mb-2 text-green-200 font-bold uppercase text-[10px] tracking-[0.2em]"><ShieldCheck size={14}/> <span>Echtzeit-Sicherung</span></div>
+                <h3 className="text-xl font-black mb-2 italic">AgriCloud <span className="text-green-300">Live</span></h3>
+                <p className="text-green-50 text-xs leading-relaxed mb-4">Deine Daten werden sicher in der <span className="white font-bold underline">AgriCloud (Firebase)</span> verschlüsselt gespeichert und automatisch über alle deine Geräte synchronisiert.</p>
                 <div className="flex items-center space-x-3">
-                    <div className="bg-green-500/20 text-green-400 px-3 py-1 rounded-full text-[10px] font-bold border border-green-500/30 flex items-center">
-                        <div className="w-1.5 h-1.5 bg-green-500 rounded-full mr-2 animate-pulse"></div>
-                        SERVER ONLINE
+                    <div className="bg-white/20 text-white px-3 py-1 rounded-full text-[10px] font-bold border border-white/30 flex items-center">
+                        <div className="w-1.5 h-1.5 bg-green-300 rounded-full mr-2 animate-pulse"></div>
+                        CONNECTED TO CLOUD
                     </div>
                 </div>
             </div>
