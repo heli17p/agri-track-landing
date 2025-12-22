@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer } from 'lucide-react';
+import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer, Minimize2 } from 'lucide-react';
 import { StorageLocation, FertilizerType, ActivityType } from '../../types';
 import { HistoryFilterMode } from '../../pages/TrackingPage';
 
@@ -18,6 +18,7 @@ interface Props {
   onFollowToggle: () => void;
   onHistoryToggle: () => void;
   onTestModeToggle: () => void;
+  onMinimizeClick: () => void; // NEU
   followUser: boolean;
   historyMode: HistoryFilterMode;
   subType: string;
@@ -52,6 +53,7 @@ export const TrackingUI: React.FC<Props> = ({
   onFollowToggle, 
   onHistoryToggle, 
   onTestModeToggle,
+  onMinimizeClick,
   followUser, 
   historyMode, 
   subType, 
@@ -73,6 +75,15 @@ export const TrackingUI: React.FC<Props> = ({
   return (
     <>
       <div className="fixed top-20 right-4 flex flex-col space-y-3 z-[1100]">
+        {/* Minimize Button */}
+        <button 
+          onClick={onMinimizeClick} 
+          className="bg-white/95 p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur text-blue-600 active:scale-95 transition-all hover:bg-blue-50"
+          title="In Hintergrund schalten"
+        >
+          <Minimize2 size={24} />
+        </button>
+
         <button onClick={onMapStyleToggle} className="bg-white/95 p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur text-slate-700 active:scale-95 transition-all"><Layers size={24} /></button>
         <button onClick={onFollowToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${followUser ? 'bg-blue-600 text-white' : 'bg-white/95 text-slate-700'}`}><LocateFixed size={24}/></button>
         

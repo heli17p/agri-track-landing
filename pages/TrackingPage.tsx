@@ -201,6 +201,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         onFollowToggle={() => setFollowUser(!followUser)} 
         onHistoryToggle={cycleHistoryMode} 
         onTestModeToggle={() => tracker.setIsTestMode(!tracker.isTestMode)}
+        onMinimizeClick={onMinimize} // NEU
         followUser={followUser} 
         historyMode={historyMode} 
         subType={subType} 
