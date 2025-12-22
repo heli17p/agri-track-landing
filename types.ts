@@ -69,6 +69,14 @@ export enum TillageType {
   PLOW = 'Pflug'
 }
 
+// NEU: Geräteverwaltung
+export interface Equipment {
+  id: string;
+  name: string;
+  type: TillageType;
+  width: number;
+}
+
 export interface GeoPoint {
   lat: number;
   lng: number;
@@ -91,8 +99,6 @@ export interface Field {
   boundary: GeoPoint[];
   color?: string;
   codes?: string;
-  // NEU: Dauerhafte Speicherung der ausgebrachten Mengen pro Quelle
-  // Format: { "LagerID_1": 120.5, "LagerID_2": 45.0 }
   detailedSources?: Record<string, number>;
 }
 
@@ -125,6 +131,8 @@ export interface ActivityRecord {
   loadCount?: number;
   fertilizerType?: FertilizerType;
   tillageType?: TillageType;
+  equipmentId?: string; // NEU
+  equipmentName?: string; // NEU
   notes?: string;
   trackPoints?: TrackPoint[];
   fieldDistribution?: Record<string, number>;
@@ -152,6 +160,10 @@ export interface AppSettings {
   spreadWidth: number;
   slurrySpreadWidth?: number;
   manureSpreadWidth?: number;
+  harrowWidth?: number;
+  mulchWidth?: number;
+  weederWidth?: number;
+  reseedingWidth?: number;
   serverUrl: string;
   farmName?: string;
   appIcon?: string;
@@ -171,6 +183,10 @@ export const DEFAULT_SETTINGS: AppSettings = {
   spreadWidth: 12,
   slurrySpreadWidth: 12,
   manureSpreadWidth: 10,
+  harrowWidth: 6,
+  mulchWidth: 3,
+  weederWidth: 6,
+  reseedingWidth: 3,
   serverUrl: '',
   appIcon: 'standard',
   adminPhone: '436765624502',

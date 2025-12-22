@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { dbService, generateId } from '../services/db';
-import { Field, StorageLocation, TrackPoint, ActivityType, FertilizerType, AppSettings, ActivityRecord, GeoPoint } from '../types';
+import { Field, StorageLocation, TrackPoint, ActivityType, FertilizerType, AppSettings, ActivityRecord, GeoPoint, Equipment } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
 
 type TrackingState = 'IDLE' | 'LOADING' | 'TRANSIT' | 'SPREADING';
@@ -11,7 +11,8 @@ export const useTracking = (
   fields: Field[],
   storages: StorageLocation[],
   activityType: ActivityType,
-  subType: string
+  subType: string,
+  selectedEquipment?: Equipment | null // NEU
 ) => {
   const [trackingState, setTrackingState] = useState<TrackingState>('IDLE');
   const [currentLocation, setCurrentLocation] = useState<GeolocationPosition | null>(null);
@@ -35,6 +36,7 @@ export const useTracking = (
   const storagesRef = useRef(storages);
   const activityTypeRef = useRef(activityType);
   const subTypeRef = useRef(subType);
+  const equipmentRef = useRef(selectedEquipment);
   const isTestModeRef = useRef(false);
   
   const activeSourceIdRef = useRef<string | null>(null);
@@ -57,8 +59,9 @@ export const useTracking = (
     storagesRef.current = storages; 
     activityTypeRef.current = activityType; 
     subTypeRef.current = subType; 
+    equipmentRef.current = selectedEquipment;
     isTestModeRef.current = isTestMode; 
-  }, [settings, fields, storages, activityType, subType, isTestMode]);
+  }, [settings, fields, storages, activityType, subType, selectedEquipment, isTestMode]);
 
   const requestWakeLock = async () => {
     if ('wakeLock' in navigator) {
@@ -165,13 +168,18 @@ export const useTracking = (
             if (dist < (isTestModeRef.current ? 0.2 : 0.5)) return prev;
 
             if (activityTypeRef.current === ActivityType.TILLAGE && isSpreading && last.isSpreading) {
-                const sub = subTypeRef.current;
-                const s = settingsRef.current;
+                // NEU: Nutze bevorzugt das gewählte Gerät
                 let workingWidth = 6.0; 
-                if (sub === 'Wiesenegge') workingWidth = s.harrowWidth || 6;
-                else if (sub === 'Schlegeln') workingWidth = s.mulchWidth || 3;
-                else if (sub === 'Striegel') workingWidth = s.weederWidth || 6;
-                else if (sub === 'Nachsaat') workingWidth = s.reseedingWidth || 3;
+                if (equipmentRef.current) {
+                  workingWidth = equipmentRef.current.width;
+                } else {
+                  const sub = subTypeRef.current;
+                  const s = settingsRef.current;
+                  if (sub === 'Wiesenegge') workingWidth = s.harrowWidth || 6;
+                  else if (sub === 'Schlegeln') workingWidth = s.mulchWidth || 3;
+                  else if (sub === 'Striegel') workingWidth = s.weederWidth || 6;
+                  else if (sub === 'Nachsaat') workingWidth = s.reseedingWidth || 3;
+                }
 
                 if (dist < 50) { 
                     setWorkedAreaHa(old => old + (dist * workingWidth) / 10000);
@@ -226,7 +234,7 @@ export const useTracking = (
       unit = 'm³';
       const loadSize = sub === 'Gülle' ? s.slurryLoadSize : s.manureLoadSize;
       const totalLoads = Object.values(loadCounts).reduce((a, b) => a + b, 0);
-      totalAmt = Math.round(totalLoads * loadSize); // Ganzzahlige Gesamtmenge
+      totalAmt = Math.round(totalLoads * loadSize); 
       
       const pointsByLoad: Record<number, TrackPoint[]> = {};
       trackPoints.forEach(p => { const lIdx = p.loadIndex || 1; if (!pointsByLoad[lIdx]) pointsByLoad[lIdx] = []; pointsByLoad[lIdx].push(p); });
@@ -237,21 +245,18 @@ export const useTracking = (
           const storageId = spreading[0].storageId;
           if (!storageId) return;
 
-          // Ermittle beteiligte Felder für diese spezifische Fuhre
           const loadFieldIds = new Set<string>();
           spreading.forEach(p => {
               const field = fieldsRef.current.find(f => isPointInPolygon(p, f.boundary));
               if (field) loadFieldIds.add(field.id);
           });
 
-          // OPTIMIERUNG: Wenn nur 1 Feld beteiligt war, nimm die ganze Fuhre (keine Floating-Point-Fehler)
           if (loadFieldIds.size === 1) {
               const fId = Array.from(loadFieldIds)[0];
               fieldDist[fId] = Math.round((fieldDist[fId] || 0) + loadSize);
               if (!detailedFieldSources[fId]) detailedFieldSources[fId] = {};
               detailedFieldSources[fId][storageId] = Math.round((detailedFieldSources[fId][storageId] || 0) + loadSize);
           } else if (loadFieldIds.size > 1) {
-              // Bei mehreren Feldern pro Fuhre: Verteilung nach Punkten, aber am Ende runden
               const volPerPoint = loadSize / spreading.length;
               spreading.forEach(p => {
                   const field = fieldsRef.current.find(f => isPointInPolygon(p, f.boundary));
@@ -264,7 +269,6 @@ export const useTracking = (
           }
       });
 
-      // Abschließendes Runden aller berechneten Feld-Mengen (Düngung = ganze Zahlen)
       Object.keys(fieldDist).forEach(fId => {
           fieldDist[fId] = Math.round(fieldDist[fId]);
           if (detailedFieldSources[fId]) {
@@ -276,7 +280,6 @@ export const useTracking = (
 
     } else if (activityTypeRef.current === ActivityType.TILLAGE) {
       unit = 'ha';
-      // Bodenbearbeitung: Runden auf 2 Dezimalstellen
       totalAmt = Math.round(workedAreaHa * 100) / 100;
 
       const fieldPoints: Record<string, number> = {};
@@ -301,7 +304,23 @@ export const useTracking = (
     }
 
     const record: ActivityRecord = {
-      id: generateId(), date: new Date().toISOString(), type: activityTypeRef.current, year: new Date().getFullYear(), fieldIds: fIds, amount: totalAmt, unit, loadCount: activityTypeRef.current === ActivityType.FERTILIZATION ? (Object.values(loadCounts).reduce((a, b) => a + b, 0) || undefined) : undefined, notes: `${notes}\nDauer: ${durationMin} min`, trackPoints: [...trackPoints], fieldDistribution: fieldDist, storageDistribution: Object.keys(storageDist).length > 0 ? storageDist : undefined, detailedFieldSources: Object.keys(detailedFieldSources).length > 0 ? detailedFieldSources : undefined, fertilizerType: activityTypeRef.current === ActivityType.FERTILIZATION ? (sub === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE) : undefined, tillageType: activityTypeRef.current === ActivityType.TILLAGE ? sub as any : undefined
+      id: generateId(), 
+      date: new Date().toISOString(), 
+      type: activityTypeRef.current, 
+      year: new Date().getFullYear(), 
+      fieldIds: fIds, 
+      amount: totalAmt, 
+      unit, 
+      loadCount: activityTypeRef.current === ActivityType.FERTILIZATION ? (Object.values(loadCounts).reduce((a, b) => a + b, 0) || undefined) : undefined, 
+      notes: `${notes}\nDauer: ${durationMin} min`, 
+      trackPoints: [...trackPoints], 
+      fieldDistribution: fieldDist, 
+      storageDistribution: Object.keys(storageDist).length > 0 ? storageDist : undefined, 
+      detailedFieldSources: Object.keys(detailedFieldSources).length > 0 ? detailedFieldSources : undefined, 
+      fertilizerType: activityTypeRef.current === ActivityType.FERTILIZATION ? (sub === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE) : undefined, 
+      tillageType: activityTypeRef.current === ActivityType.TILLAGE ? sub as any : undefined,
+      equipmentId: equipmentRef.current?.id, // NEU
+      equipmentName: equipmentRef.current?.name // NEU
     };
 
     if (record.detailedFieldSources) {

@@ -1,9 +1,9 @@
 
-import React from 'react';
-import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut } from 'lucide-react';
-/* Fix: ICON_THEMES is exported from utils/appIcons, not types.ts */
-import { FarmProfile, StorageLocation, FertilizerType, AppSettings } from '../../types';
+import React, { useState } from 'react';
+import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2 } from 'lucide-react';
+import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, TillageType } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
+import { dbService, generateId } from '../../services/db';
 
 const SharedBadge = () => <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded ml-1 inline-flex items-center"><Cloud size={10} className="mr-1"/> Sync</span>;
 
@@ -19,6 +19,90 @@ export const ProfileTab: React.FC<{ profile: FarmProfile, setProfile: (p: any) =
         </div>
     </div>
 );
+
+// NEU: Geräteverwaltung Tab
+export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => void }> = ({ equipment, onUpdate }) => {
+  const [showAdd, setShowAdd] = useState(false);
+  const [newEquip, setNewEquip] = useState<Equipment>({ id: '', name: '', type: TillageType.HARROW, width: 6 });
+
+  const handleSave = async () => {
+    if (!newEquip.name) return;
+    await dbService.saveEquipment({ ...newEquip, id: newEquip.id || generateId() });
+    setShowAdd(false);
+    setNewEquip({ id: '', name: '', type: TillageType.HARROW, width: 6 });
+    onUpdate();
+  };
+
+  const handleDelete = async (id: string) => {
+    if (confirm("Gerät wirklich entfernen?")) {
+      await dbService.deleteEquipment(id);
+      onUpdate();
+    }
+  };
+
+  return (
+    <div className="space-y-4 max-w-lg mx-auto">
+        <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+            <div className="flex justify-between items-center mb-6">
+                <h3 className="font-bold text-lg text-slate-800 flex items-center"><Wrench className="mr-2 text-blue-600"/> Maschinenpark</h3>
+                <button onClick={() => setShowAdd(true)} className="bg-blue-50 text-blue-600 px-3 py-1.5 rounded-xl font-bold text-xs flex items-center hover:bg-blue-100"><Plus size={14} className="mr-1"/> Neu</button>
+            </div>
+
+            {showAdd && (
+                <div className="mb-8 p-5 bg-slate-50 rounded-2xl border-2 border-blue-100 animate-in slide-in-from-top-4">
+                    <h4 className="font-black text-[10px] uppercase text-slate-400 tracking-widest mb-4">Neues Gerät anlegen</h4>
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-xs font-bold text-slate-600 mb-1">Bezeichnung</label>
+                            <input type="text" value={newEquip.name} onChange={e => setNewEquip({...newEquip, name: e.target.value})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 font-bold" placeholder="z.B. Pöttinger Egge 600" />
+                        </div>
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1">Typ</label>
+                                <select value={newEquip.type} onChange={e => setNewEquip({...newEquip, type: e.target.value as TillageType})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-bold">
+                                    <option value={TillageType.HARROW}>Wiesenegge</option>
+                                    <option value={TillageType.MULCH}>Schlegeln</option>
+                                    <option value={TillageType.WEEDER}>Striegel</option>
+                                    <option value={TillageType.RESEEDING}>Nachsaat</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-xs font-bold text-slate-600 mb-1">Arbeitsbreite (m)</label>
+                                <input type="number" step="0.1" value={newEquip.width} onChange={e => setNewEquip({...newEquip, width: parseFloat(e.target.value) || 0})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-bold" />
+                            </div>
+                        </div>
+                        <div className="flex space-x-3 pt-2">
+                            <button onClick={() => setShowAdd(false)} className="flex-1 py-3 text-slate-500 font-bold text-sm">Abbrechen</button>
+                            <button onClick={handleSave} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-100">Speichern</button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            <div className="space-y-3">
+                {equipment.length === 0 ? (
+                    <div className="text-center py-10 text-slate-400 italic text-sm">Keine Geräte angelegt. Nutze oben "Neu".</div>
+                ) : (
+                    equipment.map(e => (
+                        <div key={e.id} className="p-4 bg-slate-50 rounded-2xl border border-slate-100 flex justify-between items-center group">
+                            <div className="flex items-center">
+                                <div className="p-2 bg-white rounded-lg border border-slate-200 mr-4 text-blue-600 shadow-sm"><Hammer size={18}/></div>
+                                <div>
+                                    <div className="font-black text-slate-700 text-sm">{e.name}</div>
+                                    <div className="text-[10px] font-bold text-slate-400 uppercase flex items-center mt-0.5">
+                                        {e.type} <span className="mx-1.5">•</span> <Ruler size={10} className="mr-0.5"/> {e.width}m
+                                    </div>
+                                </div>
+                            </div>
+                            <button onClick={() => handleDelete(e.id)} className="p-2 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={16}/></button>
+                        </div>
+                    ))
+                )}
+            </div>
+        </div>
+    </div>
+  );
+};
 
 export const StorageTab: React.FC<{ storages: StorageLocation[], onEdit: (s: StorageLocation) => void, onCreate: () => void }> = ({ storages, onEdit, onCreate }) => (
     <div className="space-y-4 max-w-lg mx-auto">
@@ -39,7 +123,8 @@ export const GeneralTab: React.FC<{ settings: AppSettings, setSettings: (s: any)
     <div className="space-y-6 max-w-lg mx-auto">
         {/* Gerätebreiten & Volumen */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
-            <h3 className="font-bold text-slate-800 mb-4 flex items-center"><Database size={18} className="mr-2 text-blue-600"/> Gerätebreiten & Volumen</h3>
+            <h3 className="font-bold text-slate-800 mb-4 flex items-center"><Database size={18} className="mr-2 text-blue-600"/> Standard-Breiten & Volumen</h3>
+            <p className="text-[10px] text-slate-400 mb-4 italic leading-tight">Hinweis: Diese Werte werden als Fallback genutzt, falls kein spezifisches Gerät ausgewählt wird.</p>
             <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
                     <div><label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Güllefass (m³) <SharedBadge/></label><input type="number" value={settings.slurryLoadSize} onChange={e => setSettings({...settings, slurryLoadSize: parseFloat(e.target.value)})} className="w-full p-2 border rounded font-bold" /></div>
@@ -111,7 +196,6 @@ export const SyncTab: React.FC<{
     onLogout: () => void
 }> = (props) => (
     <div className="space-y-6 max-w-lg mx-auto">
-        {/* Haupt-Statusbox mit Verbindungs-Indikator */}
         <div className={`p-6 rounded-2xl border-2 flex flex-col items-center text-center shadow-sm transition-all ${props.authState && props.settings.farmId ? 'bg-green-50 border-green-200' : 'bg-slate-100 border-slate-300'}`}>
             <div className="relative mb-3">
                 <div className={`p-4 rounded-full ${props.authState && props.settings.farmId ? 'bg-green-200 text-green-800' : 'bg-slate-200 text-slate-600'}`}>
@@ -131,7 +215,6 @@ export const SyncTab: React.FC<{
                     <div className="mt-2 flex items-center text-xs font-bold text-green-700 bg-white/50 px-3 py-1 rounded-full border border-green-100">
                         <User size={12} className="mr-1.5"/> {props.authState.email}
                     </div>
-                    {/* Logout / Verbindung trennen Button */}
                     <button 
                         onClick={props.onLogout}
                         className="mt-4 flex items-center text-[10px] font-black text-red-600 uppercase tracking-widest hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors border border-transparent hover:border-red-100"
@@ -148,7 +231,6 @@ export const SyncTab: React.FC<{
             )}
         </div>
 
-        {/* Datenstatistik-Vergleich */}
         {props.authState && props.settings.farmId && (
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
                 <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">

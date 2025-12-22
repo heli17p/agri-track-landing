@@ -1,16 +1,16 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Save, User, Database, Settings, Cloud, CheckCircle, RefreshCw, X, Move } from 'lucide-react';
+import { Save, User, Database, Settings, Cloud, CheckCircle, RefreshCw, X, Move, Wrench } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { authService } from '../services/auth';
 import { syncData } from '../services/sync';
-import { AppSettings, DEFAULT_SETTINGS, FarmProfile, StorageLocation, FertilizerType } from '../types';
+import { AppSettings, DEFAULT_SETTINGS, FarmProfile, StorageLocation, FertilizerType, Equipment } from '../types';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { ProfileTab, StorageTab, GeneralTab, SyncTab } from '../components/settings/SettingsTabs';
+import { ProfileTab, StorageTab, GeneralTab, SyncTab, EquipmentTab } from '../components/settings/SettingsTabs';
 import { DiagnosticModal, RulesHelpModal, StorageEditModal } from '../components/settings/SettingsModals';
 
-interface Props { initialTab?: 'profile' | 'storage' | 'general' | 'sync'; }
+interface Props { initialTab?: 'profile' | 'storage' | 'general' | 'sync' | 'equipment'; }
 
 // Icons Helper für Hof-Marker
 const createCustomIcon = (color: string, path: string) => L.divIcon({ className: 'custom-pin', html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${path}</svg></div>`, iconSize: [32, 32], iconAnchor: [16, 16] });
@@ -33,6 +33,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [profile, setProfile] = useState<FarmProfile>({ farmId: '', operatorName: '', address: '', totalAreaHa: 0 });
   const [storages, setStorages] = useState<StorageLocation[]>([]);
+  const [equipment, setEquipment] = useState<Equipment[]>([]); // NEU
   const [isSaving, setIsSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [authState, setAuthState] = useState<any>(null);
@@ -57,6 +58,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
     const s = await dbService.getSettings(); setSettings(s);
     const p = await dbService.getFarmProfile(); if(p.length) setProfile(p[0]);
     const st = await dbService.getStorageLocations(); setStorages(st);
+    const eq = await dbService.getEquipment(); setEquipment(eq); // NEU
     setLocalStats(await dbService.getLocalStats());
     if (s.farmId) setCloudStats(await dbService.getCloudStats(s.farmId));
   };
@@ -66,7 +68,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
     return authService.onAuthStateChanged(u => { 
         setAuthState(u); 
         setUserInfo(dbService.getCurrentUserInfo()); 
-        if (!u) setCloudStats({ total: -1 }); // Reset Stats on Logout
+        if (!u) setCloudStats({ total: -1 }); 
     }); 
   }, []);
 
@@ -95,7 +97,8 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                 {[
                     { id: 'profile', icon: User, label: 'Betrieb' },
                     { id: 'storage', icon: Database, label: 'Lager' },
-                    { id: 'general', icon: Settings, label: 'Allgemein' },
+                    { id: 'equipment', icon: Wrench, label: 'Geräte' }, // NEU
+                    { id: 'general', icon: Settings, label: 'Optionen' },
                     { id: 'sync', icon: Cloud, label: 'Sync' }
                 ].map(tab => (
                     <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex-1 py-4 px-4 flex flex-col items-center min-w-[80px] border-b-2 transition-colors ${activeTab === tab.id ? 'border-green-600 text-green-700 bg-green-50/50' : 'border-transparent text-slate-500'}`}><tab.icon size={20} className="mb-1" /><span className="text-xs font-bold">{tab.label}</span></button>
@@ -106,6 +109,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
         <div className="flex-1 overflow-y-auto p-4 pb-32">
             {activeTab === 'profile' && <ProfileTab profile={profile} setProfile={setProfile} onPickMap={() => setShowMapPicker('profile')} />}
             {activeTab === 'storage' && <StorageTab storages={storages} onEdit={setEditingStorage} onCreate={() => setEditingStorage({ id: generateId(), name: '', type: FertilizerType.SLURRY, capacity: 100, currentLevel: 0, dailyGrowth: 0.5, geo: { lat: 47.5, lng: 14.5 } })} />}
+            {activeTab === 'equipment' && <EquipmentTab equipment={equipment} onUpdate={loadAll} />}
             {activeTab === 'general' && <GeneralTab settings={settings} setSettings={setSettings} />}
             {activeTab === 'sync' && <SyncTab 
                 authState={authState} settings={settings} cloudStats={cloudStats} localStats={localStats} 
@@ -122,7 +126,6 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
             <button onClick={handleSaveAll} disabled={isSaving} className="bg-slate-900 text-white px-5 py-3 rounded-full shadow-2xl font-bold flex items-center hover:scale-105 transition-all">{isSaving ? <RefreshCw className="animate-spin w-5 h-5"/> : <Save className="w-5 h-5 mr-2"/>}Speichern</button>
         </div>
 
-        {/* Diagnose Modal */}
         <DiagnosticModal 
             show={showDiagnose} onClose={() => setShowDiagnose(false)} activeDiagTab={activeDiagTab} setActiveDiagTab={setActiveDiagTab}
             userInfo={userInfo} cloudStats={cloudStats} logs={logs} inspectorData={null} inspectorLoading={false} runInspector={() => {}}
@@ -132,7 +135,6 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
             handleHardReset={() => confirm("Vollständiger Reset?") && dbService.hardReset()} isUploading={isUploading} uploadProgress={uploadProgress}
         />
 
-        {/* Lager Editor Modal */}
         {editingStorage && (
             <StorageEditModal 
                 storage={editingStorage}
@@ -143,7 +145,6 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
             />
         )}
 
-        {/* Profile Map Picker */}
         {showMapPicker === 'profile' && (
             <div className="fixed inset-0 z-[1000] bg-black/80 flex flex-col animate-in fade-in">
                 <div className="bg-white p-4 flex justify-between items-center"><h3 className="font-bold">Hofstelle wählen</h3><button onClick={() => setShowMapPicker(null)} className="px-4 py-2 bg-slate-900 text-white rounded-lg font-bold">Fertig</button></div>
