@@ -1,5 +1,6 @@
+
 import React, { useEffect, useState, useMemo } from 'react';
-import { X, Calendar, Leaf, Ruler, MapPin, Palette, Map as MapIcon, Save, Trash2, AlertTriangle, Truck, Wheat, Hammer, FileText, Database, Filter } from 'lucide-react';
+import { X, Calendar, Leaf, Ruler, MapPin, Palette, Map as MapIcon, Save, Trash2, AlertTriangle, Truck, Wheat, Hammer, FileText, Database, Filter, Droplets, Layers } from 'lucide-react';
 import { Field, ActivityRecord, ActivityType, FertilizerType, HarvestType, TillageType, StorageLocation } from '../types';
 import { dbService } from '../services/db';
 import { ActivityDetailView } from './ActivityDetailView';
@@ -12,30 +13,17 @@ interface Props {
   onUpdate?: () => void;
 }
 
-// --- Color Helper (Shared) ---
-const SLURRY_PALETTE = [
-    '#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'
-];
-const MANURE_PALETTE = [
-    '#d97706', '#ea580c', '#f59e0b', '#c2410c', '#fb923c'
-];
+const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
+const MANURE_PALETTE = ['#d97706', '#ea580c', '#f59e0b', '#c2410c', '#fb923c'];
 
 const getStorageColor = (storageId: string | undefined, allStorages: StorageLocation[]) => {
     if (!storageId) return '#78350f'; 
     const storage = allStorages.find(s => s.id === storageId);
     if (!storage) return '#64748b';
-
-    const sameTypeStorages = allStorages
-        .filter(s => s.type === storage.type)
-        .sort((a, b) => a.id.localeCompare(b.id));
+    const sameTypeStorages = allStorages.filter(s => s.type === storage.type).sort((a, b) => a.id.localeCompare(b.id));
     const index = sameTypeStorages.findIndex(s => s.id === storageId);
-    const safeIndex = index >= 0 ? index : 0;
-
-    if (storage.type === FertilizerType.SLURRY) {
-        return SLURRY_PALETTE[safeIndex % SLURRY_PALETTE.length];
-    } else {
-        return MANURE_PALETTE[safeIndex % MANURE_PALETTE.length];
-    }
+    const safeIndex = Math.max(0, index);
+    return storage.type === FertilizerType.SLURRY ? SLURRY_PALETTE[safeIndex % SLURRY_PALETTE.length] : MANURE_PALETTE[safeIndex % MANURE_PALETTE.length];
 };
 
 export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometry, onDelete, onUpdate }) => {
@@ -87,14 +75,10 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
   const handleDeleteClick = (e: React.MouseEvent) => {
       e.preventDefault(); e.stopPropagation();
       if (!onDelete) return;
-      if (!field.id) { alert("Fehler: ID fehlt."); return; }
       if (deleteStep === 'idle') setDeleteStep('confirm');
       else onDelete(field.id);
   };
 
-  const handleBackgroundClick = () => { if (deleteStep === 'confirm') setDeleteStep('idle'); };
-  
-  // Helper for Activity Styling
   const getActivityStyle = (act: ActivityRecord) => {
     let label = act.type === ActivityType.HARVEST ? 'Ernte' : act.type === ActivityType.TILLAGE ? 'Bodenbearbeitung' : 'Düngung';
     let colorClass = 'border-slate-500';
@@ -132,7 +116,7 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
   }, [history, filterYear, filterType]);
 
   return (
-    <div className="fixed inset-0 z-[1000] flex justify-end" onClick={handleBackgroundClick}>
+    <div className="fixed inset-0 z-[1000] flex justify-end" onClick={() => setDeleteStep('idle')}>
       <div className="absolute inset-0 bg-black/30" onClick={(e) => { e.stopPropagation(); onClose(); }} />
       <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slide-right" onClick={(e) => e.stopPropagation()}>
         <div className="p-4 text-white flex justify-between items-center shrink-0 transition-colors shadow-sm z-10" style={{ backgroundColor: editedField.color || (editedField.type === 'Acker' ? '#92400E' : '#15803D') }}>
@@ -143,17 +127,33 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
           <button onClick={onClose} className="p-2 hover:bg-black/20 rounded-full transition-colors"><X size={24} /></button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50" onClick={() => setDeleteStep('idle')}>
+        <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50">
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm"><div className="flex items-center text-slate-500 mb-1 text-xs uppercase font-bold"><Ruler size={14} className="mr-1" /> Fläche (ha)</div><input type="number" step="0.01" value={editedField.areaHa} onChange={(e) => handleChange('areaHa', parseFloat(e.target.value))} className="w-full bg-transparent text-2xl font-bold text-slate-800 focus:outline-none border-b border-transparent focus:border-green-500"/></div>
             <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm"><div className="flex items-center text-slate-500 mb-1 text-xs uppercase font-bold"><MapPin size={14} className="mr-1" /> Nutzung</div><input type="text" value={editedField.usage} onChange={(e) => handleChange('usage', e.target.value)} className="w-full bg-transparent text-lg font-bold text-slate-800 focus:outline-none border-b border-transparent focus:border-green-500"/></div>
           </div>
 
-          <div className="bg-white p-4 rounded-lg border border-slate-200 space-y-3 shadow-sm">
-             <h3 className="font-bold text-slate-700 text-sm">Anpassung</h3>
-             <div className="flex items-center justify-between"><label className="flex items-center text-sm text-slate-600"><Palette size={16} className="mr-2"/> Farbe</label><input type="color" value={editedField.color || '#cccccc'} onChange={(e) => handleChange('color', e.target.value)} className="h-8 w-16 p-0 border-0 rounded cursor-pointer"/></div>
-             {onEditGeometry && <button onClick={() => onEditGeometry(field)} className="w-full py-2 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg text-sm font-medium flex items-center justify-center hover:bg-blue-100"><MapIcon size={16} className="mr-2" /> Geometrie auf Karte bearbeiten</button>}
-          </div>
+          {/* NEU: Herkunft-Zusammenfassung (Kumulativ) */}
+          {field.detailedSources && Object.keys(field.detailedSources).length > 0 && (
+              <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                  <h3 className="font-bold text-slate-700 text-sm flex items-center"><Database size={16} className="mr-2 text-amber-600"/> Dünger-Herkunft (Gesamt)</h3>
+                  <div className="space-y-2">
+                      {Object.entries(field.detailedSources).map(([sId, amount]) => {
+                          const store = storages.find(s => s.id === sId);
+                          const color = getStorageColor(sId, storages);
+                          return (
+                              <div key={sId} className="flex justify-between items-center p-2 bg-slate-50 rounded-lg border border-slate-100">
+                                  <div className="flex items-center text-xs font-bold text-slate-600">
+                                      <span className="w-2.5 h-2.5 rounded-full mr-2" style={{backgroundColor: color}}></span>
+                                      {store?.name || 'Unbekanntes Lager'}
+                                  </div>
+                                  <span className="font-black text-slate-800 text-xs">{amount.toFixed(1)} m³</span>
+                              </div>
+                          );
+                      })}
+                  </div>
+              </div>
+          )}
 
           <div className="pt-2">
             <div className="flex justify-between items-center mb-3"><h3 className="font-bold text-lg flex items-center text-slate-700"><Calendar size={20} className="mr-2 text-green-600"/> Aktivitäten</h3></div>
@@ -165,18 +165,10 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
             <div className="space-y-3 pb-20">
               {filteredHistory.length === 0 ? <div className="text-center py-6 text-slate-400 italic text-sm border border-dashed border-slate-200 rounded-lg">Keine Aktivitäten.</div> : filteredHistory.map((act) => {
                   const style = getActivityStyle(act);
-                  // Calculate Total for this field (fallback for display header)
                   let amountHeader = null;
                   if (act.fieldDistribution && act.fieldDistribution[field.id]) {
                       amountHeader = <span className="font-bold text-slate-800">{act.fieldDistribution[field.id]} {act.unit}</span>;
-                  } else if (act.amount) {
-                      // Fallback proportional
-                      const involvedFields = allFields.filter(f => act.fieldIds.includes(f.id));
-                      const totalA = involvedFields.reduce((s,f) => s + f.areaHa, 0);
-                      const share = totalA > 0 ? (field.areaHa / totalA) * act.amount : 0;
-                      amountHeader = <span className="font-bold text-slate-800">{share.toFixed(1)} {act.unit} (Prop.)</span>;
                   }
-
                   return (
                     <div key={act.id} className="relative pl-4 border-l-2 border-slate-200 pb-2 last:pb-0">
                       <div className="absolute -left-[5px] top-4 w-2.5 h-2.5 rounded-full bg-slate-300"></div>
@@ -185,8 +177,6 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
                            <div className="flex items-center space-x-2"><style.Icon size={16} className={style.textClass} /><div><span className={`font-bold text-sm ${style.textClass}`}>{style.label}</span><div className="text-xs text-slate-500">{new Date(act.date).toLocaleDateString('de-AT')}</div></div></div>
                            <div className="text-right">{amountHeader}</div>
                         </div>
-                        
-                        {/* DETAIL VIEW: Source Breakdown (NEW: Uses updated detailedFieldSources) */}
                         {act.detailedFieldSources && act.detailedFieldSources[field.id] && (
                             <div className="mt-2 text-[10px] text-slate-500 border-t border-slate-200 pt-1 space-y-1">
                                 {Object.entries(act.detailedFieldSources[field.id]).map(([sId, amount]) => {
@@ -201,7 +191,6 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
                                 })}
                             </div>
                         )}
-                        {act.notes && <div className="mt-2 text-xs text-slate-600 italic whitespace-pre-line truncate max-h-12 overflow-hidden border-t border-black/5 pt-1">{act.notes}</div>}
                       </div>
                     </div>
                   );
@@ -214,9 +203,9 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
             {isDirty && <button onClick={handleSave} className="w-full py-3 bg-green-600 text-white rounded-xl font-bold flex items-center justify-center hover:bg-green-700 shadow-md transition-all"><Save size={20} className="mr-2"/> Speichern</button>}
             {onDelete && <button type="button" onClick={handleDeleteClick} className={`w-full py-3 border-2 rounded-xl font-bold flex items-center justify-center transition-all cursor-pointer select-none active:scale-[0.98] ${deleteStep === 'confirm' ? 'bg-red-600 border-red-600 text-white' : 'bg-white border-red-100 text-red-500 hover:bg-red-50 hover:border-red-200'}`}>{deleteStep === 'confirm' ? <><AlertTriangle size={20} className="mr-2"/> Wirklich unwiderruflich löschen?</> : <><Trash2 size={20} className="mr-2"/> Feld löschen</>}</button>}
         </div>
-
         {selectedActivity && <ActivityDetailView activity={selectedActivity} onClose={() => setSelectedActivity(null)} onUpdate={loadHistory} />}
       </div>
     </div>
   );
 };
+

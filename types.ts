@@ -1,3 +1,4 @@
+
 import { LucideIcon } from 'lucide-react';
 
 // --- HUB SPECIFIC TYPES ---
@@ -22,25 +23,23 @@ export interface FeedbackTicket {
   votes: number;
   status: 'OPEN' | 'IN_PROGRESS' | 'DONE';
   date: string;
-  author: string; // z.B. "Betrieb Huber"
+  author: string;
   comments?: FeedbackComment[];
 }
 
 export enum Tab {
   HOME = 'HOME',
   APP = 'APP',
-  FEEDBACK = 'FEEDBACK', // Ersetzt DEV_LAB
-  ADMIN = 'ADMIN',     // Restricted Admin Area
+  FEEDBACK = 'FEEDBACK',
+  ADMIN = 'ADMIN',
   CHANGELOG = 'CHANGELOG'
 }
 
 export interface AgriUser {
     uid: string;
     email: string | null;
-    isAnonymous: boolean; // True if Guest
+    isAnonymous: boolean;
 }
-
-// --- APP ENUMS (CRITICAL FOR RUNTIME) ---
 
 export enum ActivityType {
   FERTILIZATION = 'Düngung',
@@ -70,8 +69,6 @@ export enum TillageType {
   PLOW = 'Pflug'
 }
 
-// --- SHARED DATA INTERFACES ---
-
 export interface GeoPoint {
   lat: number;
   lng: number;
@@ -81,8 +78,8 @@ export interface TrackPoint extends GeoPoint {
   timestamp: number;
   speed: number;
   isSpreading: boolean;
-  storageId?: string; // ID of the storage this segment originated from
-  loadIndex?: number; // Sequential ID of the load (1, 2, 3...) for precise splitting
+  storageId?: string;
+  loadIndex?: number;
 }
 
 export interface Field {
@@ -90,24 +87,27 @@ export interface Field {
   name: string;
   areaHa: number;
   type: 'Grünland' | 'Acker';
-  usage: string; // eAMA Usage code e.g. "Mähwiese"
+  usage: string;
   boundary: GeoPoint[];
-  color?: string; // Custom display color
-  codes?: string; // eAMA Codes e.g. "BIO, UMW"
+  color?: string;
+  codes?: string;
+  // NEU: Dauerhafte Speicherung der ausgebrachten Mengen pro Quelle
+  // Format: { "LagerID_1": 120.5, "LagerID_2": 45.0 }
+  detailedSources?: Record<string, number>;
 }
 
 export interface StorageLocation {
   id: string;
   name: string;
   type: FertilizerType;
-  capacity: number; // m3
-  currentLevel: number; // m3
-  dailyGrowth: number; // m3 per day
+  capacity: number;
+  currentLevel: number;
+  dailyGrowth: number;
   geo: GeoPoint;
 }
 
 export interface FarmProfile {
-  farmId: string; // LFBIS
+  farmId: string;
   operatorName: string;
   address: string;
   addressGeo?: GeoPoint;
@@ -116,45 +116,23 @@ export interface FarmProfile {
 
 export interface ActivityRecord {
   id: string;
-  date: string; // ISO String
+  date: string;
   type: ActivityType | string;
   year: number;
-  
-  // Relations
-  fieldIds: string[]; // IDs of fields involved
-  
-  // Amounts
-  amount?: number; // Total amount
-  unit?: string; // m3, t, Stk, ha
+  fieldIds: string[];
+  amount?: number;
+  unit?: string;
   loadCount?: number;
-
-  // Details
   fertilizerType?: FertilizerType;
   tillageType?: TillageType;
   notes?: string;
-
-  // Tracking Data
   trackPoints?: TrackPoint[];
-  
-  // Distributions (Calculated shares)
-  fieldDistribution?: Record<string, number>; // FieldID -> Amount
-  storageDistribution?: Record<string, number>; // StorageID -> Amount taken
-  
-  // Advanced Traceability
-  fieldSources?: Record<string, string[]>; // FieldID -> Array of StorageIDs used on this field
-  
-  // NEW: Precise mapping of Amount per Source per Field
-  // Structure: { "field_id": { "storage_id_A": 10.5, "storage_id_B": 5.0 } }
+  fieldDistribution?: Record<string, number>;
+  storageDistribution?: Record<string, number>;
   detailedFieldSources?: Record<string, Record<string, number>>; 
-  
-  // Sync Meta
-  farmId?: string; // The Farm Group ID
-  userId?: string; // The User who created it
+  farmId?: string;
+  userId?: string;
 }
-
-// Legacy Alias for compatibility
-export type Activity = ActivityRecord;
-export type Trip = ActivityRecord;
 
 export interface ChatMessage {
   id: string;
@@ -168,22 +146,20 @@ export interface ChatMessage {
 export interface AppSettings {
   slurryLoadSize: number;
   manureLoadSize: number;
-  minSpeed: number; // km/h for GPS auto-start
-  maxSpeed: number; // km/h for GPS validation
-  storageRadius: number; // meters to detect storage
-  spreadWidth: number; // meters
-  slurrySpreadWidth?: number; // Optional specific width
-  manureSpreadWidth?: number; // Optional specific width
-  serverUrl: string; // Legacy
+  minSpeed: number;
+  maxSpeed: number;
+  storageRadius: number;
+  spreadWidth: number;
+  slurrySpreadWidth?: number;
+  manureSpreadWidth?: number;
+  serverUrl: string;
   farmName?: string;
   appIcon?: string;
-  // WhatsApp Settings
   adminPhone?: string;
   enableWhatsApp?: boolean;
-  // Multi-User Cloud Sync
-  farmId?: string; // LFBIS Nummer als Gruppen-ID
-  farmPin?: string; // Passwort für die Gruppe
-  ownerEmail?: string; // Email des Hof-Besitzers für Handshake
+  farmId?: string;
+  farmPin?: string;
+  ownerEmail?: string;
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -197,9 +173,9 @@ export const DEFAULT_SETTINGS: AppSettings = {
   manureSpreadWidth: 10,
   serverUrl: '',
   appIcon: 'standard',
-  // Vordefinierte Admin Einstellungen
   adminPhone: '436765624502',
   enableWhatsApp: true,
   farmId: '',
   farmPin: ''
 };
+

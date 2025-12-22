@@ -198,7 +198,6 @@ export const useTracking = (
     if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
     const durationMin = startTime ? Math.round((Date.now() - startTime) / 60000) : 0;
     
-    // 1. Beteiligte Felder sammeln
     const involvedFieldIds = new Set<string>();
     trackPoints.forEach(p => {
       if (p.isSpreading) {
@@ -220,7 +219,6 @@ export const useTracking = (
       const loadCnt = Object.values(loadCounts).reduce((a, b) => a + b, 0);
       totalAmt = loadCnt * loadSize;
 
-      // GRUPPIERUNG DER PUNKTE NACH FUHREN (loadIndex)
       const pointsByLoad: Record<number, TrackPoint[]> = {};
       trackPoints.forEach(p => {
           const lIdx = p.loadIndex || 1;
@@ -228,26 +226,21 @@ export const useTracking = (
           pointsByLoad[lIdx].push(p);
       });
 
-      // Jede Fuhre einzeln berechnen
       Object.entries(pointsByLoad).forEach(([lIdx, points]) => {
           const spreadingInLoad = points.filter(p => p.isSpreading);
           if (spreadingInLoad.length === 0) return;
 
-          // Quelle dieser spezifischen Fuhre (wird am ersten Spreading-Punkt der Fuhre festgemacht)
           const storageId = spreadingInLoad[0].storageId;
           if (!storageId) return;
 
-          // Das Volumen dieser einen Fuhre wird auf die Spreading-Punkte dieser Fuhre aufgeteilt
           const volumePerPoint = loadSize / spreadingInLoad.length;
 
           spreadingInLoad.forEach(p => {
               const field = fieldsRef.current.find(f => isPointInPolygon(p, f.boundary));
               if (field) {
-                  // Haupt-Feld-Verteilung
                   if (!fieldDist[field.id]) fieldDist[field.id] = 0;
                   fieldDist[field.id] += volumePerPoint;
 
-                  // Detail-Aufteilung (Welches Lager auf welches Feld)
                   if (!detailedFieldSources[field.id]) detailedFieldSources[field.id] = {};
                   if (!detailedFieldSources[field.id][storageId]) detailedFieldSources[field.id][storageId] = 0;
                   detailedFieldSources[field.id][storageId] += volumePerPoint;
@@ -255,7 +248,6 @@ export const useTracking = (
           });
       });
 
-      // Werte runden
       Object.keys(fieldDist).forEach(fid => fieldDist[fid] = Math.round(fieldDist[fid] * 10) / 10);
       Object.keys(detailedFieldSources).forEach(fid => {
           Object.keys(detailedFieldSources[fid]).forEach(sid => {
@@ -264,7 +256,6 @@ export const useTracking = (
       });
 
     } else {
-      // Flächenbearbeitung (ha)
       const involvedFields = fieldsRef.current.filter(f => fIds.includes(f.id));
       totalAmt = involvedFields.reduce((sum, f) => sum + f.areaHa, 0);
       totalAmt = Math.round(totalAmt * 100) / 100;
@@ -295,6 +286,21 @@ export const useTracking = (
       fertilizerType: activityTypeRef.current === ActivityType.FERTILIZATION ? (subTypeRef.current === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE) : undefined,
       tillageType: activityTypeRef.current === ActivityType.TILLAGE ? subTypeRef.current as any : undefined
     };
+
+    // --- NEU: DIREKTE SPEICHERUNG IM FELDSTÜCK ---
+    if (record.detailedFieldSources) {
+        for (const [fId, sourceMap] of Object.entries(record.detailedFieldSources)) {
+            const field = fieldsRef.current.find(f => f.id === fId);
+            if (field) {
+                const currentSources = field.detailedSources || {};
+                for (const [sId, amt] of Object.entries(sourceMap)) {
+                    currentSources[sId] = (currentSources[sId] || 0) + amt;
+                }
+                // Update das Feld im DB Service
+                await dbService.saveField({ ...field, detailedSources: currentSources });
+            }
+        }
+    }
 
     await dbService.saveActivity(record);
     if (record.type === ActivityType.FERTILIZATION && record.storageDistribution) {
