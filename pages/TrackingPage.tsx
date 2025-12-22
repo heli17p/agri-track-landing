@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { Navigation, Play, Loader2, Truck, Hammer, Wheat } from 'lucide-react';
 import { dbService } from '../services/db';
 import { Field, StorageLocation, ActivityType, DEFAULT_SETTINGS, ActivityRecord } from '../types';
@@ -15,6 +15,8 @@ interface Props {
   onTrackingStateChange: (isActive: boolean) => void;
 }
 
+export type HistoryFilterMode = 'OFF' | 'YEAR' | '12M';
+
 export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTrackingStateChange }) => {
   const [fields, setFields] = useState<Field[]>([]);
   const [storages, setStorages] = useState<StorageLocation[]>([]);
@@ -23,8 +25,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [subType, setSubType] = useState<string>('Gülle');
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
   const [followUser, setFollowUser] = useState(true);
-  const [historyMode, setHistoryMode] = useState('OFF');
-  const [historyTracks, setHistoryTracks] = useState<ActivityRecord[]>([]);
+  const [historyMode, setHistoryMode] = useState<HistoryFilterMode>('OFF');
+  const [allHistoryTracks, setAllHistoryTracks] = useState<ActivityRecord[]>([]);
   const [manualMode, setManualMode] = useState<ActivityType | null>(null);
   const [summaryRecord, setSummaryRecord] = useState<ActivityRecord | null>(null);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
@@ -39,11 +41,29 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       setStorages(await dbService.getStorageLocations());
       setSettings(await dbService.getSettings());
       const allActs = await dbService.getActivities();
-      setHistoryTracks(allActs.filter(a => a.trackPoints && a.trackPoints.length > 0));
+      setAllHistoryTracks(allActs.filter(a => a.trackPoints && a.trackPoints.length > 0));
     };
     init();
     return dbService.onDatabaseChange(init);
   }, []);
+
+  // Dynamische Filterung der historischen Spuren
+  const filteredHistoryTracks = useMemo(() => {
+      if (historyMode === 'OFF') return [];
+      
+      const now = new Date();
+      let thresholdDate: number;
+
+      if (historyMode === 'YEAR') {
+          // Ab 1. Januar des aktuellen Jahres
+          thresholdDate = new Date(now.getFullYear(), 0, 1).getTime();
+      } else {
+          // Letzte 12 Monate rollierend
+          thresholdDate = now.getTime() - (365 * 24 * 60 * 60 * 1000);
+      }
+
+      return allHistoryTracks.filter(act => new Date(act.date).getTime() >= thresholdDate);
+  }, [allHistoryTracks, historyMode]);
 
   useEffect(() => {
     onTrackingStateChange(tracker.trackingState !== 'IDLE');
@@ -64,6 +84,14 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
     dbService.syncActivities();
     setSummaryRecord(record);
     setManualMode(null);
+  };
+
+  const cycleHistoryMode = () => {
+      setHistoryMode(prev => {
+          if (prev === 'OFF') return 'YEAR';
+          if (prev === 'YEAR') return '12M';
+          return 'OFF';
+      });
   };
 
   if (summaryRecord) {
@@ -117,7 +145,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           currentLocation={tracker.currentLocation} 
           mapStyle={mapStyle} 
           followUser={followUser} 
-          historyTracks={historyTracks} 
+          historyTracks={filteredHistoryTracks} 
           historyMode={historyMode} 
           vehicleIconType="tractor" 
           onZoomChange={setZoom} 
@@ -142,7 +170,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         onDiscardClick={() => { if(confirm("Möchtest du die aktuelle Aufzeichnung wirklich löschen?")) tracker.handleDiscard(); }}
         onMapStyleToggle={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} 
         onFollowToggle={() => setFollowUser(!followUser)} 
-        onHistoryToggle={() => setHistoryMode(prev => prev === 'OFF' ? 'ON' : 'OFF')} 
+        onHistoryToggle={cycleHistoryMode} 
         onTestModeToggle={() => tracker.setIsTestMode(!tracker.isTestMode)}
         followUser={followUser} 
         historyMode={historyMode} 

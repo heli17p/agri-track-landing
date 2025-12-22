@@ -2,6 +2,7 @@
 import React from 'react';
 import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer } from 'lucide-react';
 import { StorageLocation } from '../../types';
+import { HistoryFilterMode } from '../../pages/TrackingPage';
 
 interface Props {
   trackingState: string;
@@ -18,7 +19,7 @@ interface Props {
   onHistoryToggle: () => void;
   onTestModeToggle: () => void;
   followUser: boolean;
-  historyMode: string;
+  historyMode: HistoryFilterMode;
   subType: string;
   activityType: string;
   isTestMode: boolean;
@@ -60,7 +61,17 @@ export const TrackingUI: React.FC<Props> = ({
       <div className="fixed top-20 right-4 flex flex-col space-y-3 z-[1000]">
         <button onClick={onMapStyleToggle} className="bg-white/95 p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur text-slate-700 active:scale-95 transition-all"><Layers size={24} /></button>
         <button onClick={onFollowToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${followUser ? 'bg-blue-600 text-white' : 'bg-white/95 text-slate-700'}`}><LocateFixed size={24}/></button>
-        <button onClick={onHistoryToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${historyMode !== 'OFF' ? 'bg-purple-600 text-white' : 'bg-white/95 text-slate-700'}`}><History size={24}/></button>
+        
+        {/* MODIFIZIERTER HISTORY BUTTON */}
+        <button onClick={onHistoryToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all relative ${historyMode !== 'OFF' ? 'bg-purple-600 text-white' : 'bg-white/95 text-slate-700'}`}>
+            <History size={24}/>
+            {historyMode !== 'OFF' && (
+                <div className="absolute -bottom-1 -left-1 bg-white text-purple-700 text-[8px] font-black px-1.5 py-0.5 rounded-full border border-purple-200 shadow-sm">
+                    {historyMode === 'YEAR' ? 'JAHR' : '12M'}
+                </div>
+            )}
+        </button>
+
         <button onClick={onTestModeToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${isTestMode ? 'bg-orange-500 text-white animate-pulse' : 'bg-white/95 text-slate-700'}`}><Beaker size={24}/></button>
       </div>
 
@@ -75,7 +86,6 @@ export const TrackingUI: React.FC<Props> = ({
           </div>
         )}
 
-        {/* --- OPTIMIERTE COUNTDOWN ANZEIGE (30s) mit NAMEN --- */}
         {detectionCountdown !== null && (
           <div className="bg-blue-600 text-white px-8 py-4 rounded-[2rem] shadow-[0_20px_50px_rgba(37,99,235,0.4)] flex flex-col items-center space-y-1 animate-in zoom-in-95 border-4 border-white">
              <div className="flex flex-col items-center">
