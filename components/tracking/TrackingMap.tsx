@@ -23,6 +23,7 @@ interface Props {
   onSimulateClick?: (lat: number, lng: number) => void;
 }
 
+// --- FARBPALETTEN ---
 const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
 const MANURE_PALETTE = ['#d97706', '#ea580c', '#f59e0b', '#c2410c', '#fb923c'];
 
@@ -38,6 +39,20 @@ const getStorageColor = (storageId: string | undefined, allStorages: StorageLoca
   return storage.type === FertilizerType.SLURRY 
     ? SLURRY_PALETTE[safeIdx % SLURRY_PALETTE.length] 
     : MANURE_PALETTE[safeIdx % MANURE_PALETTE.length];
+};
+
+// --- ICON HELPER ---
+const createStorageIcon = (color: string, type: FertilizerType) => {
+    const path = type === FertilizerType.SLURRY 
+        ? '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>'
+        : '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>';
+    
+    return L.divIcon({ 
+        className: 'storage-pin', 
+        html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 3px 6px rgba(0,0,0,0.3);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${path}</svg></div>`, 
+        iconSize: [32, 32], 
+        iconAnchor: [16, 16] 
+    });
 };
 
 const VehicleMarker = memo(({ initialPos, externalPos, heading, isTestMode, onDrag }: any) => {
@@ -100,7 +115,18 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
         </React.Fragment>
       ))}
       
-      {storages.map(s => <Circle key={s.id} center={[s.geo.lat, s.geo.lng]} radius={storageRadius} pathOptions={{ color: getStorageColor(s.id, storages), fillOpacity: 0.1, weight: 1, dashArray: '5, 5' }} />)}
+      {storages.map(s => {
+          const color = getStorageColor(s.id, storages);
+          return (
+              <React.Fragment key={s.id}>
+                <Circle center={[s.geo.lat, s.geo.lng]} radius={storageRadius} pathOptions={{ color: color, fillOpacity: 0.1, weight: 1, dashArray: '5, 5' }} />
+                <Marker position={[s.geo.lat, s.geo.lng]} icon={createStorageIcon(color, s.type)}>
+                    <Popup><div className="font-bold">{s.name}</div></Popup>
+                </Marker>
+              </React.Fragment>
+          );
+      })}
+      
       {currentLocation && <VehicleMarker initialPos={center} externalPos={center} heading={currentLocation.coords.heading} isTestMode={isTestMode} onDrag={onSimulateClick} />}
     </MapContainer>
   );

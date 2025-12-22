@@ -116,7 +116,6 @@ export const useTracking = (
 
           if (speedKmh > 3.5 && trackingState === 'LOADING') {
               setTrackingState('TRANSIT');
-              // WICHTIG: activeSourceIdRef wird NICHT gelöscht! Es bleibt die aktive Quelle für diese Fahrt.
           }
       }
     }, 1000);
@@ -147,7 +146,7 @@ export const useTracking = (
     const point: TrackPoint = {
       lat: latitude, lng: longitude, timestamp: pos.timestamp, speed: speedKmh,
       isSpreading, 
-      storageId: activeSourceIdRef.current || undefined, // Hier wird die Farbe an den Punkt gebunden
+      storageId: activeSourceIdRef.current || undefined,
       loadIndex: currentLoadIndexRef.current
     };
 
@@ -199,7 +198,7 @@ export const useTracking = (
     if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
     const durationMin = startTime ? Math.round((Date.now() - startTime) / 60000) : 0;
     
-    // Finde alle Felder, auf denen tatsächlich ausgebracht wurde
+    // 1. Beteiligte Felder sammeln
     const involvedFieldIds = new Set<string>();
     trackPoints.forEach(p => {
       if (p.isSpreading) {
@@ -211,45 +210,65 @@ export const useTracking = (
     const fIds = Array.from(involvedFieldIds);
     let totalAmt = 0;
     let unit = 'ha';
-    let loadCnt = 0;
     const loadSize = subTypeRef.current === 'Gülle' ? settingsRef.current.slurryLoadSize : settingsRef.current.manureLoadSize;
-
-    if (activityTypeRef.current === ActivityType.FERTILIZATION) {
-      unit = 'm³';
-      loadCnt = Object.values(loadCounts).reduce((a, b) => a + b, 0);
-      totalAmt = loadCnt * loadSize;
-    } else {
-      const involvedFields = fieldsRef.current.filter(f => fIds.includes(f.id));
-      totalAmt = involvedFields.reduce((sum, f) => sum + f.areaHa, 0);
-      totalAmt = Math.round(totalAmt * 100) / 100;
-    }
 
     const fieldDist: Record<string, number> = {};
     const detailedFieldSources: Record<string, Record<string, number>> = {};
 
-    if (activityTypeRef.current === ActivityType.FERTILIZATION && trackPoints.filter(p => p.isSpreading).length > 0) {
-        const spreadingPoints = trackPoints.filter(p => p.isSpreading);
-        const amountPerPoint = totalAmt / spreadingPoints.length;
+    if (activityTypeRef.current === ActivityType.FERTILIZATION) {
+      unit = 'm³';
+      const loadCnt = Object.values(loadCounts).reduce((a, b) => a + b, 0);
+      totalAmt = loadCnt * loadSize;
 
-        spreadingPoints.forEach(p => {
-            const field = fieldsRef.current.find(f => isPointInPolygon(p, f.boundary));
-            if (field && p.storageId) {
-                if (!detailedFieldSources[field.id]) detailedFieldSources[field.id] = {};
-                if (!detailedFieldSources[field.id][p.storageId]) detailedFieldSources[field.id][p.storageId] = 0;
-                detailedFieldSources[field.id][p.storageId] += amountPerPoint;
-                
-                if (!fieldDist[field.id]) fieldDist[field.id] = 0;
-                fieldDist[field.id] += amountPerPoint;
-            }
-        });
+      // PRÄZISE FAHRTEN-LOGIK: Jede Fuhre wird einzeln auf die Felder aufgeteilt
+      // Wir gruppieren die Punkte nach ihrem loadIndex
+      const pointsByLoad: Record<number, TrackPoint[]> = {};
+      trackPoints.forEach(p => {
+          const lIdx = p.loadIndex || 1;
+          if (!pointsByLoad[lIdx]) pointsByLoad[lIdx] = [];
+          pointsByLoad[lIdx].push(p);
+      });
 
-        // Runden
-        Object.keys(fieldDist).forEach(fid => fieldDist[fid] = Math.round(fieldDist[fid] * 10) / 10);
-        Object.keys(detailedFieldSources).forEach(fid => {
-            Object.keys(detailedFieldSources[fid]).forEach(sid => {
-                detailedFieldSources[fid][sid] = Math.round(detailedFieldSources[fid][sid] * 10) / 10;
-            });
-        });
+      Object.entries(pointsByLoad).forEach(([lIdx, points]) => {
+          const spreadingInLoad = points.filter(p => p.isSpreading);
+          if (spreadingInLoad.length === 0) return;
+
+          // Quelle dieser spezifischen Fuhre
+          const storageId = spreadingInLoad[0].storageId;
+          if (!storageId) return;
+
+          // Jede Fuhre hat ein festes Volumen, das auf die "Spreading"-Punkte dieser Fuhre verteilt wird
+          const volumePerPoint = loadSize / spreadingInLoad.length;
+
+          spreadingInLoad.forEach(p => {
+              const field = fieldsRef.current.find(f => isPointInPolygon(p, f.boundary));
+              if (field) {
+                  // Feld-Gesamt-Verteilung
+                  if (!fieldDist[field.id]) fieldDist[field.id] = 0;
+                  fieldDist[field.id] += volumePerPoint;
+
+                  // Detaillierte Herkunfts-Verteilung
+                  if (!detailedFieldSources[field.id]) detailedFieldSources[field.id] = {};
+                  if (!detailedFieldSources[field.id][storageId]) detailedFieldSources[field.id][storageId] = 0;
+                  detailedFieldSources[field.id][storageId] += volumePerPoint;
+              }
+          });
+      });
+
+      // Runden der berechneten Werte
+      Object.keys(fieldDist).forEach(fid => fieldDist[fid] = Math.round(fieldDist[fid] * 10) / 10);
+      Object.keys(detailedFieldSources).forEach(fid => {
+          Object.keys(detailedFieldSources[fid]).forEach(sid => {
+              detailedFieldSources[fid][sid] = Math.round(detailedFieldSources[fid][sid] * 10) / 10;
+          });
+      });
+
+    } else {
+      // Flächenbearbeitung (ha)
+      const involvedFields = fieldsRef.current.filter(f => fIds.includes(f.id));
+      totalAmt = involvedFields.reduce((sum, f) => sum + f.areaHa, 0);
+      totalAmt = Math.round(totalAmt * 100) / 100;
+      involvedFields.forEach(f => fieldDist[f.id] = f.areaHa);
     }
 
     const storageDist: Record<string, number> = {};
@@ -267,7 +286,7 @@ export const useTracking = (
       fieldIds: fIds, 
       amount: totalAmt, 
       unit, 
-      loadCount: loadCnt > 0 ? loadCnt : undefined, 
+      loadCount: Object.values(loadCounts).reduce((a, b) => a + b, 0) || undefined, 
       notes: `${notes}\nDauer: ${durationMin} min`,
       trackPoints: [...trackPoints], 
       fieldDistribution: fieldDist, 
