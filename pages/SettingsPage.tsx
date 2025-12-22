@@ -63,7 +63,11 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
   useEffect(() => { 
     loadAll(); 
-    return authService.onAuthStateChanged(u => { setAuthState(u); setUserInfo(dbService.getCurrentUserInfo()); }); 
+    return authService.onAuthStateChanged(u => { 
+        setAuthState(u); 
+        setUserInfo(dbService.getCurrentUserInfo()); 
+        if (!u) setCloudStats({ total: -1 }); // Reset Stats on Logout
+    }); 
   }, []);
 
   const handleSaveAll = async () => {
@@ -73,6 +77,13 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
         await dbService.saveSettings(settings);
         syncData(); setShowToast(true); setTimeout(() => setShowToast(false), 2000);
     } catch (e) { alert("Fehler: " + e); } finally { setIsSaving(false); }
+  };
+
+  const handleLogout = async () => {
+      if (confirm("Möchtest du dich wirklich abmelden? Die Synchronisierung wird gestoppt.")) {
+          await authService.logout();
+          loadAll();
+      }
   };
 
   return (
@@ -103,6 +114,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                 onSearch={() => {}} onJoin={() => {}} onCreate={() => {}} 
                 onForceUpload={() => dbService.forceUploadToFarm((s, p) => setUploadProgress({status: s, percent: p}))} 
                 onManualDownload={syncData} onShowDiagnose={() => { setLogs(dbService.getLogs()); setShowDiagnose(true); }}
+                onLogout={handleLogout}
             />}
         </div>
 
@@ -120,7 +132,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
             handleHardReset={() => confirm("Vollständiger Reset?") && dbService.hardReset()} isUploading={isUploading} uploadProgress={uploadProgress}
         />
 
-        {/* Lager Editor Modal - JETZT AUSGELAGERT */}
+        {/* Lager Editor Modal */}
         {editingStorage && (
             <StorageEditModal 
                 storage={editingStorage}

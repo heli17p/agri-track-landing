@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2 } from 'lucide-react';
+import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut } from 'lucide-react';
 /* Fix: ICON_THEMES is exported from utils/appIcons, not types.ts */
 import { FarmProfile, StorageLocation, FertilizerType, AppSettings } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
@@ -107,7 +107,8 @@ export const SyncTab: React.FC<{
     inputPin: string, setInputPin: (v: string) => void,
     searchStatus: string, foundOwnerEmail: string | null, connectError: string | null,
     onSearch: () => void, onJoin: () => void, onCreate: () => void,
-    onForceUpload: () => void, onManualDownload: () => void, onShowDiagnose: () => void
+    onForceUpload: () => void, onManualDownload: () => void, onShowDiagnose: () => void,
+    onLogout: () => void
 }> = (props) => (
     <div className="space-y-6 max-w-lg mx-auto">
         {/* Haupt-Statusbox mit Verbindungs-Indikator */}
@@ -126,9 +127,18 @@ export const SyncTab: React.FC<{
             </h3>
             
             {props.authState && (
-                <div className="mt-2 flex items-center text-xs font-bold text-green-700 bg-white/50 px-3 py-1 rounded-full border border-green-100">
-                    <User size={12} className="mr-1.5"/> {props.authState.email}
-                </div>
+                <>
+                    <div className="mt-2 flex items-center text-xs font-bold text-green-700 bg-white/50 px-3 py-1 rounded-full border border-green-100">
+                        <User size={12} className="mr-1.5"/> {props.authState.email}
+                    </div>
+                    {/* Logout / Verbindung trennen Button */}
+                    <button 
+                        onClick={props.onLogout}
+                        className="mt-4 flex items-center text-[10px] font-black text-red-600 uppercase tracking-widest hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors border border-transparent hover:border-red-100"
+                    >
+                        <LogOut size={12} className="mr-1.5"/> Verbindung trennen
+                    </button>
+                </>
             )}
             
             {props.authState && props.settings.farmId && (
