@@ -2,7 +2,7 @@
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import { auth, db, isCloudConfigured, saveData, loadLocalData, fetchCloudData, loadSettings, saveSettings as saveStorageSettings, fetchCloudSettings, hardReset as storageHardReset, fetchFarmMasterSettings } from './storage';
-import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, FeedbackTicket, DEFAULT_SETTINGS, Equipment, EquipmentCategory } from '../types';
+import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, FeedbackTicket, DEFAULT_SETTINGS, Equipment, EquipmentCategory, ActivityType } from '../types';
 
 export const generateId = () => {
   return Math.random().toString(36).substr(2, 9);
@@ -140,13 +140,15 @@ export const dbService = {
     getEquipmentCategories: async (): Promise<EquipmentCategory[]> => {
         let cats = loadLocalData('tillage_categories' as any);
         if (!cats || cats.length === 0) {
-            // Initialbefüllung mit Standards
+            // Initialbefüllung mit Standards für alle Bereiche
             cats = [
-                { id: 'harrow', name: 'Wiesenegge' },
-                { id: 'mulch', name: 'Schlegeln' },
-                { id: 'weeder', name: 'Striegel' },
-                { id: 'reseed', name: 'Nachsaat' },
-                { id: 'plow', name: 'Pflug' }
+                { id: 'cat_slurry', name: 'Güllefass', parentType: ActivityType.FERTILIZATION },
+                { id: 'cat_manure', name: 'Miststreuer', parentType: ActivityType.FERTILIZATION },
+                { id: 'cat_harrow', name: 'Wiesenegge', parentType: ActivityType.TILLAGE },
+                { id: 'cat_mulch', name: 'Schlegeln', parentType: ActivityType.TILLAGE },
+                { id: 'cat_weeder', name: 'Striegel', parentType: ActivityType.TILLAGE },
+                { id: 'cat_plow', name: 'Pflug', parentType: ActivityType.TILLAGE },
+                { id: 'cat_mower', name: 'Mähwerk', parentType: ActivityType.HARVEST }
             ];
             localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cats));
         }

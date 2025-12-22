@@ -61,7 +61,6 @@ export enum HarvestType {
   GRAIN = 'Getreide'
 }
 
-// Fix: Added missing TillageType enum to resolve import errors
 export enum TillageType {
   HARROW = 'Wiesenegge',
   MULCH = 'Schlegeln',
@@ -69,17 +68,18 @@ export enum TillageType {
   RESEEDING = 'Nachsaat'
 }
 
-// NEU: Dynamische Kategorien
+// NEU: Dynamische Kategorien mit Zuweisung
 export interface EquipmentCategory {
   id: string;
   name: string;
+  parentType: ActivityType; // NEU: Zuweisung zu Haupttätigkeit
   icon?: string;
 }
 
 export interface Equipment {
   id: string;
   name: string;
-  type: string; // Geändert von Enum auf string für Dynamik
+  type: string; // Referenz auf EquipmentCategory.name
   width: number;
 }
 
@@ -136,7 +136,7 @@ export interface ActivityRecord {
   unit?: string;
   loadCount?: number;
   fertilizerType?: FertilizerType;
-  tillageType?: string; // String für dynamische Typen
+  tillageType?: string; 
   equipmentId?: string;
   equipmentName?: string;
   notes?: string;
