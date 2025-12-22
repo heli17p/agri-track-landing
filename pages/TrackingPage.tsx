@@ -106,7 +106,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           <h1 className="text-2xl font-bold mb-2">Neue Tätigkeit</h1>
           <p className="text-slate-400 text-sm">Wähle eine Methode um zu starten.</p>
         </div>
-        <div className="p-6 space-y-6">
+        <div className="p-6 space-y-6 pb-24">
           
           {/* GPS ERROR NOTICE */}
           {tracker.gpsError && (
@@ -155,9 +155,23 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
               </button>
             </div>
           </div>
-          <div className="grid grid-cols-1 gap-3">
-            <button onClick={() => setManualMode(ActivityType.FERTILIZATION)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all"><Truck size={20} className="mr-4 text-amber-600"/><span className="font-bold">Düngung nachtragen</span></button>
-            <button onClick={() => setManualMode(ActivityType.HARVEST)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all"><Wheat size={20} className="mr-4 text-lime-600"/><span className="font-bold">Ernte nachtragen</span></button>
+          
+          <div className="space-y-3">
+            <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Manuell nachtragen</h3>
+            <div className="grid grid-cols-1 gap-3">
+              <button onClick={() => setManualMode(ActivityType.FERTILIZATION)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all shadow-sm">
+                <Truck size={20} className="mr-4 text-amber-600"/>
+                <span className="font-bold text-slate-700">Düngung nachtragen</span>
+              </button>
+              <button onClick={() => setManualMode(ActivityType.TILLAGE)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all shadow-sm">
+                <Hammer size={20} className="mr-4 text-blue-600"/>
+                <span className="font-bold text-slate-700">Bodenbearbeitung nachtragen</span>
+              </button>
+              <button onClick={() => setManualMode(ActivityType.HARVEST)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all shadow-sm">
+                <Wheat size={20} className="mr-4 text-lime-600"/>
+                <span className="font-bold text-slate-700">Ernte nachtragen</span>
+              </button>
+            </div>
           </div>
         </div>
       </div>
