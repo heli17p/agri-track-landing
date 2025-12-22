@@ -65,6 +65,7 @@ const STORAGE_KEY_FIELDS = 'agritrack_fields';
 const STORAGE_KEY_STORAGE = 'agritrack_storage';
 const STORAGE_KEY_PROFILE = 'agritrack_profile';
 const STORAGE_KEY_EQUIPMENT = 'agritrack_equipment';
+const STORAGE_KEY_CATEGORIES = 'agritrack_tillage_categories'; // NEU
 
 // --- HARD RESET ---
 export const hardReset = async () => {
@@ -192,7 +193,7 @@ export const fetchFarmMasterSettings = async (farmId: string): Promise<AppSettin
 
 // --- DATA HANDLING (HYBRID) ---
 
-export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment', data: any) => {
+export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment' | 'tillage_categories', data: any) => {
   // 1. ALWAYS Save Locally (Offline First / Guest Mode)
   let key = STORAGE_KEY_ACTIVITIES;
   if (type === 'trip') key = STORAGE_KEY_TRIPS;
@@ -200,6 +201,7 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
   if (type === 'storage') key = STORAGE_KEY_STORAGE;
   if (type === 'profile') key = STORAGE_KEY_PROFILE;
   if (type === 'equipment') key = STORAGE_KEY_EQUIPMENT;
+  if (type === 'tillage_categories') key = STORAGE_KEY_CATEGORIES; // Fix
 
   // Special handling for Profile (Single Object, not Array)
   if (type === 'profile') {
@@ -231,6 +233,7 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
           if (type === 'storage') colName = 'storages';
           if (type === 'profile') colName = 'profiles';
           if (type === 'equipment') colName = 'equipment';
+          if (type === 'tillage_categories') colName = 'tillage_categories';
 
           // Deep clone to safely remove undefined values before Firestore
           const payload = JSON.parse(JSON.stringify(data)); 
@@ -263,19 +266,20 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
   }
 };
 
-export const loadLocalData = (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment') => {
+export const loadLocalData = (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment' | 'tillage_categories') => {
     let key = STORAGE_KEY_ACTIVITIES;
     if (type === 'trip') key = STORAGE_KEY_TRIPS;
     if (type === 'field') key = STORAGE_KEY_FIELDS;
     if (type === 'storage') key = STORAGE_KEY_STORAGE;
     if (type === 'profile') key = STORAGE_KEY_PROFILE;
     if (type === 'equipment') key = STORAGE_KEY_EQUIPMENT;
+    if (type === 'tillage_categories') key = STORAGE_KEY_CATEGORIES; // Fix
 
     const s = localStorage.getItem(key);
     return s ? JSON.parse(s) : (type === 'profile' ? null : []);
 }
 
-export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment', forceServer: boolean = false) => {
+export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment' | 'tillage_categories', forceServer: boolean = false) => {
     if (!isCloudConfigured()) return [];
     
     const settings = loadSettings();
@@ -297,6 +301,7 @@ export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'stor
         if (type === 'storage') colName = 'storages';
         if (type === 'profile') colName = 'profiles';
         if (type === 'equipment') colName = 'equipment';
+        if (type === 'tillage_categories') colName = 'tillage_categories';
         
         // Use getDocsFromServer if forceServer is true to bypass stuck cache
         // In v8 we use get({ source: 'server' })

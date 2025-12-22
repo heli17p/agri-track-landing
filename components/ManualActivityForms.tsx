@@ -1,6 +1,8 @@
+
 import React, { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, Droplets, Layers, CheckSquare, Square, Truck, Wheat, Hammer, FileText, ShoppingBag, Sprout, ArrowRight, Database } from 'lucide-react';
-import { Field, AppSettings, ActivityRecord, ActivityType, FertilizerType, HarvestType, TillageType, StorageLocation } from '../types';
+import { ChevronLeft, Droplets, Layers, CheckSquare, Square, Truck, Wheat, Hammer, FileText, ShoppingBag, Sprout, ArrowRight, Database, Tag } from 'lucide-react';
+import { Field, AppSettings, ActivityRecord, ActivityType, FertilizerType, HarvestType, TillageType, StorageLocation, EquipmentCategory } from '../types';
+import { dbService } from '../services/db';
 
 interface BaseFormProps {
   fields: Field[];
@@ -319,10 +321,20 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
 };
 
 export const TillageForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave, onNavigate }) => {
-    const [tillageType, setTillageType] = useState<TillageType>(TillageType.HARROW);
+    const [tillageType, setTillageType] = useState<string>('');
+    const [categories, setCategories] = useState<EquipmentCategory[]>([]);
     const [date, setDate] = useState<string>(new Date().toISOString().substring(0, 10));
     const [selectedFieldIds, setSelectedFieldIds] = useState<Set<string>>(new Set());
     const [notes, setNotes] = useState('');
+
+    useEffect(() => {
+        const load = async () => {
+            const cats = await dbService.getEquipmentCategories();
+            setCategories(cats);
+            if (cats.length > 0) setTillageType(cats[0].name);
+        };
+        load();
+    }, []);
 
     const toggleField = (id: string) => {
         const next = new Set(selectedFieldIds);
@@ -361,12 +373,10 @@ export const TillageForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
             </div>
             <div className="p-4 space-y-4 pb-20 flex-1 overflow-y-auto">
                 <div>
-                    <label className="block text-sm font-bold text-slate-500 uppercase mb-1">Tätigkeit</label>
-                    <select value={tillageType} onChange={e => setTillageType(e.target.value as TillageType)} className="w-full border p-3 rounded-lg font-bold bg-white">
-                        <option value={TillageType.HARROW}>Wieseneggen</option>
-                        <option value={TillageType.MULCH}>Schlegeln</option>
-                        <option value={TillageType.WEEDER}>Striegeln</option>
-                        <option value={TillageType.RESEEDING}>Nachsaat</option>
+                    <label className="block text-sm font-bold text-slate-500 uppercase mb-1 flex items-center"><Tag size={12} className="mr-1"/> Tätigkeit / Typ</label>
+                    <select value={tillageType} onChange={e => setTillageType(e.target.value)} className="w-full border p-3 rounded-lg font-bold bg-white">
+                        {categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}
+                        {categories.length === 0 && <option value="" disabled>Keine Kategorien definiert</option>}
                     </select>
                 </div>
                 <div><label className="block text-sm font-bold text-slate-500 uppercase mb-1">Datum</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border p-3 rounded-lg" /></div>
@@ -386,8 +396,9 @@ export const TillageForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
                     </div>
                 </div>
                 <div><label className="block text-sm font-bold text-slate-500 uppercase mb-1">Notizen</label><div className="relative"><FileText className="absolute left-3 top-3 text-slate-400" size={16}/><textarea value={notes} onChange={(e) => setNotes(e.target.value)} rows={3} className="w-full pl-10 p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-green-500 outline-none text-sm" placeholder="Zusätzliche Infos..."/></div></div>
-                <button onClick={handleSave} disabled={selectedFieldIds.size === 0} className="w-full bg-green-600 text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 mt-4">Speichern</button>
+                <button onClick={handleSave} disabled={selectedFieldIds.size === 0 || !tillageType} className="w-full bg-green-600 text-white py-4 rounded-xl font-bold shadow-lg disabled:opacity-50 mt-4">Speichern</button>
             </div>
         </div>
     );
 };
+
