@@ -1,7 +1,7 @@
 
 import React from 'react';
 import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer } from 'lucide-react';
-import { StorageLocation } from '../../types';
+import { StorageLocation, FertilizerType } from '../../types';
 import { HistoryFilterMode } from '../../pages/TrackingPage';
 
 interface Props {
@@ -26,6 +26,17 @@ interface Props {
   activeSourceId: string | null;
   storages: StorageLocation[];
 }
+
+const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
+const MANURE_PALETTE = ['#d97706', '#ea580c', '#f59e0b', '#c2410c', '#fb923c'];
+
+const getStorageColor = (storageId: string, allStorages: StorageLocation[]) => {
+  const storage = allStorages.find(s => s.id === storageId);
+  if (!storage) return '#64748b';
+  const sameType = allStorages.filter(s => s.type === storage.type).sort((a, b) => a.id.localeCompare(b.id));
+  const idx = Math.max(0, sameType.findIndex(s => s.id === storageId));
+  return storage.type === FertilizerType.SLURRY ? SLURRY_PALETTE[idx % SLURRY_PALETTE.length] : MANURE_PALETTE[idx % MANURE_PALETTE.length];
+};
 
 export const TrackingUI: React.FC<Props> = ({ 
   trackingState, 
@@ -56,13 +67,15 @@ export const TrackingUI: React.FC<Props> = ({
   const activeStorageName = activeSourceId ? storages.find(s => s.id === activeSourceId)?.name : null;
   const pendingStorageName = pendingStorageId ? storages.find(s => s.id === pendingStorageId)?.name : null;
 
+  // Filter out used storages for individual counters
+  const usedStorages = Object.entries(loadCounts).filter(([_, count]) => count > 0);
+
   return (
     <>
       <div className="fixed top-20 right-4 flex flex-col space-y-3 z-[1000]">
         <button onClick={onMapStyleToggle} className="bg-white/95 p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur text-slate-700 active:scale-95 transition-all"><Layers size={24} /></button>
         <button onClick={onFollowToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${followUser ? 'bg-blue-600 text-white' : 'bg-white/95 text-slate-700'}`}><LocateFixed size={24}/></button>
         
-        {/* MODIFIZIERTER HISTORY BUTTON */}
         <button onClick={onHistoryToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all relative ${historyMode !== 'OFF' ? 'bg-purple-600 text-white' : 'bg-white/95 text-slate-700'}`}>
             <History size={24}/>
             {historyMode !== 'OFF' && (
@@ -77,7 +90,7 @@ export const TrackingUI: React.FC<Props> = ({
 
       <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[1000] w-full max-w-[85%] flex flex-col items-center space-y-3 pointer-events-none">
         {isTestMode && (
-          <div className="bg-orange-600/90 backdrop-blur text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg animate-bounce">Simulation Aktiv: Karte klicken zum Fahren</div>
+          <div className="bg-orange-600/90 backdrop-blur text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg animate-bounce text-center">Simulation Aktiv: Karte klicken zum Fahren</div>
         )}
         
         {storageWarning && (
@@ -125,13 +138,30 @@ export const TrackingUI: React.FC<Props> = ({
         </div>
       </div>
 
+      <div className="fixed bottom-24 left-0 right-0 z-[1000] px-4 pointer-events-none">
+          <div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">
+              {usedStorages.length > 0 && usedStorages.map(([sId, count]) => {
+                  const s = storages.find(st => st.id === sId);
+                  const color = getStorageColor(sId, storages);
+                  return (
+                      <div key={sId} className="bg-white/95 backdrop-blur shadow-lg border border-slate-200 rounded-full pl-1.5 pr-3 py-1 flex items-center space-x-2 animate-in slide-in-from-bottom-2">
+                          <div className="w-5 h-5 rounded-full flex items-center justify-center text-white" style={{backgroundColor: color}}>
+                              <span className="text-[10px] font-black">{count}</span>
+                          </div>
+                          <span className="text-[10px] font-bold text-slate-700">{s?.name || 'Unbekannt'}</span>
+                      </div>
+                  );
+              })}
+          </div>
+      </div>
+
       <div className="bg-white border-t-2 border-slate-200 p-4 pb-safe z-[1001] shadow-[0_-8px_30px_rgb(0,0,0,0.12)] shrink-0">
         <div className="flex items-center justify-between space-x-2">
           <div className="flex-1 flex items-center justify-around bg-slate-50 rounded-2xl py-3 px-2 border border-slate-100">
             <div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-slate-800 leading-none">{duration}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Min</span></div>
             <div className="w-px h-8 bg-slate-200"></div>
             {activityType === 'Düngung' && (
-              <><div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-amber-600 leading-none">{totalLoads}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Fuhren</span></div><div className="w-px h-8 bg-slate-200"></div></>
+              <><div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-amber-600 leading-none">{totalLoads}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Gesamt</span></div><div className="w-px h-8 bg-slate-200"></div></>
             )}
             <div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-blue-600 leading-none">{speed}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">km/h</span></div>
           </div>
