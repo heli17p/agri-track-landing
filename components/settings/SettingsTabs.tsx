@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar } from 'lucide-react';
+import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2 } from 'lucide-react';
 /* Fix: ICON_THEMES is exported from utils/appIcons, not types.ts */
 import { FarmProfile, StorageLocation, FertilizerType, AppSettings } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
@@ -110,24 +110,84 @@ export const SyncTab: React.FC<{
     onForceUpload: () => void, onManualDownload: () => void, onShowDiagnose: () => void
 }> = (props) => (
     <div className="space-y-6 max-w-lg mx-auto">
-        <div className={`p-5 rounded-xl border-2 flex flex-col items-center text-center ${props.authState && props.settings.farmId ? 'bg-green-50 border-green-200' : 'bg-slate-100 border-slate-300'}`}>
-            <div className={`p-3 rounded-full mb-3 ${props.authState && props.settings.farmId ? 'bg-green-200 text-green-800' : 'bg-slate-200 text-slate-600'}`}>{props.authState ? <ShieldCheck size={32}/> : <CloudOff size={32}/>}</div>
-            <h3 className="font-bold text-lg">{props.authState ? (props.settings.farmId ? 'Verbunden' : 'Angemeldet (Kein Hof)') : 'Offline Modus'}</h3>
-            {props.authState && props.settings.farmId && <div className="text-sm text-green-700 font-medium">Farm ID: {props.settings.farmId}</div>}
+        {/* Haupt-Statusbox mit Verbindungs-Indikator */}
+        <div className={`p-6 rounded-2xl border-2 flex flex-col items-center text-center shadow-sm transition-all ${props.authState && props.settings.farmId ? 'bg-green-50 border-green-200' : 'bg-slate-100 border-slate-300'}`}>
+            <div className="relative mb-3">
+                <div className={`p-4 rounded-full ${props.authState && props.settings.farmId ? 'bg-green-200 text-green-800' : 'bg-slate-200 text-slate-600'}`}>
+                    {props.authState ? <ShieldCheck size={40}/> : <CloudOff size={40}/>}
+                </div>
+                {props.authState && (
+                    <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 border-2 border-white rounded-full animate-pulse shadow-sm"></div>
+                )}
+            </div>
+            
+            <h3 className="font-black text-xl text-slate-800">
+                {props.authState ? (props.settings.farmId ? 'Verbindung aktiv' : 'Bereit (Kein Hof)') : 'Offline Modus'}
+            </h3>
+            
+            {props.authState && (
+                <div className="mt-2 flex items-center text-xs font-bold text-green-700 bg-white/50 px-3 py-1 rounded-full border border-green-100">
+                    <User size={12} className="mr-1.5"/> {props.authState.email}
+                </div>
+            )}
+            
+            {props.authState && props.settings.farmId && (
+                <div className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">
+                    Farm ID: <span className="text-slate-700">{props.settings.farmId}</span>
+                </div>
+            )}
         </div>
+
+        {/* Datenstatistik-Vergleich */}
+        {props.authState && props.settings.farmId && (
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center">
+                    <RefreshCw size={14} className="mr-2"/> Synchronisations-Status
+                </h4>
+                
+                <div className="grid grid-cols-2 gap-4">
+                    <div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col items-center">
+                        <span className="text-2xl font-black text-slate-800">{props.localStats.total}</span>
+                        <span className="text-[9px] font-bold text-slate-500 uppercase">Lokal (Handy)</span>
+                    </div>
+                    <div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col items-center">
+                        <span className="text-2xl font-black text-blue-700">
+                            {props.cloudStats.total === -1 ? '...' : props.cloudStats.total}
+                        </span>
+                        <span className="text-[9px] font-bold text-blue-500 uppercase">Cloud (Server)</span>
+                    </div>
+                </div>
+
+                {props.localStats.total === props.cloudStats.total ? (
+                    <div className="flex items-center justify-center text-green-600 text-xs font-bold py-1">
+                        <CheckCircle2 size={14} className="mr-1.5"/> Alle Daten sind aktuell
+                    </div>
+                ) : (
+                    <div className="text-[10px] text-center text-slate-400 italic">
+                        Unterschiede? Nutze "Daten hochladen" um manuell zu sichern.
+                    </div>
+                )}
+            </div>
+        )}
 
         {props.authState && !props.settings.farmId && props.connectMode === 'VIEW' && (
             <div className="grid grid-cols-1 gap-4">
-                <button onClick={() => props.setConnectMode('JOIN')} className="bg-white p-6 rounded-xl border-2 border-slate-200 hover:border-blue-500 flex items-center font-bold text-blue-600"><UserPlus size={24} className="mr-3"/> Hof beitreten</button>
-                <button onClick={() => props.setConnectMode('CREATE')} className="bg-white p-6 rounded-xl border-2 border-slate-200 hover:border-green-500 flex items-center font-bold text-green-600"><Plus size={24} className="mr-3"/> Hof neu erstellen</button>
+                <button onClick={() => props.setConnectMode('JOIN')} className="bg-white p-6 rounded-xl border-2 border-slate-200 hover:border-blue-500 flex items-center font-bold text-blue-600 transition-all active:scale-95"><UserPlus size={24} className="mr-3"/> Hof beitreten</button>
+                <button onClick={() => props.setConnectMode('CREATE')} className="bg-white p-6 rounded-xl border-2 border-slate-200 hover:border-green-500 flex items-center font-bold text-green-600 transition-all active:scale-95"><Plus size={24} className="mr-3"/> Hof neu erstellen</button>
             </div>
         )}
 
         {props.authState && props.settings.farmId && (
-            <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200 space-y-3">
-                <button onClick={props.onForceUpload} className="w-full py-3 bg-blue-600 text-white rounded-lg font-bold shadow flex items-center justify-center"><Cloud size={18} className="mr-2"/> Daten hochladen (Sichern)</button>
-                <button onClick={props.onManualDownload} className="w-full py-3 bg-white border border-slate-300 text-slate-700 rounded-lg font-bold flex items-center justify-center"><DownloadCloud size={18} className="mr-2"/> Daten jetzt laden</button>
-                <button onClick={props.onShowDiagnose} className="w-full py-3 bg-slate-100 text-slate-600 rounded-lg font-bold flex items-center justify-center"><Terminal size={18} className="mr-2"/> 🛠 Diagnose-Tool</button>
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-3">
+                <button onClick={props.onForceUpload} className="w-full py-4 bg-blue-600 text-white rounded-xl font-black shadow-lg shadow-blue-100 flex items-center justify-center active:scale-95 transition-all">
+                    <Cloud size={18} className="mr-2"/> Daten jetzt sichern
+                </button>
+                <button onClick={props.onManualDownload} className="w-full py-3 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold flex items-center justify-center active:scale-95 transition-all">
+                    <DownloadCloud size={18} className="mr-2"/> Server-Daten laden
+                </button>
+                <button onClick={props.onShowDiagnose} className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl font-bold flex items-center justify-center active:scale-95 transition-all">
+                    <Terminal size={18} className="mr-2"/> 🛠 Diagnose-Tool
+                </button>
             </div>
         )}
     </div>
