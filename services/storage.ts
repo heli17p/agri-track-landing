@@ -1,5 +1,6 @@
 
-import { Activity, AppSettings, Trip, DEFAULT_SETTINGS, Field, StorageLocation, FarmProfile } from '../types';
+// Fix: Removed non-existent exported members 'Activity' and 'Trip' from '../types'
+import { AppSettings, DEFAULT_SETTINGS, Field, StorageLocation, FarmProfile } from '../types';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import 'firebase/compat/auth';

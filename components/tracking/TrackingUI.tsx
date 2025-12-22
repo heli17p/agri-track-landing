@@ -1,6 +1,5 @@
-
 import React from 'react';
-import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer, Minimize2, Sun } from 'lucide-react';
+import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer, Minimize2, Sun, Hammer } from 'lucide-react';
 import { StorageLocation, FertilizerType, ActivityType } from '../../types';
 import { HistoryFilterMode } from '../../pages/TrackingPage';
 
@@ -22,11 +21,11 @@ interface Props {
   followUser: boolean;
   historyMode: HistoryFilterMode;
   subType: string;
-  activityType: string;
+  activityType: ActivityType | string;
   isTestMode: boolean;
   activeSourceId: string | null;
   storages: StorageLocation[];
-  wakeLockActive?: boolean; // NEU
+  wakeLockActive?: boolean;
 }
 
 const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
@@ -73,6 +72,25 @@ export const TrackingUI: React.FC<Props> = ({
 
   const usedStorages = Object.entries(loadCounts).filter(([_, count]) => count > 0);
 
+  // Dynamische Texte und Icons basierend auf der Tätigkeit
+  const isTillage = activityType === ActivityType.TILLAGE;
+  
+  const getStatusLabel = () => {
+    if (trackingState === 'LOADING') return 'Laden...';
+    if (trackingState === 'SPREADING') {
+      return isTillage ? 'Bearbeitung' : 'Ausbringung';
+    }
+    return 'Transport';
+  };
+
+  const getStatusIcon = () => {
+    if (trackingState === 'LOADING') return <Database size={18}/>;
+    if (trackingState === 'SPREADING') {
+      return isTillage ? <Hammer size={18}/> : <Droplets size={18}/>;
+    }
+    return <Truck size={18} className="text-blue-500" />;
+  };
+
   return (
     <>
       <div className="fixed top-20 right-4 flex flex-col space-y-3 z-[1100]">
@@ -86,7 +104,7 @@ export const TrackingUI: React.FC<Props> = ({
 
         {/* WakeLock Status Indicator */}
         {wakeLockActive && (
-            <div className="bg-amber-500 p-3 rounded-2xl shadow-xl border border-amber-600 text-white flex items-center justify-center animate-pulse" title="Bildschirm bleibt aktiv">
+            <div className="bg-amber-50 p-3 rounded-2xl shadow-xl border border-amber-600 text-white flex items-center justify-center animate-pulse" title="Bildschirm bleibt aktiv">
                 <Sun size={24} fill="currentColor" />
             </div>
         )}
@@ -143,14 +161,14 @@ export const TrackingUI: React.FC<Props> = ({
         
         <div className={`bg-white/95 backdrop-blur shadow-2xl border border-slate-300 rounded-full px-5 py-2.5 flex items-center space-x-3 pointer-events-auto transition-all w-fit ${detectionCountdown !== null ? 'opacity-20 scale-75 blur-[1px]' : 'opacity-100'}`}>
           <div className={`p-2 rounded-full text-white ${trackingState === 'LOADING' ? 'bg-amber-500 animate-pulse' : trackingState === 'SPREADING' ? 'bg-green-600 animate-pulse' : 'bg-blue-50'}`}>
-             {trackingState === 'LOADING' ? <Database size={18}/> : trackingState === 'SPREADING' ? <Droplets size={18}/> : <Truck size={18} className="text-blue-500" />}
+             {getStatusIcon()}
           </div>
           <div className="flex flex-col">
             <span className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-0.5 tracking-tighter">
                 {activeStorageName ? `Quelle: ${activeStorageName}` : 'Live-Status'}
             </span>
             <span className="font-bold text-slate-800 text-sm leading-none">
-              {trackingState === 'LOADING' ? 'Laden...' : trackingState === 'SPREADING' ? 'Ausbringung' : 'Transport'}
+              {getStatusLabel()}
             </span>
           </div>
         </div>
@@ -162,6 +180,7 @@ export const TrackingUI: React.FC<Props> = ({
             <div className="absolute bottom-full left-0 right-0 mb-4 px-4 pointer-events-none z-[1250]">
                 <div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">
                     {usedStorages.map(([sId, count]) => {
+                        // Fix: Corrected storage lookup by accessing the id property directly on the StorageLocation object
                         const s = storages.find(st => st.id === sId);
                         const color = getStorageColor(sId, storages);
                         return (
@@ -196,4 +215,3 @@ export const TrackingUI: React.FC<Props> = ({
     </>
   );
 };
-
