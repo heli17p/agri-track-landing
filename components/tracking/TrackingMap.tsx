@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, memo } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Circle, Polyline, useMap, useMapEvents, Popup } from 'react-leaflet';
 import L from 'leaflet';
-import { Field, StorageLocation, TrackPoint, FertilizerType } from '../../types';
+import { Field, StorageLocation, TrackPoint, FertilizerType, ActivityType } from '../../types';
 
 interface Props {
   points: TrackPoint[];
@@ -21,6 +21,7 @@ interface Props {
   subType: string;
   isTestMode: boolean;
   onSimulateClick?: (lat: number, lng: number) => void;
+  activityType: ActivityType | string;
 }
 
 const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
@@ -76,7 +77,7 @@ const MapController = ({ center, zoom, follow, onZoomChange, isTestMode }: any) 
   return null;
 };
 
-export const TrackingMap: React.FC<Props> = ({ points, fields, storages, currentLocation, mapStyle, followUser, historyTracks, historyMode, onZoomChange, zoom, storageRadius, isTestMode, onSimulateClick }) => {
+export const TrackingMap: React.FC<Props> = ({ points, fields, storages, currentLocation, mapStyle, followUser, historyTracks, historyMode, onZoomChange, zoom, storageRadius, isTestMode, onSimulateClick, activityType, subType }) => {
   const center: [number, number] = currentLocation ? [currentLocation.coords.latitude, currentLocation.coords.longitude] : [47.5, 14.5];
   
   const trackSegments = useMemo(() => {
@@ -86,25 +87,45 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
     let spread = points[0].isSpreading;
     let sId = points[0].storageId;
     
+    // Basis-Farbe für Bodenbearbeitung (Blau-Töne)
+    const tillageColor = activityType === ActivityType.TILLAGE ? '#2563eb' : undefined;
+
     for (let i = 1; i < points.length; i++) {
       const p = points[i];
       if (p.isSpreading !== spread || p.storageId !== sId) {
-        segments.push({ points: current, spread, color: getStorageColor(sId, storages) });
+        segments.push({ points: current, spread, color: tillageColor || getStorageColor(sId, storages) });
         current = [[points[i - 1].lat, points[i - 1].lng], [p.lat, p.lng]];
         spread = p.isSpreading;
         sId = p.storageId;
       } else { current.push([p.lat, p.lng]); }
     }
-    segments.push({ points: current, spread, color: getStorageColor(sId, storages) });
+    segments.push({ points: current, spread, color: tillageColor || getStorageColor(sId, storages) });
     return segments;
-  }, [points, storages]);
+  }, [points, storages, activityType]);
 
   return (
     <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} zoomControl={false} preferCanvas={true}>
       <TileLayer url={mapStyle === 'standard' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} />
       <MapController center={center} zoom={zoom} follow={followUser} onZoomChange={onZoomChange} isTestMode={isTestMode} />
       {fields.map(f => <Polygon key={f.id} positions={f.boundary.map(p => [p.lat, p.lng])} pathOptions={{ color: f.color || (f.type === 'Acker' ? '#92400E' : '#15803D'), fillOpacity: 0.2, weight: 1 }} />)}
-      {historyMode !== 'OFF' && historyTracks.map((act, i) => act.trackPoints && <Polyline key={i} positions={act.trackPoints.map((p: any) => [p.lat, p.lng])} pathOptions={{ color: '#666', weight: 2, opacity: 0.3, dashArray: '5,5' }} />)}
+      
+      {/* VERBESSERTE HISTORIE: Farblich abgesetzt je nach Typ */}
+      {historyMode !== 'OFF' && historyTracks.map((act, i) => {
+          if (!act.trackPoints) return null;
+          const isSameType = act.type === activityType;
+          return (
+              <Polyline 
+                key={i} 
+                positions={act.trackPoints.map((p: any) => [p.lat, p.lng])} 
+                pathOptions={{ 
+                    color: isSameType ? (activityType === ActivityType.TILLAGE ? '#3b82f6' : '#666') : '#999', 
+                    weight: isSameType ? 3 : 1.5, 
+                    opacity: isSameType ? 0.4 : 0.2, 
+                    dashArray: isSameType ? '8, 8' : '2, 4' 
+                }} 
+              />
+          );
+      })}
       
       {trackSegments.map((s, i) => (
         <React.Fragment key={i}>

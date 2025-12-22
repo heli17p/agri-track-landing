@@ -56,8 +56,17 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
       } else {
           thresholdDate = now.getTime() - (365 * 24 * 60 * 60 * 1000);
       }
-      return allHistoryTracks.filter(act => new Date(act.date).getTime() >= thresholdDate);
-  }, [allHistoryTracks, historyMode]);
+
+      return allHistoryTracks.filter(act => {
+          const dateMatch = new Date(act.date).getTime() >= thresholdDate;
+          if (!dateMatch) return false;
+          if (activityType === ActivityType.FERTILIZATION) {
+              return act.type === ActivityType.FERTILIZATION;
+          } else {
+              return act.type === activityType && (act as any).tillageType === subType;
+          }
+      });
+  }, [allHistoryTracks, historyMode, activityType, subType]);
 
   useEffect(() => {
     onTrackingStateChange(tracker.trackingState !== 'IDLE');
@@ -107,8 +116,6 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           <p className="text-slate-400 text-sm">Wähle eine Methode um zu starten.</p>
         </div>
         <div className="p-6 space-y-6 pb-24">
-          
-          {/* GPS ERROR NOTICE */}
           {tracker.gpsError && (
               <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-5 animate-in zoom-in-95 duration-300">
                   <div className="flex items-start space-x-3 text-red-700">
@@ -119,22 +126,11 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                       </div>
                   </div>
                   <div className="mt-4 flex space-x-2">
-                      <button 
-                        onClick={() => tracker.startGPS()} 
-                        className="flex-1 bg-red-600 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center shadow-lg active:scale-95 transition-all"
-                      >
-                          <RefreshCw size={14} className="mr-2"/> Erneut versuchen
-                      </button>
-                      <button 
-                        onClick={() => window.location.reload()} 
-                        className="px-4 bg-white border border-red-200 text-red-600 py-2.5 rounded-xl font-bold text-xs"
-                      >
-                          <Settings size={14}/>
-                      </button>
+                      <button onClick={() => tracker.startGPS()} className="flex-1 bg-red-600 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center shadow-lg active:scale-95 transition-all"><RefreshCw size={14} className="mr-2"/> Erneut versuchen</button>
+                      <button onClick={() => window.location.reload()} className="px-4 bg-white border border-red-200 text-red-600 py-2.5 rounded-xl font-bold text-xs"><Settings size={14}/></button>
                   </div>
               </div>
           )}
-
           <div className="bg-green-50 border border-green-200 rounded-2xl p-5 shadow-sm">
             <h2 className="text-lg font-bold text-green-900 mb-4 flex items-center"><Navigation className="mr-2 fill-green-600 text-green-600"/> GPS Aufzeichnung</h2>
             <div className="space-y-4">
@@ -145,32 +141,15 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
               <select value={subType} onChange={e => setSubType(e.target.value)} className="w-full p-3 rounded-xl border border-green-200 bg-white font-bold outline-none focus:ring-2 focus:ring-green-500">
                 {activityType === ActivityType.FERTILIZATION ? <><option value="Gülle">Gülle</option><option value="Mist">Mist</option></> : <><option value="Wiesenegge">Wiesenegge</option><option value="Schlegeln">Schlegeln</option><option value="Nachsaat">Nachsaat</option></>}
               </select>
-              <button 
-                onClick={tracker.startGPS} 
-                disabled={tracker.gpsLoading} 
-                className={`w-full py-4 text-white rounded-xl font-bold flex items-center justify-center shadow-lg active:scale-[0.98] transition-all disabled:opacity-70 ${tracker.gpsError ? 'bg-slate-400' : 'bg-green-600'}`}
-              >
-                {tracker.gpsLoading ? <Loader2 className="animate-spin mr-2"/> : <Play size={24} className="mr-2 fill-white"/>} 
-                {tracker.gpsLoading ? 'GPS wird gesucht...' : 'Starten'}
-              </button>
+              <button onClick={tracker.startGPS} disabled={tracker.gpsLoading} className={`w-full py-4 text-white rounded-xl font-bold flex items-center justify-center shadow-lg active:scale-[0.98] transition-all disabled:opacity-70 ${tracker.gpsError ? 'bg-slate-400' : 'bg-green-600'}`}>{tracker.gpsLoading ? <Loader2 className="animate-spin mr-2"/> : <Play size={24} className="mr-2 fill-white"/>} {tracker.gpsLoading ? 'GPS wird gesucht...' : 'Starten'}</button>
             </div>
           </div>
-          
           <div className="space-y-3">
             <h3 className="text-xs font-black text-slate-400 uppercase tracking-widest ml-1">Manuell nachtragen</h3>
             <div className="grid grid-cols-1 gap-3">
-              <button onClick={() => setManualMode(ActivityType.FERTILIZATION)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all shadow-sm">
-                <Truck size={20} className="mr-4 text-amber-600"/>
-                <span className="font-bold text-slate-700">Düngung nachtragen</span>
-              </button>
-              <button onClick={() => setManualMode(ActivityType.TILLAGE)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all shadow-sm">
-                <Hammer size={20} className="mr-4 text-blue-600"/>
-                <span className="font-bold text-slate-700">Bodenbearbeitung nachtragen</span>
-              </button>
-              <button onClick={() => setManualMode(ActivityType.HARVEST)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all shadow-sm">
-                <Wheat size={20} className="mr-4 text-lime-600"/>
-                <span className="font-bold text-slate-700">Ernte nachtragen</span>
-              </button>
+              <button onClick={() => setManualMode(ActivityType.FERTILIZATION)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all shadow-sm"><Truck size={20} className="mr-4 text-amber-600"/><span className="font-bold text-slate-700">Düngung nachtragen</span></button>
+              <button onClick={() => setManualMode(ActivityType.TILLAGE)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all shadow-sm"><Hammer size={20} className="mr-4 text-blue-600"/><span className="font-bold text-slate-700">Bodenbearbeitung nachtragen</span></button>
+              <button onClick={() => setManualMode(ActivityType.HARVEST)} className="flex items-center p-4 bg-white border border-slate-200 rounded-xl hover:bg-slate-50 active:scale-[0.98] transition-all shadow-sm"><Wheat size={20} className="mr-4 text-lime-600"/><span className="font-bold text-slate-700">Ernte nachtragen</span></button>
             </div>
           </div>
         </div>
@@ -181,30 +160,14 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   return (
     <div className="h-full flex flex-col bg-slate-900 overflow-hidden">
       <div className="flex-1 relative overflow-hidden z-0">
-        <TrackingMap 
-          points={tracker.trackPoints} 
-          fields={fields} 
-          storages={storages} 
-          currentLocation={tracker.currentLocation} 
-          mapStyle={mapStyle} 
-          followUser={followUser} 
-          historyTracks={filteredHistoryTracks} 
-          historyMode={historyMode} 
-          vehicleIconType="tractor" 
-          onZoomChange={setZoom} 
-          zoom={zoom} 
-          storageRadius={settings.storageRadius} 
-          activeSourceId={tracker.activeSourceId} 
-          subType={subType}
-          isTestMode={tracker.isTestMode}
-          onSimulateClick={tracker.simulateMovement}
-        />
+        <TrackingMap points={tracker.trackPoints} fields={fields} storages={storages} currentLocation={tracker.currentLocation} mapStyle={mapStyle} followUser={followUser} historyTracks={filteredHistoryTracks} historyMode={historyMode} vehicleIconType="tractor" onZoomChange={setZoom} zoom={zoom} storageRadius={settings.storageRadius} activeSourceId={tracker.activeSourceId} subType={subType} isTestMode={tracker.isTestMode} onSimulateClick={tracker.simulateMovement} activityType={activityType} />
       </div>
 
       <TrackingUI 
         trackingState={tracker.trackingState} 
         startTime={tracker.startTime} 
         loadCounts={tracker.loadCounts} 
+        workedAreaHa={tracker.workedAreaHa} // NEU: Echtzeit-Hektar
         currentLocation={tracker.currentLocation} 
         detectionCountdown={tracker.detectionCountdown} 
         pendingStorageId={tracker.pendingStorageId}
@@ -242,24 +205,13 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
             <h3 className="font-black text-xl text-slate-800">Aufzeichnung beenden</h3>
             <div className="space-y-1">
                 <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">Notizen zum Einsatz</label>
-                <textarea 
-                    value={saveNotes} 
-                    onChange={e => setSaveNotes(e.target.value)} 
-                    className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm outline-none focus:border-green-500 transition-colors" 
-                    placeholder="Besonderheiten (optional)..." 
-                    rows={2} 
-                />
+                <textarea value={saveNotes} onChange={e => setSaveNotes(e.target.value)} className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm outline-none focus:border-green-500 transition-colors" placeholder="Besonderheiten (optional)..." rows={2} />
             </div>
             <div className="flex space-x-3">
               <button onClick={() => setShowSaveConfirm(false)} className="flex-1 py-4 bg-slate-100 font-bold rounded-2xl text-slate-600 active:scale-95 transition-all">Zurück</button>
               <button onClick={handleFinish} className="flex-1 py-4 bg-green-600 text-white font-bold rounded-2xl shadow-lg shadow-green-100 active:scale-95 transition-all">Speichern</button>
             </div>
-            <button 
-                onClick={() => { if(confirm("Wirklich alles löschen?")) { tracker.handleDiscard(); setShowSaveConfirm(false); } }} 
-                className="w-full text-red-500 font-bold text-xs py-2 uppercase tracking-widest opacity-60 hover:opacity-100"
-            >
-                Aufzeichnung verwerfen
-            </button>
+            <button onClick={() => { if(confirm("Wirklich alles löschen?")) { tracker.handleDiscard(); setShowSaveConfirm(false); } }} className="w-full text-red-500 font-bold text-xs py-2 uppercase tracking-widest opacity-60 hover:opacity-100">Aufzeichnung verwerfen</button>
           </div>
         </div>
       )}
