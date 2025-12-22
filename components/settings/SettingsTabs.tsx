@@ -25,9 +25,12 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
   const [showCatManager, setShowCatManager] = useState(false);
   const [categories, setCategories] = useState<EquipmentCategory[]>([]);
   const [newEquip, setNewEquip] = useState<Equipment>({ id: '', name: '', type: '', width: 6 });
-  const [editingId, setEditingId] = useState<string | null>(null); // Trackt, ob wir gerade bearbeiten
+  const [editingId, setEditingId] = useState<string | null>(null);
+  
+  // Kategorie Management States
   const [newCatName, setNewCatName] = useState('');
   const [newCatParent, setNewCatParent] = useState<ActivityType>(ActivityType.TILLAGE);
+  const [editingCatId, setEditingCatId] = useState<string | null>(null);
 
   const loadCats = async () => {
     const c = await dbService.getEquipmentCategories();
@@ -56,15 +59,25 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
     setNewEquip({ ...e });
     setEditingId(e.id);
     setShowAdd(true);
-    // Scroll zum Formular
     window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   const handleAddCategory = async () => {
     if (!newCatName.trim()) return;
-    await dbService.saveEquipmentCategory({ id: generateId(), name: newCatName.trim(), parentType: newCatParent });
+    await dbService.saveEquipmentCategory({ 
+        id: editingCatId || generateId(), 
+        name: newCatName.trim(), 
+        parentType: newCatParent 
+    });
     setNewCatName('');
+    setEditingCatId(null);
     loadCats();
+  };
+
+  const handleEditCategoryStart = (cat: EquipmentCategory) => {
+      setNewCatName(cat.name);
+      setNewCatParent(cat.parentType);
+      setEditingCatId(cat.id);
   };
 
   const handleDeleteCategory = async (id: string) => {
@@ -102,16 +115,38 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
 
             {showCatManager && (
                 <div className="p-5 border-t border-slate-100 bg-slate-50/50 space-y-4 animate-in slide-in-from-top-2">
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">Neue Gruppe anlegen</label>
+                    <div className={`p-4 rounded-xl border space-y-3 transition-all ${editingCatId ? 'bg-amber-50 border-amber-200 ring-2 ring-amber-100' : 'bg-white border-slate-200'}`}>
+                        <div className="flex justify-between items-center">
+                            <label className={`text-[10px] font-black uppercase tracking-widest ${editingCatId ? 'text-amber-600' : 'text-slate-400'}`}>
+                                {editingCatId ? 'Gruppe umbenennen' : 'Neue Gruppe anlegen'}
+                            </label>
+                            {editingCatId && (
+                                <button onClick={() => { setEditingCatId(null); setNewCatName(''); }} className="text-[10px] font-bold text-amber-700 underline">Abbrechen</button>
+                            )}
+                        </div>
                         <div className="flex space-x-2">
-                            <input type="text" value={newCatName} onChange={e => setNewCatName(e.target.value)} className="flex-1 p-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 font-bold text-sm" placeholder="z.B. Walze..." />
-                            <select value={newCatParent} onChange={e => setNewCatParent(e.target.value as ActivityType)} className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold">
+                            <input 
+                                type="text" 
+                                value={newCatName} 
+                                onChange={e => setNewCatName(e.target.value)} 
+                                className="flex-1 p-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 font-bold text-sm" 
+                                placeholder="z.B. Walze..." 
+                            />
+                            <select 
+                                value={newCatParent} 
+                                onChange={e => setNewCatParent(e.target.value as ActivityType)} 
+                                className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none"
+                            >
                                 <option value={ActivityType.TILLAGE}>Boden</option>
                                 <option value={ActivityType.FERTILIZATION}>Düngung</option>
                                 <option value={ActivityType.HARVEST}>Ernte</option>
                             </select>
-                            <button onClick={handleAddCategory} className="bg-purple-600 text-white px-3 py-2 rounded-lg font-bold text-xs">OK</button>
+                            <button 
+                                onClick={handleAddCategory} 
+                                className={`${editingCatId ? 'bg-amber-600' : 'bg-purple-600'} text-white px-3 py-2 rounded-lg font-bold text-xs shadow-sm`}
+                            >
+                                {editingCatId ? 'OK' : 'Hinzufügen'}
+                            </button>
                         </div>
                     </div>
                     
@@ -121,9 +156,21 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
                                 <h4 className="text-[9px] font-black text-slate-400 uppercase mb-2 flex items-center">{getParentIcon(parent)} {parent}</h4>
                                 <div className="flex flex-wrap gap-2">
                                     {categories.filter(c => c.parentType === parent).map(cat => (
-                                        <div key={cat.id} className="bg-white border border-slate-200 pl-3 pr-1 py-1 rounded-full flex items-center shadow-sm">
+                                        <div 
+                                            key={cat.id} 
+                                            className={`border pl-3 pr-1 py-1 rounded-full flex items-center shadow-sm transition-all group cursor-pointer ${editingCatId === cat.id ? 'bg-amber-100 border-amber-400 scale-105' : 'bg-white border-slate-200 hover:border-purple-300'}`}
+                                            onClick={() => handleEditCategoryStart(cat)}
+                                        >
                                             <span className="text-[10px] font-black text-slate-700 uppercase tracking-tighter mr-2">{cat.name}</span>
-                                            <button onClick={() => handleDeleteCategory(cat.id)} className="p-1 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={10}/></button>
+                                            <div className="flex items-center opacity-0 group-hover:opacity-100 transition-opacity">
+                                                <button className="p-1 text-slate-400 hover:text-blue-500 mr-0.5"><Edit2 size={10}/></button>
+                                                <button 
+                                                    onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }} 
+                                                    className="p-1 text-slate-300 hover:text-red-500"
+                                                >
+                                                    <Trash2 size={10}/>
+                                                </button>
+                                            </div>
                                         </div>
                                     ))}
                                 </div>

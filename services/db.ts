@@ -142,8 +142,8 @@ export const dbService = {
         if (!cats || cats.length === 0) {
             // Initialbefüllung mit Standards für alle Bereiche
             cats = [
-                { id: 'cat_slurry', name: 'Güllefass', parentType: ActivityType.FERTILIZATION },
-                { id: 'cat_manure', name: 'Miststreuer', parentType: ActivityType.FERTILIZATION },
+                { id: 'cat_slurry', name: 'Gülle', parentType: ActivityType.FERTILIZATION },
+                { id: 'cat_manure', name: 'Mist', parentType: ActivityType.FERTILIZATION },
                 { id: 'cat_harrow', name: 'Wiesenegge', parentType: ActivityType.TILLAGE },
                 { id: 'cat_mulch', name: 'Schlegeln', parentType: ActivityType.TILLAGE },
                 { id: 'cat_weeder', name: 'Striegel', parentType: ActivityType.TILLAGE },
