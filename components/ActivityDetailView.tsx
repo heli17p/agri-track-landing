@@ -175,7 +175,41 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
                     {isEditingFields ? (
                         <div className="max-h-60 overflow-y-auto divide-y divide-slate-100">{allFields.map(f => <div key={f.id} onClick={() => toggleField(f.id)} className="p-3 flex items-center cursor-pointer">{editedActivity.fieldIds.includes(f.id) ? <CheckSquare size={20} className="text-blue-600 mr-3"/> : <Square size={20} className="text-slate-300 mr-3"/>}<div className="flex-1 text-sm font-bold text-slate-700">{f.name}</div></div>)}</div>
                     ) : (
-                        <div className="divide-y divide-slate-100">{relevantFields.map(f => <div key={f.id} className="p-3 flex justify-between items-center"><div><div className="font-bold text-slate-700 text-sm">{f.name}</div><div className="text-[10px] text-slate-400 font-medium">{f.usage}</div></div><div className="text-right"><div className="text-sm font-black text-green-700">{activity.fieldDistribution?.[f.id] || 0} {activity.unit}</div><div className="text-[9px] text-slate-400 font-bold uppercase">{f.areaHa} ha</div></div></div>)}</div>
+                        <div className="divide-y divide-slate-100">
+                            {relevantFields.map(f => (
+                                <div key={f.id} className="p-3">
+                                    <div className="flex justify-between items-start">
+                                        <div>
+                                            <div className="font-bold text-slate-700 text-sm">{f.name}</div>
+                                            <div className="text-[10px] text-slate-400 font-medium mb-1">{f.usage}</div>
+                                        </div>
+                                        <div className="text-right">
+                                            <div className="text-sm font-black text-green-700">{activity.fieldDistribution?.[f.id] || 0} {activity.unit}</div>
+                                            <div className="text-[9px] text-slate-400 font-bold uppercase">{f.areaHa} ha</div>
+                                        </div>
+                                    </div>
+                                    
+                                    {/* NEU: Herkunfts-Aufschlüsselung pro Feld */}
+                                    {activity.detailedFieldSources && activity.detailedFieldSources[f.id] && (
+                                        <div className="mt-2 space-y-1 bg-slate-50 p-2 rounded-lg border border-slate-100">
+                                            {Object.entries(activity.detailedFieldSources[f.id]).map(([sId, amount]) => {
+                                                const store = allStorages.find(s => s.id === sId);
+                                                const color = getStorageColor(sId, allStorages);
+                                                return (
+                                                    <div key={sId} className="flex justify-between items-center text-[10px]">
+                                                        <div className="flex items-center text-slate-500 font-semibold">
+                                                            <span className="w-1.5 h-1.5 rounded-full mr-1.5" style={{backgroundColor: color}}></span>
+                                                            {store?.name || 'Unbekannt'}
+                                                        </div>
+                                                        <span className="font-bold text-slate-700">{amount} {activity.unit}</span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
                     )}
                 </div>
             </div>
