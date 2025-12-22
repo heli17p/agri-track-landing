@@ -138,27 +138,28 @@ export const TrackingUI: React.FC<Props> = ({
         </div>
       </div>
 
-      {/* VERBESSERTER CONTAINER FÜR EINZELSPEICHER-ZÄHLER */}
-      {activityType === ActivityType.FERTILIZATION && usedStorages.length > 0 && (
-          <div className="fixed bottom-28 left-0 right-0 z-[1150] px-4 pointer-events-none">
-              <div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">
-                  {usedStorages.map(([sId, count]) => {
-                      const s = storages.find(st => st.id === sId);
-                      const color = getStorageColor(sId, storages);
-                      return (
-                          <div key={sId} className="bg-white/90 backdrop-blur-md shadow-lg border border-slate-200 rounded-full pl-1 pr-3 py-1 flex items-center space-x-2 animate-in slide-in-from-bottom-4 duration-300 pointer-events-auto">
-                              <div className="w-6 h-6 rounded-full flex items-center justify-center text-white shadow-sm" style={{backgroundColor: color}}>
-                                  <span className="text-[11px] font-black">{count}</span>
-                              </div>
-                              <span className="text-[10px] font-black text-slate-700 tracking-tight uppercase">{s?.name || 'Unbekannt'}</span>
-                          </div>
-                      );
-                  })}
-              </div>
-          </div>
-      )}
-
       <div className="bg-white border-t-2 border-slate-200 p-4 pb-safe z-[1200] shadow-[0_-8px_30px_rgb(0,0,0,0.15)] shrink-0 relative">
+        
+        {/* EINZELSPEICHER-ZÄHLER JETZT RELATIV ZUM FOOTER POSITIONIERT */}
+        {activityType === ActivityType.FERTILIZATION && usedStorages.length > 0 && (
+            <div className="absolute bottom-full left-0 right-0 mb-4 px-4 pointer-events-none z-[1250]">
+                <div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">
+                    {usedStorages.map(([sId, count]) => {
+                        const s = storages.find(st => st.id === sId);
+                        const color = getStorageColor(sId, storages);
+                        return (
+                            <div key={sId} className="bg-white/90 backdrop-blur-md shadow-lg border border-slate-200 rounded-full pl-1 pr-3 py-1 flex items-center space-x-2 animate-in slide-in-from-bottom-4 duration-300 pointer-events-auto">
+                                <div className="w-6 h-6 rounded-full flex items-center justify-center text-white shadow-sm" style={{backgroundColor: color}}>
+                                    <span className="text-[11px] font-black">{count}</span>
+                                </div>
+                                <span className="text-[10px] font-black text-slate-700 tracking-tight uppercase">{s?.name || 'Unbekannt'}</span>
+                            </div>
+                        );
+                    })}
+                </div>
+            </div>
+        )}
+
         <div className="flex items-center justify-between space-x-2">
           <div className="flex-1 flex items-center justify-around bg-slate-50 rounded-2xl py-3 px-2 border border-slate-100 shadow-inner">
             <div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-slate-800 leading-none">{duration}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Min</span></div>
