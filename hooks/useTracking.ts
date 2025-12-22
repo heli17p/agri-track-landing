@@ -24,8 +24,9 @@ export const useTracking = (
   const [pendingStorageId, setPendingStorageId] = useState<string | null>(null);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [gpsLoading, setGpsLoading] = useState(false);
-  const [gpsError, setGpsError] = useState<string | null>(null); // NEU: GPS Fehler State
+  const [gpsError, setGpsError] = useState<string | null>(null);
   const [isTestMode, setIsTestMode] = useState(false);
+  const [wakeLockActive, setWakeLockActive] = useState(false);
 
   const settingsRef = useRef(settings);
   const fieldsRef = useRef(fields);
@@ -37,6 +38,8 @@ export const useTracking = (
   const activeSourceIdRef = useRef<string | null>(null);
   const currentLoadIndexRef = useRef<number>(1);
   const watchIdRef = useRef<number | null>(null);
+  const wakeLockRef = useRef<any>(null);
+  
   const lastSimPosRef = useRef<GeoPoint | null>(null);
   const lastSimTimeRef = useRef<number>(0);
   
@@ -54,6 +57,42 @@ export const useTracking = (
     subTypeRef.current = subType; 
     isTestModeRef.current = isTestMode; 
   }, [settings, fields, storages, activityType, subType, isTestMode]);
+
+  // WakeLock Logic: Verhindert Standby
+  const requestWakeLock = async () => {
+    if ('wakeLock' in navigator) {
+      try {
+        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
+        setWakeLockActive(true);
+        console.log("[System] WakeLock aktiviert - Screen bleibt an.");
+        
+        wakeLockRef.current.addEventListener('release', () => {
+          setWakeLockActive(false);
+          console.log("[System] WakeLock wurde freigegeben.");
+        });
+      } catch (err: any) {
+        console.warn(`[System] WakeLock Fehler: ${err.message}`);
+      }
+    }
+  };
+
+  const releaseWakeLock = () => {
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release();
+      wakeLockRef.current = null;
+    }
+  };
+
+  // Re-acquire WakeLock if tab becomes visible again
+  useEffect(() => {
+    const handleVisibilityChange = async () => {
+      if (wakeLockRef.current !== null && document.visibilityState === 'visible') {
+        await requestWakeLock();
+      }
+    };
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
+  }, []);
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -126,7 +165,7 @@ export const useTracking = (
 
   const handleNewPosition = useCallback((pos: GeolocationPosition) => {
     setCurrentLocation(pos);
-    setGpsError(null); // Fehler löschen, wenn Position kommt
+    setGpsError(null);
     if (isPaused) return;
 
     const { latitude, longitude, speed, accuracy } = pos.coords;
@@ -192,11 +231,10 @@ export const useTracking = (
     setGpsLoading(true);
     setGpsError(null);
 
-    // Timeout für die erste Positionsbestimmung (10s)
     const timeout = setTimeout(() => {
         if (gpsLoading) {
             setGpsLoading(false);
-            setGpsError("GPS Signal zu schwach oder deaktiviert. Bitte prüfe deine Standorteinstellungen.");
+            setGpsError("GPS Signal zu schwach. Bitte Standorteinstellungen prüfen.");
         }
     }, 10000);
 
@@ -212,6 +250,10 @@ export const useTracking = (
       });
       
       clearTimeout(timeout);
+      
+      // Request WakeLock when starting
+      await requestWakeLock();
+
       setStartTime(Date.now()); 
       setTrackingState('TRANSIT'); 
       setTrackPoints([]); 
@@ -226,20 +268,16 @@ export const useTracking = (
       watchIdRef.current = navigator.geolocation.watchPosition(
           (pos) => { if (!isTestModeRef.current) handleNewPosition(pos); }, 
           (err) => {
-              if (err.code === 1) setGpsError("GPS Berechtigung wurde verweigert.");
+              if (err.code === 1) setGpsError("GPS Berechtigung verweigert.");
               else if (err.code === 2) setGpsError("GPS Signal verloren.");
           }, 
           { enableHighAccuracy: true }
       );
     } catch (err: any) {
         setGpsLoading(false);
-        if (err.code === 1) {
-            setGpsError("Standortzugriff verweigert. Bitte in den Browsereinstellungen erlauben.");
-        } else if (err.code === 2 || err.code === 3) {
-            setGpsError("GPS ist ausgeschaltet oder kein Signal. Bitte schalte GPS in deinen Handy-Einstellungen ein.");
-        } else {
-            setGpsError("GPS Fehler: " + err.message);
-        }
+        if (err.code === 1) setGpsError("Standortzugriff verweigert.");
+        else if (err.code === 2 || err.code === 3) setGpsError("Kein GPS Signal.");
+        else setGpsError("GPS Fehler: " + err.message);
     } finally { 
         setGpsLoading(false); 
     }
@@ -247,8 +285,11 @@ export const useTracking = (
 
   const handleFinishLogic = useCallback(async (notes: string) => {
     if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
-    const durationMin = startTime ? Math.round((Date.now() - startTime) / 60000) : 0;
     
+    // Release WakeLock
+    releaseWakeLock();
+
+    const durationMin = startTime ? Math.round((Date.now() - startTime) / 60000) : 0;
     const involvedFieldIds = new Set<string>();
     trackPoints.forEach(p => {
       if (p.isSpreading) {
@@ -364,10 +405,21 @@ export const useTracking = (
 
   return {
     trackingState, currentLocation, trackPoints, startTime, loadCounts,
-    activeSourceId, detectionCountdown, pendingStorageId, storageWarning, gpsLoading, gpsError, // gpsError exportiert
+    activeSourceId, detectionCountdown, pendingStorageId, storageWarning, gpsLoading, gpsError,
+    wakeLockActive,
     isTestMode, setIsTestMode: (v: boolean) => { setIsTestMode(v); isTestModeRef.current = v; if (v && currentLocation) lastSimPosRef.current = { lat: currentLocation.coords.latitude, lng: currentLocation.coords.longitude }; }, 
-    simulateMovement, startGPS, stopGPS: useCallback(() => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setIsTestMode(false); }, []),
-    handleFinishLogic, handleDiscard: () => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setTrackingState('IDLE'); setTrackPoints([]); setGpsError(null); }
+    simulateMovement, startGPS, stopGPS: useCallback(() => { 
+        if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); 
+        releaseWakeLock();
+        setIsTestMode(false); 
+    }, []),
+    handleFinishLogic, handleDiscard: () => { 
+        if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); 
+        releaseWakeLock();
+        setTrackingState('IDLE'); 
+        setTrackPoints([]); 
+        setGpsError(null); 
+    }
   };
 };
 

@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer, Minimize2 } from 'lucide-react';
+import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer, Minimize2, Sun } from 'lucide-react';
 import { StorageLocation, FertilizerType, ActivityType } from '../../types';
 import { HistoryFilterMode } from '../../pages/TrackingPage';
 
@@ -18,7 +18,7 @@ interface Props {
   onFollowToggle: () => void;
   onHistoryToggle: () => void;
   onTestModeToggle: () => void;
-  onMinimizeClick: () => void; // NEU
+  onMinimizeClick: () => void;
   followUser: boolean;
   historyMode: HistoryFilterMode;
   subType: string;
@@ -26,6 +26,7 @@ interface Props {
   isTestMode: boolean;
   activeSourceId: string | null;
   storages: StorageLocation[];
+  wakeLockActive?: boolean; // NEU
 }
 
 const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
@@ -60,7 +61,8 @@ export const TrackingUI: React.FC<Props> = ({
   activityType,
   isTestMode,
   activeSourceId,
-  storages
+  storages,
+  wakeLockActive = false
 }) => {
   const totalLoads = Object.values(loadCounts).reduce((a, b) => a + b, 0);
   const speed = ((currentLocation?.coords.speed || 0) * 3.6).toFixed(1);
@@ -69,13 +71,11 @@ export const TrackingUI: React.FC<Props> = ({
   const activeStorageName = activeSourceId ? storages.find(s => s.id === activeSourceId)?.name : null;
   const pendingStorageName = pendingStorageId ? storages.find(s => s.id === pendingStorageId)?.name : null;
 
-  // Filter out used storages for individual counters
   const usedStorages = Object.entries(loadCounts).filter(([_, count]) => count > 0);
 
   return (
     <>
       <div className="fixed top-20 right-4 flex flex-col space-y-3 z-[1100]">
-        {/* Minimize Button */}
         <button 
           onClick={onMinimizeClick} 
           className="bg-white/95 p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur text-blue-600 active:scale-95 transition-all hover:bg-blue-50"
@@ -83,6 +83,13 @@ export const TrackingUI: React.FC<Props> = ({
         >
           <Minimize2 size={24} />
         </button>
+
+        {/* WakeLock Status Indicator */}
+        {wakeLockActive && (
+            <div className="bg-amber-500 p-3 rounded-2xl shadow-xl border border-amber-600 text-white flex items-center justify-center animate-pulse" title="Bildschirm bleibt aktiv">
+                <Sun size={24} fill="currentColor" />
+            </div>
+        )}
 
         <button onClick={onMapStyleToggle} className="bg-white/95 p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur text-slate-700 active:scale-95 transition-all"><Layers size={24} /></button>
         <button onClick={onFollowToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${followUser ? 'bg-blue-600 text-white' : 'bg-white/95 text-slate-700'}`}><LocateFixed size={24}/></button>
@@ -135,8 +142,8 @@ export const TrackingUI: React.FC<Props> = ({
         )}
         
         <div className={`bg-white/95 backdrop-blur shadow-2xl border border-slate-300 rounded-full px-5 py-2.5 flex items-center space-x-3 pointer-events-auto transition-all w-fit ${detectionCountdown !== null ? 'opacity-20 scale-75 blur-[1px]' : 'opacity-100'}`}>
-          <div className={`p-2 rounded-full text-white ${trackingState === 'LOADING' ? 'bg-amber-500 animate-pulse' : trackingState === 'SPREADING' ? 'bg-green-600 animate-pulse' : 'bg-blue-500'}`}>
-            {trackingState === 'LOADING' ? <Database size={18}/> : trackingState === 'SPREADING' ? <Droplets size={18}/> : <Truck size={18}/>}
+          <div className={`p-2 rounded-full text-white ${trackingState === 'LOADING' ? 'bg-amber-500 animate-pulse' : trackingState === 'SPREADING' ? 'bg-green-600 animate-pulse' : 'bg-blue-50'}`}>
+             {trackingState === 'LOADING' ? <Database size={18}/> : trackingState === 'SPREADING' ? <Droplets size={18}/> : <Truck size={18} className="text-blue-500" />}
           </div>
           <div className="flex flex-col">
             <span className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-0.5 tracking-tighter">
@@ -151,7 +158,6 @@ export const TrackingUI: React.FC<Props> = ({
 
       <div className="bg-white border-t-2 border-slate-200 p-4 pb-safe z-[1200] shadow-[0_-8px_30px_rgb(0,0,0,0.15)] shrink-0 relative">
         
-        {/* EINZELSPEICHER-ZÄHLER JETZT RELATIV ZUM FOOTER POSITIONIERT */}
         {activityType === ActivityType.FERTILIZATION && usedStorages.length > 0 && (
             <div className="absolute bottom-full left-0 right-0 mb-4 px-4 pointer-events-none z-[1250]">
                 <div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">

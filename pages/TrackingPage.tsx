@@ -201,7 +201,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         onFollowToggle={() => setFollowUser(!followUser)} 
         onHistoryToggle={cycleHistoryMode} 
         onTestModeToggle={() => tracker.setIsTestMode(!tracker.isTestMode)}
-        onMinimizeClick={onMinimize} // NEU
+        onMinimizeClick={onMinimize}
         followUser={followUser} 
         historyMode={historyMode} 
         subType={subType} 
@@ -209,10 +209,9 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         isTestMode={tracker.isTestMode}
         activeSourceId={tracker.activeSourceId}
         storages={storages}
+        wakeLockActive={tracker.wakeLockActive}
       />
 
-      {/* GPS LOST WARNING WHILE TRACKING */}
-      {/* Fix: Redundant check tracker.trackingState !== 'IDLE' removed as it's guaranteed by early return earlier in the component. */}
       {tracker.gpsError && (
           <div className="fixed inset-x-4 top-24 z-[3000] bg-red-600 text-white p-4 rounded-2xl shadow-2xl flex items-center space-x-3 animate-bounce">
               <AlertTriangle size={24} className="shrink-0"/>
