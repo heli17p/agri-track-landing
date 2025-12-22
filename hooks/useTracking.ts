@@ -39,7 +39,6 @@ export const useTracking = (
   const lastSimPosRef = useRef<GeoPoint | null>(null);
   const lastSimTimeRef = useRef<number>(0);
   
-  // Refs für Countdown-Logik (30 Sekunden)
   const proximityStartTimeRef = useRef<number | null>(null);
   const pendingStorageIdRef = useRef<string | null>(null);
   const lastKnownSpeedRef = useRef<number>(0);
@@ -55,7 +54,6 @@ export const useTracking = (
     isTestModeRef.current = isTestMode; 
   }, [settings, fields, storages, activityType, subType, isTestMode]);
 
-  // Zeitbasierter Timer-Tick
   useEffect(() => {
     const timer = setInterval(() => {
       if (activityTypeRef.current !== ActivityType.FERTILIZATION) return;
@@ -78,21 +76,12 @@ export const useTracking = (
           
           if (!isCorrectType) {
               setStorageWarning(`${nearest.name} erkannt, aber falscher Typ!`);
-              proximityStartTimeRef.current = null;
-              setDetectionCountdown(null);
-              setPendingStorageId(null);
-              pendingStorageIdRef.current = null;
               return;
           }
 
           setStorageWarning(null);
 
-          // Wenn wir bereits an diesem Lager als "aktiv geladen" markiert sind, nichts tun
           if (activeSourceIdRef.current === nearest.id && trackingState === 'LOADING') {
-              proximityStartTimeRef.current = null;
-              setDetectionCountdown(null);
-              setPendingStorageId(null);
-              pendingStorageIdRef.current = null;
               return;
           }
 
@@ -125,10 +114,9 @@ export const useTracking = (
           setPendingStorageId(null);
           setDetectionCountdown(null);
 
-          // Statuswechsel von LADEN zu TRANSPORT wenn man wegfährt
-          // WICHTIG: activeSourceIdRef wird hier NICHT mehr genullt, damit die Spurfarbe bleibt!
           if (speedKmh > 3.5 && trackingState === 'LOADING') {
               setTrackingState('TRANSIT');
+              // WICHTIG: activeSourceIdRef wird NICHT gelöscht! Es bleibt die aktive Quelle für diese Fahrt.
           }
       }
     }, 1000);
@@ -154,22 +142,20 @@ export const useTracking = (
     if (trackingState !== 'LOADING' || speedKmh > 3.0) {
         const newState = isSpreading ? 'SPREADING' : (trackingState === 'LOADING' ? 'LOADING' : 'TRANSIT');
         if (newState !== trackingState) setTrackingState(newState);
-        
-        // Auch hier: Kein automatisches Nullstellen der activeSourceId mehr!
-        // Die ID bleibt "sticky" für die aktuelle Fuhre.
     }
 
     const point: TrackPoint = {
       lat: latitude, lng: longitude, timestamp: pos.timestamp, speed: speedKmh,
-      isSpreading, storageId: activeSourceIdRef.current || undefined, loadIndex: currentLoadIndexRef.current
+      isSpreading, 
+      storageId: activeSourceIdRef.current || undefined, // Hier wird die Farbe an den Punkt gebunden
+      loadIndex: currentLoadIndexRef.current
     };
 
     setTrackPoints(prev => {
         if (prev.length > 0) {
             const last = prev[prev.length - 1];
             const dist = getDistance(last, point);
-            const minMove = isTestModeRef.current ? 0.2 : 0.5;
-            if (dist < minMove) return prev;
+            if (dist < (isTestModeRef.current ? 0.2 : 0.5)) return prev;
         }
         return [...prev, point];
     });
@@ -187,8 +173,6 @@ export const useTracking = (
       const dy = lat - lastSimPosRef.current.lat;
       const dx = lng - lastSimPosRef.current.lng;
       heading = (Math.atan2(dx, dy) * 180) / Math.PI;
-    } else if (currentLocation) {
-        lastSimPosRef.current = { lat: currentLocation.coords.latitude, lng: currentLocation.coords.longitude };
     }
     const fakePos: any = {
       coords: { latitude: lat, longitude: lng, accuracy: 5, speed: speedMs, heading: heading },
@@ -197,7 +181,7 @@ export const useTracking = (
     lastSimPosRef.current = { lat, lng };
     lastSimTimeRef.current = now;
     handleNewPosition(fakePos);
-  }, [handleNewPosition, currentLocation]);
+  }, [handleNewPosition]);
 
   const startGPS = async () => {
     if (!navigator.geolocation) return;
@@ -206,11 +190,6 @@ export const useTracking = (
       const initPos: any = await new Promise((res, rej) => { navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true }); });
       setStartTime(Date.now()); setTrackingState('TRANSIT'); setTrackPoints([]); setLoadCounts({});
       activeSourceIdRef.current = null; setActiveSourceId(null); setIsPaused(false); setIsTestMode(false); currentLoadIndexRef.current = 1;
-      const startCoord = { lat: initPos.coords.latitude, lng: initPos.coords.longitude };
-      lastKnownPosRef.current = startCoord;
-      lastKnownSpeedRef.current = 0;
-      lastSimPosRef.current = startCoord; 
-      lastSimTimeRef.current = Date.now();
       setCurrentLocation(initPos);
       watchIdRef.current = navigator.geolocation.watchPosition((pos) => { if (!isTestModeRef.current) handleNewPosition(pos); }, undefined, { enableHighAccuracy: true });
     } finally { setGpsLoading(false); }
@@ -219,6 +198,8 @@ export const useTracking = (
   const handleFinishLogic = useCallback(async (notes: string) => {
     if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
     const durationMin = startTime ? Math.round((Date.now() - startTime) / 60000) : 0;
+    
+    // Finde alle Felder, auf denen tatsächlich ausgebracht wurde
     const involvedFieldIds = new Set<string>();
     trackPoints.forEach(p => {
       if (p.isSpreading) {
@@ -226,11 +207,13 @@ export const useTracking = (
         if (field) involvedFieldIds.add(field.id);
       }
     });
+
     const fIds = Array.from(involvedFieldIds);
     let totalAmt = 0;
     let unit = 'ha';
     let loadCnt = 0;
     const loadSize = subTypeRef.current === 'Gülle' ? settingsRef.current.slurryLoadSize : settingsRef.current.manureLoadSize;
+
     if (activityTypeRef.current === ActivityType.FERTILIZATION) {
       unit = 'm³';
       loadCnt = Object.values(loadCounts).reduce((a, b) => a + b, 0);
@@ -240,21 +223,27 @@ export const useTracking = (
       totalAmt = involvedFields.reduce((sum, f) => sum + f.areaHa, 0);
       totalAmt = Math.round(totalAmt * 100) / 100;
     }
-    const detailedFieldSources: Record<string, Record<string, number>> = {};
+
     const fieldDist: Record<string, number> = {};
+    const detailedFieldSources: Record<string, Record<string, number>> = {};
+
     if (activityTypeRef.current === ActivityType.FERTILIZATION && trackPoints.filter(p => p.isSpreading).length > 0) {
         const spreadingPoints = trackPoints.filter(p => p.isSpreading);
         const amountPerPoint = totalAmt / spreadingPoints.length;
+
         spreadingPoints.forEach(p => {
             const field = fieldsRef.current.find(f => isPointInPolygon(p, f.boundary));
             if (field && p.storageId) {
                 if (!detailedFieldSources[field.id]) detailedFieldSources[field.id] = {};
                 if (!detailedFieldSources[field.id][p.storageId]) detailedFieldSources[field.id][p.storageId] = 0;
                 detailedFieldSources[field.id][p.storageId] += amountPerPoint;
+                
                 if (!fieldDist[field.id]) fieldDist[field.id] = 0;
                 fieldDist[field.id] += amountPerPoint;
             }
         });
+
+        // Runden
         Object.keys(fieldDist).forEach(fid => fieldDist[fid] = Math.round(fieldDist[fid] * 10) / 10);
         Object.keys(detailedFieldSources).forEach(fid => {
             Object.keys(detailedFieldSources[fid]).forEach(sid => {
@@ -262,20 +251,32 @@ export const useTracking = (
             });
         });
     }
+
     const storageDist: Record<string, number> = {};
     if (activityTypeRef.current === ActivityType.FERTILIZATION) {
       Object.entries(loadCounts).forEach(([sId, count]) => {
         storageDist[sId] = count * loadSize;
       });
     }
+
     const record: ActivityRecord = {
-      id: generateId(), date: new Date().toISOString(), type: activityTypeRef.current, year: new Date().getFullYear(),
-      fieldIds: fIds, amount: totalAmt, unit, loadCount: loadCnt > 0 ? loadCnt : undefined, notes: `${notes}\n(Automatisch zugeordnet)\nDauer: ${durationMin} min`,
-      trackPoints: [...trackPoints], fieldDistribution: fieldDist, storageDistribution: Object.keys(storageDist).length > 0 ? storageDist : undefined,
+      id: generateId(), 
+      date: new Date().toISOString(), 
+      type: activityTypeRef.current, 
+      year: new Date().getFullYear(),
+      fieldIds: fIds, 
+      amount: totalAmt, 
+      unit, 
+      loadCount: loadCnt > 0 ? loadCnt : undefined, 
+      notes: `${notes}\nDauer: ${durationMin} min`,
+      trackPoints: [...trackPoints], 
+      fieldDistribution: fieldDist, 
+      storageDistribution: Object.keys(storageDist).length > 0 ? storageDist : undefined,
       detailedFieldSources: Object.keys(detailedFieldSources).length > 0 ? detailedFieldSources : undefined,
       fertilizerType: activityTypeRef.current === ActivityType.FERTILIZATION ? (subTypeRef.current === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE) : undefined,
       tillageType: activityTypeRef.current === ActivityType.TILLAGE ? subTypeRef.current as any : undefined
     };
+
     await dbService.saveActivity(record);
     if (record.type === ActivityType.FERTILIZATION && record.storageDistribution) {
       await dbService.updateStorageLevels(record.storageDistribution);
@@ -290,8 +291,9 @@ export const useTracking = (
   return {
     trackingState, currentLocation, trackPoints, startTime, loadCounts,
     activeSourceId, detectionCountdown, pendingStorageId, storageWarning, gpsLoading,
-    isTestMode, setIsTestMode: (v: boolean) => { setIsTestMode(v); isTestModeRef.current = v; if (v && currentLocation) lastSimPosRef.current = { lat: currentLocation.coords.latitude, lng: currentLocation.coords.longitude }; }, simulateMovement, startGPS, stopGPS: useCallback(() => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setIsTestMode(false); lastSimPosRef.current = null; }, []),
-    handleFinishLogic, handleDiscard: () => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setTrackingState('IDLE'); setTrackPoints([]); lastKnownPosRef.current = null; }
+    isTestMode, setIsTestMode: (v: boolean) => { setIsTestMode(v); isTestModeRef.current = v; if (v && currentLocation) lastSimPosRef.current = { lat: currentLocation.coords.latitude, lng: currentLocation.coords.longitude }; }, 
+    simulateMovement, startGPS, stopGPS: useCallback(() => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setIsTestMode(false); }, []),
+    handleFinishLogic, handleDiscard: () => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setTrackingState('IDLE'); setTrackPoints([]); }
   };
 };
 
