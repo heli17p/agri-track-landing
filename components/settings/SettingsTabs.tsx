@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw } from 'lucide-react';
+import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar } from 'lucide-react';
 /* Fix: ICON_THEMES is exported from utils/appIcons, not types.ts */
 import { FarmProfile, StorageLocation, FertilizerType, AppSettings } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
@@ -37,15 +37,22 @@ export const StorageTab: React.FC<{ storages: StorageLocation[], onEdit: (s: Sto
 
 export const GeneralTab: React.FC<{ settings: AppSettings, setSettings: (s: any) => void }> = ({ settings, setSettings }) => (
     <div className="space-y-6 max-w-lg mx-auto">
+        {/* Gerätebreiten & Volumen */}
         <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
             <h3 className="font-bold text-slate-800 mb-4 flex items-center"><Database size={18} className="mr-2 text-blue-600"/> Gerätebreiten & Volumen</h3>
             <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-4">
-                    <div><label className="text-xs font-bold text-slate-500 uppercase block mb-1">Güllefass (m³) <SharedBadge/></label><input type="number" value={settings.slurryLoadSize} onChange={e => setSettings({...settings, slurryLoadSize: parseFloat(e.target.value)})} className="w-full p-2 border rounded font-bold" /></div>
-                    <div><label className="text-xs font-bold text-slate-500 uppercase block mb-1">Miststreuer (m³) <SharedBadge/></label><input type="number" value={settings.manureLoadSize} onChange={e => setSettings({...settings, manureLoadSize: parseFloat(e.target.value)})} className="w-full p-2 border rounded font-bold" /></div>
+                    <div><label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Güllefass (m³) <SharedBadge/></label><input type="number" value={settings.slurryLoadSize} onChange={e => setSettings({...settings, slurryLoadSize: parseFloat(e.target.value)})} className="w-full p-2 border rounded font-bold" /></div>
+                    <div><label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Miststreuer (m³) <SharedBadge/></label><input type="number" value={settings.manureLoadSize} onChange={e => setSettings({...settings, manureLoadSize: parseFloat(e.target.value)})} className="w-full p-2 border rounded font-bold" /></div>
                 </div>
+                
+                <div className="grid grid-cols-2 gap-4 border-t pt-4">
+                    <div><label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Breite Gülle (m) <SharedBadge/></label><input type="number" value={settings.slurrySpreadWidth || 12} onChange={e => setSettings({...settings, slurrySpreadWidth: parseFloat(e.target.value)})} className="w-full p-2 border rounded font-bold" /></div>
+                    <div><label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Breite Mist (m) <SharedBadge/></label><input type="number" value={settings.manureSpreadWidth || 10} onChange={e => setSettings({...settings, manureSpreadWidth: parseFloat(e.target.value)})} className="w-full p-2 border rounded font-bold" /></div>
+                </div>
+
                 <div className="bg-slate-50 p-4 rounded-xl space-y-3">
-                    <h4 className="text-[10px] font-black text-slate-400 uppercase flex items-center"><Hammer size={14} className="mr-2"/> Arbeitsbreiten (Meter)</h4>
+                    <h4 className="text-[10px] font-black text-slate-400 uppercase flex items-center"><Hammer size={14} className="mr-2"/> Bodenbearbeitung (Meter)</h4>
                     <div className="grid grid-cols-2 gap-3">
                         <div><label className="text-[10px] font-bold text-slate-500 block mb-1">Wiesenegge <SharedBadge/></label><input type="number" value={settings.harrowWidth || 6} onChange={e => setSettings({...settings, harrowWidth: parseFloat(e.target.value)})} className="w-full p-2 border rounded text-xs" /></div>
                         <div><label className="text-[10px] font-bold text-slate-500 block mb-1">Mulcher <SharedBadge/></label><input type="number" value={settings.mulchWidth || 3} onChange={e => setSettings({...settings, mulchWidth: parseFloat(e.target.value)})} className="w-full p-2 border rounded text-xs" /></div>
@@ -55,6 +62,31 @@ export const GeneralTab: React.FC<{ settings: AppSettings, setSettings: (s: any)
                 </div>
             </div>
         </div>
+
+        {/* GPS & Automatik Parameter */}
+        <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
+            <h3 className="font-bold text-slate-800 mb-4 flex items-center"><Zap size={18} className="mr-2 text-amber-500"/> GPS & Automatik</h3>
+            <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-4">
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Min. Speed (km/h)</label>
+                        <input type="number" step="0.1" value={settings.minSpeed} onChange={e => setSettings({...settings, minSpeed: parseFloat(e.target.value)})} className="w-full p-2 border rounded font-medium" />
+                        <p className="text-[9px] text-slate-400 mt-1 italic">Ab dieser Speed wird "Ausbringung" erkannt.</p>
+                    </div>
+                    <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Max. Speed (km/h)</label>
+                        <input type="number" step="0.1" value={settings.maxSpeed} onChange={e => setSettings({...settings, maxSpeed: parseFloat(e.target.value)})} className="w-full p-2 border rounded font-medium" />
+                        <p className="text-[9px] text-slate-400 mt-1 italic">Speed-Limit für die Aufzeichnung.</p>
+                    </div>
+                </div>
+                <div className="pt-2 border-t">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1 flex items-center"><Radar size={12} className="mr-1"/> Lager Radius (m) <SharedBadge/></label>
+                    <input type="number" value={settings.storageRadius} onChange={e => setSettings({...settings, storageRadius: parseFloat(e.target.value)})} className="w-full p-2 border rounded font-medium" />
+                    <p className="text-[9px] text-slate-400 mt-1 italic">Radius um das Lager für die automatische Fuhren-Erkennung.</p>
+                </div>
+            </div>
+        </div>
+
         <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
             <h3 className="font-bold text-slate-800 mb-4">App Design</h3>
             <div className="grid grid-cols-4 gap-2">
