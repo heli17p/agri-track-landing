@@ -28,7 +28,6 @@ export const useTracking = (
   const [isTestMode, setIsTestMode] = useState(false);
   const [wakeLockActive, setWakeLockActive] = useState(false);
   
-  // NEU: Live-Flächenberechnung
   const [workedAreaHa, setWorkedAreaHa] = useState(0);
 
   const settingsRef = useRef(settings);
@@ -165,7 +164,6 @@ export const useTracking = (
             const dist = getDistance(last, point);
             if (dist < (isTestModeRef.current ? 0.2 : 0.5)) return prev;
 
-            // Live-Flächenberechnung bei Bodenbearbeitung
             if (activityTypeRef.current === ActivityType.TILLAGE && isSpreading && last.isSpreading) {
                 const sub = subTypeRef.current;
                 const s = settingsRef.current;
@@ -175,7 +173,7 @@ export const useTracking = (
                 else if (sub === 'Striegel') workingWidth = s.weederWidth || 6;
                 else if (sub === 'Nachsaat') workingWidth = s.reseedingWidth || 3;
 
-                if (dist < 50) { // Plausibilitäts-Check
+                if (dist < 50) { 
                     setWorkedAreaHa(old => old + (dist * workingWidth) / 10000);
                 }
             }
@@ -227,27 +225,58 @@ export const useTracking = (
     if (activityTypeRef.current === ActivityType.FERTILIZATION) {
       unit = 'm³';
       const loadSize = sub === 'Gülle' ? s.slurryLoadSize : s.manureLoadSize;
-      totalAmt = Object.values(loadCounts).reduce((a, b) => a + b, 0) * loadSize;
+      const totalLoads = Object.values(loadCounts).reduce((a, b) => a + b, 0);
+      totalAmt = Math.round(totalLoads * loadSize); // Ganzzahlige Gesamtmenge
+      
       const pointsByLoad: Record<number, TrackPoint[]> = {};
       trackPoints.forEach(p => { const lIdx = p.loadIndex || 1; if (!pointsByLoad[lIdx]) pointsByLoad[lIdx] = []; pointsByLoad[lIdx].push(p); });
+      
       Object.entries(pointsByLoad).forEach(([lIdx, points]) => {
           const spreading = points.filter(p => p.isSpreading);
           if (spreading.length === 0) return;
           const storageId = spreading[0].storageId;
           if (!storageId) return;
-          const volPerPoint = loadSize / spreading.length;
+
+          // Ermittle beteiligte Felder für diese spezifische Fuhre
+          const loadFieldIds = new Set<string>();
           spreading.forEach(p => {
               const field = fieldsRef.current.find(f => isPointInPolygon(p, f.boundary));
-              if (field) {
-                  fieldDist[field.id] = (fieldDist[field.id] || 0) + volPerPoint;
-                  if (!detailedFieldSources[field.id]) detailedFieldSources[field.id] = {};
-                  detailedFieldSources[field.id][storageId] = (detailedFieldSources[field.id][storageId] || 0) + volPerPoint;
-              }
+              if (field) loadFieldIds.add(field.id);
           });
+
+          // OPTIMIERUNG: Wenn nur 1 Feld beteiligt war, nimm die ganze Fuhre (keine Floating-Point-Fehler)
+          if (loadFieldIds.size === 1) {
+              const fId = Array.from(loadFieldIds)[0];
+              fieldDist[fId] = Math.round((fieldDist[fId] || 0) + loadSize);
+              if (!detailedFieldSources[fId]) detailedFieldSources[fId] = {};
+              detailedFieldSources[fId][storageId] = Math.round((detailedFieldSources[fId][storageId] || 0) + loadSize);
+          } else if (loadFieldIds.size > 1) {
+              // Bei mehreren Feldern pro Fuhre: Verteilung nach Punkten, aber am Ende runden
+              const volPerPoint = loadSize / spreading.length;
+              spreading.forEach(p => {
+                  const field = fieldsRef.current.find(f => isPointInPolygon(p, f.boundary));
+                  if (field) {
+                      fieldDist[field.id] = (fieldDist[field.id] || 0) + volPerPoint;
+                      if (!detailedFieldSources[field.id]) detailedFieldSources[field.id] = {};
+                      detailedFieldSources[field.id][storageId] = (detailedFieldSources[field.id][storageId] || 0) + volPerPoint;
+                  }
+              });
+          }
       });
+
+      // Abschließendes Runden aller berechneten Feld-Mengen (Düngung = ganze Zahlen)
+      Object.keys(fieldDist).forEach(fId => {
+          fieldDist[fId] = Math.round(fieldDist[fId]);
+          if (detailedFieldSources[fId]) {
+              Object.keys(detailedFieldSources[fId]).forEach(sId => {
+                  detailedFieldSources[fId][sId] = Math.round(detailedFieldSources[fId][sId]);
+              });
+          }
+      });
+
     } else if (activityTypeRef.current === ActivityType.TILLAGE) {
       unit = 'ha';
-      // Nutze den live berechneten Wert
+      // Bodenbearbeitung: Runden auf 2 Dezimalstellen
       totalAmt = Math.round(workedAreaHa * 100) / 100;
 
       const fieldPoints: Record<string, number> = {};
@@ -268,7 +297,7 @@ export const useTracking = (
     const storageDist: Record<string, number> = {};
     if (activityTypeRef.current === ActivityType.FERTILIZATION) {
       const loadSize = sub === 'Gülle' ? s.slurryLoadSize : s.manureLoadSize;
-      Object.entries(loadCounts).forEach(([sId, count]) => storageDist[sId] = count * loadSize);
+      Object.entries(loadCounts).forEach(([sId, count]) => storageDist[sId] = Math.round(count * loadSize));
     }
 
     const record: ActivityRecord = {
