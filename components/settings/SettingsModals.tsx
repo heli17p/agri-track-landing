@@ -1,31 +1,185 @@
 
 import React from 'react';
-import { X, Terminal, User, Server, RefreshCw, Search, Trash2, AlertTriangle, Move, Copy } from 'lucide-react';
-import { MapContainer } from 'react-leaflet';
-import { StorageLocation, FarmProfile } from '../../types';
+/* Added Droplets to imports */
+import { X, Terminal, User, Search, Trash2, AlertTriangle, Database, Layers, TrendingUp, MapPin, Droplets } from 'lucide-react';
+import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
+import L from 'leaflet';
+import { StorageLocation, FertilizerType, FarmProfile } from '../../types';
 
+// Icons für den Map-Picker innerhalb des Modals
+const createCustomIcon = (color: string, path: string) => L.divIcon({ 
+    className: 'custom-pin', 
+    html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 2px 5px rgba(0,0,0,0.2);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${path}</svg></div>`, 
+    iconSize: [32, 32], 
+    iconAnchor: [16, 16] 
+});
+const slurryIcon = createCustomIcon('#78350f', '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>');
+const manureIcon = createCustomIcon('#d97706', '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>');
+
+const LocationPickerMap = ({ position, onPick, icon }: any) => {
+    const map = useMap();
+    React.useEffect(() => { setTimeout(() => map.invalidateSize(), 200); if (position) map.setView(position, map.getZoom() || 15); }, [map]);
+    useMapEvents({ click(e) { onPick(e.latlng.lat, e.latlng.lng); } });
+    return (
+        <>
+            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            {position && <Marker draggable={true} eventHandlers={{ dragend(e) { onPick(e.target.getLatLng().lat, e.target.getLatLng().lng); } }} position={position} icon={icon} />}
+        </>
+    );
+};
+
+interface StorageEditProps {
+    storage: StorageLocation;
+    setStorage: (s: StorageLocation) => void;
+    onSave: () => void;
+    onDelete: (id: string) => void;
+    onClose: () => void;
+}
+
+export const StorageEditModal: React.FC<StorageEditProps> = ({ storage, setStorage, onSave, onDelete, onClose }) => {
+    return (
+        <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+            <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
+                <div className="p-5 bg-slate-800 text-white flex justify-between items-center shrink-0">
+                    <div className="flex items-center space-x-3">
+                        <div className="p-2 bg-white/10 rounded-lg">
+                            <Database size={20} className="text-amber-400" />
+                        </div>
+                        <h3 className="font-bold">Lager konfigurieren</h3>
+                    </div>
+                    <button onClick={onClose} className="p-1 hover:bg-white/10 rounded-full transition-colors"><X size={24}/></button>
+                </div>
+
+                <div className="p-6 overflow-y-auto space-y-5">
+                    {/* Name & Typ */}
+                    <div className="space-y-4">
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Bezeichnung</label>
+                            <input 
+                                type="text" 
+                                value={storage.name} 
+                                onChange={e => setStorage({...storage, name: e.target.value})} 
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-bold text-slate-700 outline-none focus:ring-2 focus:ring-green-500 transition-all" 
+                                placeholder="z.B. Hauptgrube Hof" 
+                            />
+                        </div>
+
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Lager-Inhalt (Typ)</label>
+                            <div className="flex space-x-2">
+                                <button 
+                                    onClick={() => setStorage({...storage, type: FertilizerType.SLURRY})}
+                                    className={`flex-1 py-3 rounded-2xl border-2 font-bold flex items-center justify-center transition-all ${storage.type === FertilizerType.SLURRY ? 'bg-amber-50 border-amber-600 text-amber-900 shadow-sm' : 'bg-white border-slate-100 text-slate-400 grayscale'}`}
+                                >
+                                    <Droplets size={18} className="mr-2"/> Gülle
+                                </button>
+                                <button 
+                                    onClick={() => setStorage({...storage, type: FertilizerType.MANURE})}
+                                    className={`flex-1 py-3 rounded-2xl border-2 font-bold flex items-center justify-center transition-all ${storage.type === FertilizerType.MANURE ? 'bg-orange-50 border-orange-600 text-orange-900 shadow-sm' : 'bg-white border-slate-100 text-slate-400 grayscale'}`}
+                                >
+                                    <Layers size={18} className="mr-2"/> Mist
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Kapazität & Stand */}
+                    <div className="grid grid-cols-2 gap-4">
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Max. Kapazität (m³)</label>
+                            <input 
+                                type="number" 
+                                value={storage.capacity} 
+                                onChange={e => setStorage({...storage, capacity: parseFloat(e.target.value) || 0})} 
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-black text-lg outline-none" 
+                            />
+                        </div>
+                        <div>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Aktueller Stand (m³)</label>
+                            <input 
+                                type="number" 
+                                value={storage.currentLevel} 
+                                onChange={e => setStorage({...storage, currentLevel: parseFloat(e.target.value) || 0})} 
+                                className="w-full p-3 bg-slate-50 border border-slate-200 rounded-2xl font-black text-lg text-green-700 outline-none" 
+                            />
+                        </div>
+                    </div>
+
+                    {/* Zuwachs */}
+                    <div className="bg-green-50/50 p-4 rounded-2xl border border-green-100">
+                        <label className="flex items-center text-[10px] font-black text-green-700 uppercase tracking-widest mb-2 ml-1">
+                            <TrendingUp size={12} className="mr-1.5"/> Täglicher Zuwachs (m³)
+                        </label>
+                        <input 
+                            type="number" 
+                            step="0.1"
+                            value={storage.dailyGrowth} 
+                            onChange={e => setStorage({...storage, dailyGrowth: parseFloat(e.target.value) || 0})} 
+                            className="w-full p-3 bg-white border border-green-200 rounded-xl font-bold text-green-800 outline-none focus:ring-2 focus:ring-green-500" 
+                        />
+                        <p className="text-[9px] text-green-600 mt-2 font-medium italic">Die App berechnet automatisch den Stand basierend auf diesem Wert.</p>
+                    </div>
+
+                    {/* Map Picker */}
+                    <div>
+                        <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Standort (für Fuhren-Automatik)</label>
+                        <div className="h-40 rounded-2xl overflow-hidden border-2 border-slate-100 relative shadow-inner">
+                            <MapContainer center={storage.geo} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                                <LocationPickerMap 
+                                    position={storage.geo} 
+                                    onPick={(lat: any, lng: any) => setStorage({...storage, geo: { lat, lng }})} 
+                                    icon={storage.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
+                                />
+                            </MapContainer>
+                            <div className="absolute bottom-2 right-2 z-[400] bg-white/90 px-2 py-1 rounded-lg text-[10px] font-bold text-slate-500 shadow-sm border border-slate-200 flex items-center">
+                                <MapPin size={10} className="mr-1"/> Marker ziehen
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <div className="p-4 bg-slate-50 border-t border-slate-100 flex flex-col space-y-3">
+                    <button 
+                        onClick={onSave} 
+                        className="w-full bg-slate-900 text-white py-4 rounded-2xl font-black shadow-lg shadow-slate-200 active:scale-95 transition-all flex items-center justify-center"
+                    >
+                        Speichern
+                    </button>
+                    <button 
+                        onClick={() => onDelete(storage.id)}
+                        className="w-full py-2 text-red-500 font-bold text-xs uppercase tracking-widest hover:bg-red-50 rounded-xl transition-colors"
+                    >
+                        Lager löschen
+                    </button>
+                </div>
+            </div>
+        </div>
+    );
+};
+
+/* Added DiagnoseProps interface definition */
 interface DiagnoseProps {
-  show: boolean;
-  onClose: () => void;
-  activeDiagTab: string;
-  setActiveDiagTab: (tab: any) => void;
-  userInfo: any;
-  cloudStats: any;
-  logs: string[];
-  inspectorData: any;
-  inspectorLoading: boolean;
-  runInspector: () => void;
-  conflicts: any[];
-  conflictsLoading: boolean;
-  conflictSearchId: string;
-  setConflictSearchId: (id: string) => void;
-  loadConflicts: (id?: string) => void;
-  deleteConflict: (id: string) => void;
-  handleForceDeleteFarm: () => void;
-  handlePingTest: () => void;
-  handleHardReset: () => void;
-  isUploading: boolean;
-  uploadProgress: { status: string, percent: number };
+    show: boolean;
+    onClose: () => void;
+    activeDiagTab: string;
+    setActiveDiagTab: (tab: string) => void;
+    userInfo: any;
+    cloudStats: any;
+    logs: string[];
+    inspectorData: any;
+    inspectorLoading: boolean;
+    runInspector: () => void;
+    conflicts: any[];
+    conflictsLoading: boolean;
+    conflictSearchId: string;
+    setConflictSearchId: (id: string) => void;
+    loadConflicts: () => void;
+    deleteConflict: (id: string) => void;
+    handleForceDeleteFarm: () => void;
+    handlePingTest: () => void;
+    handleHardReset: () => void;
+    isUploading: boolean;
+    uploadProgress: { status: string, percent: number };
 }
 
 export const DiagnosticModal: React.FC<DiagnoseProps> = (props) => {

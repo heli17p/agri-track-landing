@@ -8,15 +8,13 @@ import { AppSettings, DEFAULT_SETTINGS, FarmProfile, StorageLocation, Fertilizer
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { ProfileTab, StorageTab, GeneralTab, SyncTab } from '../components/settings/SettingsTabs';
-import { DiagnosticModal, RulesHelpModal } from '../components/settings/SettingsModals';
+import { DiagnosticModal, RulesHelpModal, StorageEditModal } from '../components/settings/SettingsModals';
 
 interface Props { initialTab?: 'profile' | 'storage' | 'general' | 'sync'; }
 
-// Icons Helper
+// Icons Helper für Hof-Marker
 const createCustomIcon = (color: string, path: string) => L.divIcon({ className: 'custom-pin', html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${path}</svg></div>`, iconSize: [32, 32], iconAnchor: [16, 16] });
 const farmIcon = createCustomIcon('#2563eb', '<path d="M3 21h18M5 21V7l8-5 8 5v14"/>');
-const slurryIcon = createCustomIcon('#78350f', '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>');
-const manureIcon = createCustomIcon('#d97706', '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>');
 
 const LocationPickerMap = ({ position, onPick, icon }: any) => {
     const map = useMap();
@@ -122,22 +120,15 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
             handleHardReset={() => confirm("Vollständiger Reset?") && dbService.hardReset()} isUploading={isUploading} uploadProgress={uploadProgress}
         />
 
-        {/* Lager Editor Modal */}
+        {/* Lager Editor Modal - JETZT AUSGELAGERT */}
         {editingStorage && (
-            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm">
-                <div className="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col">
-                    <div className="p-4 bg-slate-800 text-white flex justify-between items-center shrink-0"><h3 className="font-bold">Lager bearbeiten</h3><button onClick={() => setEditingStorage(null)}><X size={20}/></button></div>
-                    <div className="p-4 overflow-y-auto space-y-4">
-                        <input type="text" value={editingStorage.name} onChange={e => setEditingStorage({...editingStorage, name: e.target.value})} className="w-full p-2 border rounded font-bold" placeholder="Name..." />
-                        <div className="grid grid-cols-2 gap-4">
-                            <input type="number" value={editingStorage.capacity} onChange={e => setEditingStorage({...editingStorage, capacity: parseFloat(e.target.value)})} className="p-2 border rounded" placeholder="Kapazität m³" />
-                            <input type="number" value={editingStorage.currentLevel} onChange={e => setEditingStorage({...editingStorage, currentLevel: parseFloat(e.target.value)})} className="p-2 border rounded" placeholder="Aktuell m³" />
-                        </div>
-                        <div className="h-48 rounded-lg overflow-hidden border relative"><MapContainer center={editingStorage.geo} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}><LocationPickerMap position={editingStorage.geo} onPick={(lat: any, lng: any) => setEditingStorage({...editingStorage, geo: { lat, lng }})} icon={editingStorage.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}/></MapContainer></div>
-                        <button onClick={async () => { await dbService.saveStorageLocation(editingStorage); setEditingStorage(null); loadAll(); }} className="w-full bg-slate-900 text-white py-3 rounded-xl font-bold">Speichern</button>
-                    </div>
-                </div>
-            </div>
+            <StorageEditModal 
+                storage={editingStorage}
+                setStorage={setEditingStorage}
+                onSave={async () => { await dbService.saveStorageLocation(editingStorage); setEditingStorage(null); loadAll(); }}
+                onDelete={async (id) => { if(confirm("Lager wirklich löschen?")) { await dbService.deleteStorage(id); setEditingStorage(null); loadAll(); } }}
+                onClose={() => setEditingStorage(null)}
+            />
         )}
 
         {/* Profile Map Picker */}
