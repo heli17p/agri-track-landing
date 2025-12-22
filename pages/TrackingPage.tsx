@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useMemo } from 'react';
-import { Navigation, Play, Loader2, Truck, Hammer, Wheat } from 'lucide-react';
+import { Navigation, Play, Loader2, Truck, Hammer, Wheat, AlertTriangle, Settings, RefreshCw } from 'lucide-react';
 import { dbService } from '../services/db';
 import { Field, StorageLocation, ActivityType, DEFAULT_SETTINGS, ActivityRecord } from '../types';
 import { useTracking } from '../hooks/useTracking';
@@ -47,21 +47,15 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
     return dbService.onDatabaseChange(init);
   }, []);
 
-  // Dynamische Filterung der historischen Spuren
   const filteredHistoryTracks = useMemo(() => {
       if (historyMode === 'OFF') return [];
-      
       const now = new Date();
       let thresholdDate: number;
-
       if (historyMode === 'YEAR') {
-          // Ab 1. Januar des aktuellen Jahres
           thresholdDate = new Date(now.getFullYear(), 0, 1).getTime();
       } else {
-          // Letzte 12 Monate rollierend
           thresholdDate = now.getTime() - (365 * 24 * 60 * 60 * 1000);
       }
-
       return allHistoryTracks.filter(act => new Date(act.date).getTime() >= thresholdDate);
   }, [allHistoryTracks, historyMode]);
 
@@ -113,6 +107,34 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           <p className="text-slate-400 text-sm">Wähle eine Methode um zu starten.</p>
         </div>
         <div className="p-6 space-y-6">
+          
+          {/* GPS ERROR NOTICE */}
+          {tracker.gpsError && (
+              <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-5 animate-in zoom-in-95 duration-300">
+                  <div className="flex items-start space-x-3 text-red-700">
+                      <AlertTriangle className="shrink-0 mt-1" size={24}/>
+                      <div>
+                          <h3 className="font-black uppercase tracking-tight text-sm">GPS Problem erkannt</h3>
+                          <p className="text-xs font-medium mt-1 leading-relaxed">{tracker.gpsError}</p>
+                      </div>
+                  </div>
+                  <div className="mt-4 flex space-x-2">
+                      <button 
+                        onClick={() => tracker.startGPS()} 
+                        className="flex-1 bg-red-600 text-white py-2.5 rounded-xl font-bold text-xs flex items-center justify-center shadow-lg active:scale-95 transition-all"
+                      >
+                          <RefreshCw size={14} className="mr-2"/> Erneut versuchen
+                      </button>
+                      <button 
+                        onClick={() => window.location.reload()} 
+                        className="px-4 bg-white border border-red-200 text-red-600 py-2.5 rounded-xl font-bold text-xs"
+                      >
+                          <Settings size={14}/>
+                      </button>
+                  </div>
+              </div>
+          )}
+
           <div className="bg-green-50 border border-green-200 rounded-2xl p-5 shadow-sm">
             <h2 className="text-lg font-bold text-green-900 mb-4 flex items-center"><Navigation className="mr-2 fill-green-600 text-green-600"/> GPS Aufzeichnung</h2>
             <div className="space-y-4">
@@ -123,7 +145,14 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
               <select value={subType} onChange={e => setSubType(e.target.value)} className="w-full p-3 rounded-xl border border-green-200 bg-white font-bold outline-none focus:ring-2 focus:ring-green-500">
                 {activityType === ActivityType.FERTILIZATION ? <><option value="Gülle">Gülle</option><option value="Mist">Mist</option></> : <><option value="Wiesenegge">Wiesenegge</option><option value="Schlegeln">Schlegeln</option><option value="Nachsaat">Nachsaat</option></>}
               </select>
-              <button onClick={tracker.startGPS} disabled={tracker.gpsLoading} className="w-full py-4 bg-green-600 text-white rounded-xl font-bold flex items-center justify-center shadow-lg active:scale-[0.98] transition-all disabled:opacity-70">{tracker.gpsLoading ? <Loader2 className="animate-spin mr-2"/> : <Play size={24} className="mr-2 fill-white"/>} {tracker.gpsLoading ? 'GPS wird gesucht...' : 'Starten'}</button>
+              <button 
+                onClick={tracker.startGPS} 
+                disabled={tracker.gpsLoading} 
+                className={`w-full py-4 text-white rounded-xl font-bold flex items-center justify-center shadow-lg active:scale-[0.98] transition-all disabled:opacity-70 ${tracker.gpsError ? 'bg-slate-400' : 'bg-green-600'}`}
+              >
+                {tracker.gpsLoading ? <Loader2 className="animate-spin mr-2"/> : <Play size={24} className="mr-2 fill-white"/>} 
+                {tracker.gpsLoading ? 'GPS wird gesucht...' : 'Starten'}
+              </button>
             </div>
           </div>
           <div className="grid grid-cols-1 gap-3">
@@ -180,6 +209,18 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         activeSourceId={tracker.activeSourceId}
         storages={storages}
       />
+
+      {/* GPS LOST WARNING WHILE TRACKING */}
+      {/* Fix: Redundant check tracker.trackingState !== 'IDLE' removed as it's guaranteed by early return earlier in the component. */}
+      {tracker.gpsError && (
+          <div className="fixed inset-x-4 top-24 z-[3000] bg-red-600 text-white p-4 rounded-2xl shadow-2xl flex items-center space-x-3 animate-bounce">
+              <AlertTriangle size={24} className="shrink-0"/>
+              <div>
+                  <h4 className="font-black text-xs uppercase">GPS Signal verloren!</h4>
+                  <p className="text-[10px] opacity-90 font-bold">Bitte stelle sicher, dass GPS aktiviert ist und du freie Sicht zum Himmel hast.</p>
+              </div>
+          </div>
+      )}
 
       {showSaveConfirm && (
         <div className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm p-4 flex items-end pb-24">

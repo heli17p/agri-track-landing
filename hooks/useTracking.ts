@@ -24,6 +24,7 @@ export const useTracking = (
   const [pendingStorageId, setPendingStorageId] = useState<string | null>(null);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [gpsLoading, setGpsLoading] = useState(false);
+  const [gpsError, setGpsError] = useState<string | null>(null); // NEU: GPS Fehler State
   const [isTestMode, setIsTestMode] = useState(false);
 
   const settingsRef = useRef(settings);
@@ -125,6 +126,7 @@ export const useTracking = (
 
   const handleNewPosition = useCallback((pos: GeolocationPosition) => {
     setCurrentLocation(pos);
+    setGpsError(null); // Fehler löschen, wenn Position kommt
     if (isPaused) return;
 
     const { latitude, longitude, speed, accuracy } = pos.coords;
@@ -183,15 +185,64 @@ export const useTracking = (
   }, [handleNewPosition]);
 
   const startGPS = async () => {
-    if (!navigator.geolocation) return;
+    if (!navigator.geolocation) {
+        setGpsError("Dein Gerät unterstützt kein GPS.");
+        return;
+    }
     setGpsLoading(true);
+    setGpsError(null);
+
+    // Timeout für die erste Positionsbestimmung (10s)
+    const timeout = setTimeout(() => {
+        if (gpsLoading) {
+            setGpsLoading(false);
+            setGpsError("GPS Signal zu schwach oder deaktiviert. Bitte prüfe deine Standorteinstellungen.");
+        }
+    }, 10000);
+
     try {
-      const initPos: any = await new Promise((res, rej) => { navigator.geolocation.getCurrentPosition(res, rej, { enableHighAccuracy: true }); });
-      setStartTime(Date.now()); setTrackingState('TRANSIT'); setTrackPoints([]); setLoadCounts({});
-      activeSourceIdRef.current = null; setActiveSourceId(null); setIsPaused(false); setIsTestMode(false); currentLoadIndexRef.current = 1;
+      const initPos: any = await new Promise((res, rej) => { 
+          navigator.geolocation.getCurrentPosition(res, (err) => {
+              clearTimeout(timeout);
+              rej(err);
+          }, { 
+              enableHighAccuracy: true,
+              timeout: 10000 
+          }); 
+      });
+      
+      clearTimeout(timeout);
+      setStartTime(Date.now()); 
+      setTrackingState('TRANSIT'); 
+      setTrackPoints([]); 
+      setLoadCounts({});
+      activeSourceIdRef.current = null; 
+      setActiveSourceId(null); 
+      setIsPaused(false); 
+      setIsTestMode(false); 
+      currentLoadIndexRef.current = 1;
       setCurrentLocation(initPos);
-      watchIdRef.current = navigator.geolocation.watchPosition((pos) => { if (!isTestModeRef.current) handleNewPosition(pos); }, undefined, { enableHighAccuracy: true });
-    } finally { setGpsLoading(false); }
+
+      watchIdRef.current = navigator.geolocation.watchPosition(
+          (pos) => { if (!isTestModeRef.current) handleNewPosition(pos); }, 
+          (err) => {
+              if (err.code === 1) setGpsError("GPS Berechtigung wurde verweigert.");
+              else if (err.code === 2) setGpsError("GPS Signal verloren.");
+          }, 
+          { enableHighAccuracy: true }
+      );
+    } catch (err: any) {
+        setGpsLoading(false);
+        if (err.code === 1) {
+            setGpsError("Standortzugriff verweigert. Bitte in den Browsereinstellungen erlauben.");
+        } else if (err.code === 2 || err.code === 3) {
+            setGpsError("GPS ist ausgeschaltet oder kein Signal. Bitte schalte GPS in deinen Handy-Einstellungen ein.");
+        } else {
+            setGpsError("GPS Fehler: " + err.message);
+        }
+    } finally { 
+        setGpsLoading(false); 
+    }
   };
 
   const handleFinishLogic = useCallback(async (notes: string) => {
@@ -287,7 +338,6 @@ export const useTracking = (
       tillageType: activityTypeRef.current === ActivityType.TILLAGE ? subTypeRef.current as any : undefined
     };
 
-    // --- NEU: DIREKTE SPEICHERUNG IM FELDSTÜCK ---
     if (record.detailedFieldSources) {
         for (const [fId, sourceMap] of Object.entries(record.detailedFieldSources)) {
             const field = fieldsRef.current.find(f => f.id === fId);
@@ -296,7 +346,6 @@ export const useTracking = (
                 for (const [sId, amt] of Object.entries(sourceMap)) {
                     currentSources[sId] = (currentSources[sId] || 0) + amt;
                 }
-                // Update das Feld im DB Service
                 await dbService.saveField({ ...field, detailedSources: currentSources });
             }
         }
@@ -315,10 +364,10 @@ export const useTracking = (
 
   return {
     trackingState, currentLocation, trackPoints, startTime, loadCounts,
-    activeSourceId, detectionCountdown, pendingStorageId, storageWarning, gpsLoading,
+    activeSourceId, detectionCountdown, pendingStorageId, storageWarning, gpsLoading, gpsError, // gpsError exportiert
     isTestMode, setIsTestMode: (v: boolean) => { setIsTestMode(v); isTestModeRef.current = v; if (v && currentLocation) lastSimPosRef.current = { lat: currentLocation.coords.latitude, lng: currentLocation.coords.longitude }; }, 
     simulateMovement, startGPS, stopGPS: useCallback(() => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setIsTestMode(false); }, []),
-    handleFinishLogic, handleDiscard: () => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setTrackingState('IDLE'); setTrackPoints([]); }
+    handleFinishLogic, handleDiscard: () => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setTrackingState('IDLE'); setTrackPoints([]); setGpsError(null); }
   };
 };
 
