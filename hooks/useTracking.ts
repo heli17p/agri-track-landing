@@ -24,11 +24,8 @@ export const useTracking = (
   const [pendingStorageId, setPendingStorageId] = useState<string | null>(null);
   const [storageWarning, setStorageWarning] = useState<string | null>(null);
   const [gpsLoading, setGpsLoading] = useState(false);
-  const [gpsError, setGpsError] = useState<string | null>(null);
+  const [gpsError, setGpsError] = useState<string | null>(null); // NEU: GPS Fehler State
   const [isTestMode, setIsTestMode] = useState(false);
-  
-  // Wake Lock Ref
-  const wakeLockRef = useRef<any>(null);
 
   const settingsRef = useRef(settings);
   const fieldsRef = useRef(fields);
@@ -57,26 +54,6 @@ export const useTracking = (
     subTypeRef.current = subType; 
     isTestModeRef.current = isTestMode; 
   }, [settings, fields, storages, activityType, subType, isTestMode]);
-
-  // Wake Lock Management
-  const requestWakeLock = async () => {
-    if ('wakeLock' in navigator) {
-      try {
-        wakeLockRef.current = await (navigator as any).wakeLock.request('screen');
-        console.log('Wake Lock active');
-      } catch (err: any) {
-        console.warn(`${err.name}, ${err.message}`);
-      }
-    }
-  };
-
-  const releaseWakeLock = () => {
-    if (wakeLockRef.current) {
-      wakeLockRef.current.release();
-      wakeLockRef.current = null;
-      console.log('Wake Lock released');
-    }
-  };
 
   useEffect(() => {
     const timer = setInterval(() => {
@@ -149,7 +126,7 @@ export const useTracking = (
 
   const handleNewPosition = useCallback((pos: GeolocationPosition) => {
     setCurrentLocation(pos);
-    setGpsError(null); 
+    setGpsError(null); // Fehler löschen, wenn Position kommt
     if (isPaused) return;
 
     const { latitude, longitude, speed, accuracy } = pos.coords;
@@ -185,23 +162,26 @@ export const useTracking = (
     });
   }, [isPaused, trackingState]);
 
-  // Fix: Added the missing simulateMovement function to fix the shorthand scope error
   const simulateMovement = useCallback((lat: number, lng: number) => {
-    if (!isTestModeRef.current) return;
     const now = Date.now();
-    const pos = {
-      coords: {
-        latitude: lat,
-        longitude: lng,
-        accuracy: 10,
-        speed: 5 / 3.6, // 5 km/h
-        heading: 0,
-        altitude: null,
-        altitudeAccuracy: null
-      },
+    if (now - lastSimTimeRef.current < 80) return;
+    let speedMs = 0;
+    let heading = 0;
+    if (lastSimPosRef.current) {
+      const dist = getDistance({ lat, lng }, lastSimPosRef.current);
+      const timeSec = (now - lastSimTimeRef.current) / 1000;
+      if (timeSec > 0) speedMs = dist / timeSec;
+      const dy = lat - lastSimPosRef.current.lat;
+      const dx = lng - lastSimPosRef.current.lng;
+      heading = (Math.atan2(dx, dy) * 180) / Math.PI;
+    }
+    const fakePos: any = {
+      coords: { latitude: lat, longitude: lng, accuracy: 5, speed: speedMs, heading: heading },
       timestamp: now
-    } as GeolocationPosition;
-    handleNewPosition(pos);
+    };
+    lastSimPosRef.current = { lat, lng };
+    lastSimTimeRef.current = now;
+    handleNewPosition(fakePos);
   }, [handleNewPosition]);
 
   const startGPS = async () => {
@@ -212,10 +192,11 @@ export const useTracking = (
     setGpsLoading(true);
     setGpsError(null);
 
+    // Timeout für die erste Positionsbestimmung (10s)
     const timeout = setTimeout(() => {
         if (gpsLoading) {
             setGpsLoading(false);
-            setGpsError("GPS Signal zu schwach oder deaktiviert.");
+            setGpsError("GPS Signal zu schwach oder deaktiviert. Bitte prüfe deine Standorteinstellungen.");
         }
     }, 10000);
 
@@ -231,7 +212,6 @@ export const useTracking = (
       });
       
       clearTimeout(timeout);
-      await requestWakeLock(); // NEU: Wake Lock anfordern
       setStartTime(Date.now()); 
       setTrackingState('TRANSIT'); 
       setTrackPoints([]); 
@@ -253,9 +233,13 @@ export const useTracking = (
       );
     } catch (err: any) {
         setGpsLoading(false);
-        if (err.code === 1) setGpsError("Standortzugriff verweigert.");
-        else if (err.code === 2 || err.code === 3) setGpsError("GPS ist ausgeschaltet.");
-        else setGpsError("GPS Fehler: " + err.message);
+        if (err.code === 1) {
+            setGpsError("Standortzugriff verweigert. Bitte in den Browsereinstellungen erlauben.");
+        } else if (err.code === 2 || err.code === 3) {
+            setGpsError("GPS ist ausgeschaltet oder kein Signal. Bitte schalte GPS in deinen Handy-Einstellungen ein.");
+        } else {
+            setGpsError("GPS Fehler: " + err.message);
+        }
     } finally { 
         setGpsLoading(false); 
     }
@@ -263,7 +247,6 @@ export const useTracking = (
 
   const handleFinishLogic = useCallback(async (notes: string) => {
     if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
-    releaseWakeLock(); // NEU: Wake Lock freigeben
     const durationMin = startTime ? Math.round((Date.now() - startTime) / 60000) : 0;
     
     const involvedFieldIds = new Set<string>();
@@ -297,14 +280,18 @@ export const useTracking = (
       Object.entries(pointsByLoad).forEach(([lIdx, points]) => {
           const spreadingInLoad = points.filter(p => p.isSpreading);
           if (spreadingInLoad.length === 0) return;
+
           const storageId = spreadingInLoad[0].storageId;
           if (!storageId) return;
+
           const volumePerPoint = loadSize / spreadingInLoad.length;
+
           spreadingInLoad.forEach(p => {
               const field = fieldsRef.current.find(f => isPointInPolygon(p, f.boundary));
               if (field) {
                   if (!fieldDist[field.id]) fieldDist[field.id] = 0;
                   fieldDist[field.id] += volumePerPoint;
+
                   if (!detailedFieldSources[field.id]) detailedFieldSources[field.id] = {};
                   if (!detailedFieldSources[field.id][storageId]) detailedFieldSources[field.id][storageId] = 0;
                   detailedFieldSources[field.id][storageId] += volumePerPoint;
@@ -334,9 +321,17 @@ export const useTracking = (
     }
 
     const record: ActivityRecord = {
-      id: generateId(), date: new Date().toISOString(), type: activityTypeRef.current, year: new Date().getFullYear(),
-      fieldIds: fIds, amount: totalAmt, unit, loadCount: Object.values(loadCounts).reduce((a, b) => a + b, 0) || undefined, 
-      notes: `${notes}\nDauer: ${durationMin} min`, trackPoints: [...trackPoints], fieldDistribution: fieldDist, 
+      id: generateId(), 
+      date: new Date().toISOString(), 
+      type: activityTypeRef.current, 
+      year: new Date().getFullYear(),
+      fieldIds: fIds, 
+      amount: totalAmt, 
+      unit, 
+      loadCount: Object.values(loadCounts).reduce((a, b) => a + b, 0) || undefined, 
+      notes: `${notes}\nDauer: ${durationMin} min`,
+      trackPoints: [...trackPoints], 
+      fieldDistribution: fieldDist, 
       storageDistribution: Object.keys(storageDist).length > 0 ? storageDist : undefined,
       detailedFieldSources: Object.keys(detailedFieldSources).length > 0 ? detailedFieldSources : undefined,
       fertilizerType: activityTypeRef.current === ActivityType.FERTILIZATION ? (subTypeRef.current === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE) : undefined,
@@ -348,7 +343,9 @@ export const useTracking = (
             const field = fieldsRef.current.find(f => f.id === fId);
             if (field) {
                 const currentSources = field.detailedSources || {};
-                for (const [sId, amt] of Object.entries(sourceMap)) { currentSources[sId] = (currentSources[sId] || 0) + amt; }
+                for (const [sId, amt] of Object.entries(sourceMap)) {
+                    currentSources[sId] = (currentSources[sId] || 0) + amt;
+                }
                 await dbService.saveField({ ...field, detailedSources: currentSources });
             }
         }
@@ -367,18 +364,10 @@ export const useTracking = (
 
   return {
     trackingState, currentLocation, trackPoints, startTime, loadCounts,
-    activeSourceId, detectionCountdown, pendingStorageId, storageWarning, gpsLoading, gpsError,
+    activeSourceId, detectionCountdown, pendingStorageId, storageWarning, gpsLoading, gpsError, // gpsError exportiert
     isTestMode, setIsTestMode: (v: boolean) => { setIsTestMode(v); isTestModeRef.current = v; if (v && currentLocation) lastSimPosRef.current = { lat: currentLocation.coords.latitude, lng: currentLocation.coords.longitude }; }, 
-    simulateMovement, startGPS, stopGPS: useCallback(() => { 
-        if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); 
-        releaseWakeLock(); 
-        setIsTestMode(false); 
-    }, []),
-    handleFinishLogic, handleDiscard: () => { 
-        if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); 
-        releaseWakeLock();
-        setTrackingState('IDLE'); setTrackPoints([]); setGpsError(null); 
-    }
+    simulateMovement, startGPS, stopGPS: useCallback(() => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setIsTestMode(false); }, []),
+    handleFinishLogic, handleDiscard: () => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); setTrackingState('IDLE'); setTrackPoints([]); setGpsError(null); }
   };
 };
 
