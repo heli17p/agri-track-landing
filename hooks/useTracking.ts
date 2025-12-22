@@ -220,8 +220,7 @@ export const useTracking = (
       const loadCnt = Object.values(loadCounts).reduce((a, b) => a + b, 0);
       totalAmt = loadCnt * loadSize;
 
-      // PRÄZISE FAHRTEN-LOGIK: Jede Fuhre wird einzeln auf die Felder aufgeteilt
-      // Wir gruppieren die Punkte nach ihrem loadIndex
+      // GRUPPIERUNG DER PUNKTE NACH FUHREN (loadIndex)
       const pointsByLoad: Record<number, TrackPoint[]> = {};
       trackPoints.forEach(p => {
           const lIdx = p.loadIndex || 1;
@@ -229,25 +228,26 @@ export const useTracking = (
           pointsByLoad[lIdx].push(p);
       });
 
+      // Jede Fuhre einzeln berechnen
       Object.entries(pointsByLoad).forEach(([lIdx, points]) => {
           const spreadingInLoad = points.filter(p => p.isSpreading);
           if (spreadingInLoad.length === 0) return;
 
-          // Quelle dieser spezifischen Fuhre
+          // Quelle dieser spezifischen Fuhre (wird am ersten Spreading-Punkt der Fuhre festgemacht)
           const storageId = spreadingInLoad[0].storageId;
           if (!storageId) return;
 
-          // Jede Fuhre hat ein festes Volumen, das auf die "Spreading"-Punkte dieser Fuhre verteilt wird
+          // Das Volumen dieser einen Fuhre wird auf die Spreading-Punkte dieser Fuhre aufgeteilt
           const volumePerPoint = loadSize / spreadingInLoad.length;
 
           spreadingInLoad.forEach(p => {
               const field = fieldsRef.current.find(f => isPointInPolygon(p, f.boundary));
               if (field) {
-                  // Feld-Gesamt-Verteilung
+                  // Haupt-Feld-Verteilung
                   if (!fieldDist[field.id]) fieldDist[field.id] = 0;
                   fieldDist[field.id] += volumePerPoint;
 
-                  // Detaillierte Herkunfts-Verteilung
+                  // Detail-Aufteilung (Welches Lager auf welches Feld)
                   if (!detailedFieldSources[field.id]) detailedFieldSources[field.id] = {};
                   if (!detailedFieldSources[field.id][storageId]) detailedFieldSources[field.id][storageId] = 0;
                   detailedFieldSources[field.id][storageId] += volumePerPoint;
@@ -255,7 +255,7 @@ export const useTracking = (
           });
       });
 
-      // Runden der berechneten Werte
+      // Werte runden
       Object.keys(fieldDist).forEach(fid => fieldDist[fid] = Math.round(fieldDist[fid] * 10) / 10);
       Object.keys(detailedFieldSources).forEach(fid => {
           Object.keys(detailedFieldSources[fid]).forEach(sid => {
@@ -305,7 +305,7 @@ export const useTracking = (
     setTrackPoints([]);
     lastKnownPosRef.current = null;
     return record;
-  }, [trackPoints, startTime, loadCounts]);
+  }, [trackPoints, startTime, loadCounts, fields]);
 
   return {
     trackingState, currentLocation, trackPoints, startTime, loadCounts,

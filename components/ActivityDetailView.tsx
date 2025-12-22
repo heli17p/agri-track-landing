@@ -1,9 +1,9 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Calendar, Save, Trash2, AlertTriangle, Truck, Wheat, MapPin, FileText, Hammer, CheckSquare, Square, Check, Layers, Database } from 'lucide-react';
-import { ActivityRecord, ActivityType, Field, FertilizerType, HarvestType, TillageType, StorageLocation, TrackPoint, AppSettings, DEFAULT_SETTINGS } from '../types';
+import { X, Calendar, Save, Trash2, AlertTriangle, Truck, Hammer, MapPin, Layers, Database, CheckSquare, Square } from 'lucide-react';
+import { ActivityRecord, ActivityType, Field, FertilizerType, StorageLocation, TrackPoint, AppSettings, DEFAULT_SETTINGS } from '../types';
 import { dbService } from '../services/db';
-import { MapContainer, TileLayer, Polyline, Polygon, useMap, Popup } from 'react-leaflet';
+import { MapContainer, TileLayer, Polyline, Polygon, useMap } from 'react-leaflet';
 import L from 'leaflet';
 
 interface Props {
