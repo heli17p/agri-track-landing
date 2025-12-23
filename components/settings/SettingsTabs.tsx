@@ -1,6 +1,6 @@
 
-import React, { useState, useEffect } from 'react';
-import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2, X, Share2, Key, Users, UserMinus, ShieldAlert } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2, X, Share2, Key, Users, UserMinus, ShieldAlert, FileOutput, FileInput } from 'lucide-react';
 import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, EquipmentCategory, ActivityType } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
 import { dbService, generateId } from '../../services/db';
@@ -441,6 +441,7 @@ export const GeneralTab: React.FC<{ settings: AppSettings, setSettings: (s: any)
 export const SyncTab: React.FC<{ authState: any, settings: AppSettings, cloudStats: any, localStats: any, connectMode: string, setConnectMode: (m: any) => void, inputFarmId: string, setInputFarmId: (v: string) => void, inputPin: string, setInputPin: (v: string) => void, searchStatus: string, foundOwnerEmail: string | null, connectError: string | null, onSearch: () => void, onJoin: () => void, onCreate: () => void, onForceUpload: () => void, onManualDownload: () => void, onShowDiagnose: () => void, onLogout: () => void }> = (props) => {
     const [members, setMembers] = useState<any[]>([]);
     const [loadingMembers, setLoadingMembers] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
     const isOwner = props.authState && props.settings.ownerEmail === props.authState.email;
 
     useEffect(() => {
@@ -462,6 +463,22 @@ export const SyncTab: React.FC<{ authState: any, settings: AppSettings, cloudSta
         if (confirm(`Möchtest du '${email}' wirklich vom Hof entfernen?`)) {
             await dbService.removeFarmMember(userId);
             loadMembers();
+        }
+    };
+
+    const handleImportClick = () => fileInputRef.current?.click();
+    
+    const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+        const file = e.target.files?.[0];
+        if (!file) return;
+        if (confirm("Backup wirklich einspielen? Bestehende lokale Daten werden überschrieben.")) {
+            try {
+                await dbService.importBackup(file);
+                alert("Erfolgreich importiert. Die App wird neu geladen.");
+                window.location.reload();
+            } catch (err) {
+                alert("Fehler beim Import.");
+            }
         }
     };
 
@@ -574,7 +591,25 @@ export const SyncTab: React.FC<{ authState: any, settings: AppSettings, cloudSta
                 {props.authState && props.settings.farmId && <div className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Farm ID: <span className="text-slate-700">{props.settings.farmId}</span></div>}
             </div>
             
-            {props.authState && props.settings.farmId && (<div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4"><h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><RefreshCw size={14} className="mr-2"/> Synchronisations-Status</h4><div className="grid grid-cols-2 gap-4"><div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col items-center"><span className="text-2xl font-black text-slate-800">{props.localStats.total}</span><span className="text-[9px] font-bold text-slate-500 uppercase">Lokal (Handy)</span></div><div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col items-center"><span className="text-2xl font-black text-blue-700">{props.cloudStats.total === -1 ? '...' : props.cloudStats.total}</span><span className="text-[9px] font-bold text-blue-500 uppercase">Cloud (Server)</span></div></div>{props.localStats.total === props.cloudStats.total ? (<div className="flex items-center justify-center text-green-600 text-xs font-bold py-1"><CheckCircle2 size={14} className="mr-1.5"/> Alle Daten sind aktuell</div>) : (<div className="text-[10px] text-center text-slate-400 italic">Unterschiede? Nutze "Daten hochladen" um manuell zu sichern.</div>)}</div>)}
+            {props.authState && props.settings.farmId && (<div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4"><h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><RefreshCw size={14} className="mr-2"/> Synchronisations-Status</h4><div className="grid grid-cols-2 gap-4"><div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col items-center"><span className="text-2xl font-black text-slate-800">{props.localStats.total}</span><span className="text-[9px] font-bold text-slate-500 uppercase">Lokal (Handy)</span></div><div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col items-center"><span className="text-2xl font-black text-blue-700">{props.cloudStats.total === -1 ? '...' : props.cloudStats.total}</span><span className="text-[9px] font-bold text-blue-500 uppercase">Cloud (Server)</span></div></div>{props.localStats.total === props.cloudStats.total ? (<div className="flex items-center justify-center text-green-600 text-xs font-bold py-1"><CheckCircle2 size={14} className="mr-1.5"/> Alle Daten sind aktuell</div>) : (<div className="text-[10px] text-center text-slate-400 italic">Unterschiede? Nutze "Server-Daten laden" um alles neu zu holen.</div>)}</div>)}
+            
+            {/* LOKALE DATEI SICHERUNG SECTION */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
+                <h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><Database size={14} className="mr-2 text-amber-600"/> Lokale Sicherung (PC / Handy)</h4>
+                <div className="grid grid-cols-2 gap-3">
+                    <button onClick={dbService.exportBackup} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center hover:bg-slate-100 transition-colors">
+                        <FileOutput size={24} className="text-slate-700 mb-2"/>
+                        <span className="text-[10px] font-bold uppercase">Exportieren</span>
+                    </button>
+                    <button onClick={handleImportClick} className="p-3 bg-slate-50 border border-slate-200 rounded-xl flex flex-col items-center hover:bg-slate-100 transition-colors">
+                        <FileInput size={24} className="text-slate-700 mb-2"/>
+                        <span className="text-[10px] font-bold uppercase">Importieren</span>
+                        <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept=".json" />
+                    </button>
+                </div>
+                <p className="text-[9px] text-slate-400 italic text-center">Erstellt eine .json Datei auf deinem Gerät. Nutze dies für manuelle Backups.</p>
+            </div>
+
             {props.authState && !props.settings.farmId && props.connectMode === 'VIEW' && (<div className="grid grid-cols-1 gap-4"><button onClick={() => props.setConnectMode('JOIN')} className="bg-white p-6 rounded-xl border-2 border-slate-200 hover:border-blue-500 flex items-center font-bold text-blue-600 transition-all active:scale-95"><UserPlus size={24} className="mr-3"/> Hof beitreten</button><button onClick={() => props.setConnectMode('CREATE')} className="bg-white p-6 rounded-xl border-2 border-slate-200 hover:border-green-500 flex items-center font-bold text-green-600 transition-all active:scale-95"><Plus size={24} className="mr-3"/> Hof neu erstellen</button></div>)}
             {props.authState && props.settings.farmId && (
                 <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-3">

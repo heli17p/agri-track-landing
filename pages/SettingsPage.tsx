@@ -54,7 +54,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [storages, setStorages] = useState<StorageLocation[]>([]);
   const [equipment, setEquipment] = useState<Equipment[]>([]); 
   const [isSaving, setIsSaving] = useState(false);
-  const [showToast, setShowToast] = useState(false);
+  const [toast, setToast] = useState<{show: boolean, msg: string}>({show: false, msg: ''});
   const [authState, setAuthState] = useState<any>(null);
   const [userInfo, setUserInfo] = useState<any>(null);
   const [localStats, setLocalStats] = useState({ total: 0 });
@@ -97,8 +97,24 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
     try {
         await dbService.saveFarmProfile(profile);
         await dbService.saveSettings(settings);
-        syncData(); setShowToast(true); setTimeout(() => setShowToast(false), 2000);
+        syncData(); 
+        setToast({show: true, msg: 'Gespeichert'}); 
+        setTimeout(() => setToast({show: false, msg: ''}), 2000);
     } catch (e) { alert("Fehler: " + e); } finally { setIsSaving(false); }
+  };
+
+  const handleManualDownload = async () => {
+    setIsSaving(true);
+    try {
+        const result = await dbService.syncActivities();
+        await loadAll();
+        setToast({show: true, msg: result.message});
+        setTimeout(() => setToast({show: false, msg: ''}), 3000);
+    } catch (e) {
+        setToast({show: true, msg: 'Fehler beim Laden.'});
+    } finally {
+        setIsSaving(false);
+    }
   };
 
   const handleLogout = async () => {
@@ -110,7 +126,12 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
   return (
     <div className="h-full flex flex-col bg-slate-100 relative overflow-hidden">
-        {showToast && <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-green-600 text-white px-6 py-2 rounded-full shadow-xl z-50 animate-in fade-in slide-in-from-top-4 flex items-center"><CheckCircle size={18} className="mr-2"/> Gespeichert</div>}
+        {toast.show && (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 bg-slate-900 text-white px-6 py-2 rounded-full shadow-2xl z-50 animate-in fade-in slide-in-from-top-4 flex items-center border border-white/20 backdrop-blur">
+                <CheckCircle size={18} className="mr-2 text-green-400"/> 
+                <span className="text-xs font-bold">{toast.msg}</span>
+            </div>
+        )}
         
         <div className="bg-white border-b border-slate-200 sticky top-0 z-10 shrink-0">
             <div className="flex overflow-x-auto hide-scrollbar">
@@ -137,7 +158,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                 inputPin={inputPin} setInputPin={setInputPin} searchStatus="IDLE" foundOwnerEmail={null} connectError={null} 
                 onSearch={() => {}} onJoin={() => {}} onCreate={() => {}} 
                 onForceUpload={() => dbService.forceUploadToFarm((s, p) => setUploadProgress({status: s, percent: p}))} 
-                onManualDownload={syncData} onShowDiagnose={() => { setLogs(dbService.getLogs()); setShowDiagnose(true); }}
+                onManualDownload={handleManualDownload} onShowDiagnose={() => { setLogs(dbService.getLogs()); setShowDiagnose(true); }}
                 onLogout={handleLogout}
             />}
         </div>
