@@ -35,6 +35,7 @@ const farmIcon = createCustomIcon('#2563eb', iconPaths.house);
 const slurryIcon = createCustomIcon('#78350f', iconPaths.droplet); 
 const manureIcon = createCustomIcon('#d97706', iconPaths.layers); 
 
+// Standard Schlag-Eckpunkte
 const VertexMarker = ({ position, index, onDragEnd, onDelete }: { position: GeoPoint, index: number, onDragEnd: (i: number, lat: number, lng: number) => void, onDelete: (i: number) => void }) => {
     const markerRef = useRef<L.Marker>(null);
     const eventHandlers = useMemo(() => ({
@@ -67,19 +68,26 @@ const VertexMarker = ({ position, index, onDragEnd, onDelete }: { position: GeoP
     );
 };
 
-// Spezial-Marker für Schnittpunkte mit Live-Update
-const SplitPointMarker = ({ position, index, onDrag, onDelete }: { position: GeoPoint, index: number, onDrag: (i: number, lat: number, lng: number) => void, onDelete: (i: number) => void }) => {
+// Spezial-Marker für Schnittpunkte (FLÜSSIGES ZIEHEN)
+const SplitPointMarker = ({ position, index, onMove, onCommit, onDelete }: { position: GeoPoint, index: number, onMove: (i: number, lat: number, lng: number) => void, onCommit: (i: number, lat: number, lng: number) => void, onDelete: (i: number) => void }) => {
     const markerRef = useRef<L.Marker>(null);
+    
     const eventHandlers = useMemo(() => ({
         drag(e: any) {
             const { lat, lng } = e.target.getLatLng();
-            onDrag(index, lat, lng);
+            // Nur visuelle Linie updaten (kein State-Render)
+            onMove(index, lat, lng);
+        },
+        dragend(e: any) {
+            const { lat, lng } = e.target.getLatLng();
+            // State final aktualisieren
+            onCommit(index, lat, lng);
         },
         click(e: any) {
             L.DomEvent.stopPropagation(e);
             onDelete(index);
         }
-    }), [index, onDrag, onDelete]);
+    }), [index, onMove, onCommit, onDelete]);
 
     return (
         <Marker
@@ -89,9 +97,9 @@ const SplitPointMarker = ({ position, index, onDrag, onDelete }: { position: Geo
             ref={markerRef}
             icon={L.divIcon({
                 className: 'split-point-marker',
-                html: '<div style="width: 24px; height: 24px; background: white; border: 5px solid #ef4444; border-radius: 50%; box-shadow: 0 0 15px rgba(239,68,68,0.6); cursor: move;"></div>',
-                iconSize: [24, 24],
-                iconAnchor: [12, 12]
+                html: '<div style="width: 28px; height: 28px; background: white; border: 5px solid #ef4444; border-radius: 50%; box-shadow: 0 4px 12px rgba(239,68,68,0.4); cursor: move;"></div>',
+                iconSize: [28, 28],
+                iconAnchor: [14, 14]
             })}
         />
     );
@@ -163,6 +171,9 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const [editingField, setEditingField] = useState<Field | null>(null);
   const [isSplitting, setIsSplitting] = useState(false);
   const [splitPoints, setSplitPoints] = useState<GeoPoint[]>([]);
+
+  // Referenz für die Linie, um sie ohne Re-Render zu bewegen
+  const polylineRef = useRef<L.Polyline | null>(null);
   
   useEffect(() => { loadData(); }, []);
 
@@ -215,14 +226,23 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
       setEditingField({ ...editingField, boundary: newBoundary, areaHa: calculateArea(newBoundary) });
   };
 
-  // Live-Update für Schnittpunkte
-  const handleSplitPointDrag = useCallback((index: number, lat: number, lng: number) => {
+  // SCHNELLE VISUELLE AKTUALISIERUNG (KEIN STATE UPDATE)
+  const handleSplitPointMove = useCallback((index: number, lat: number, lng: number) => {
+      if (polylineRef.current) {
+          const latlngs = [...(polylineRef.current.getLatLngs() as L.LatLng[])];
+          latlngs[index] = L.latLng(lat, lng);
+          polylineRef.current.setLatLngs(latlngs);
+      }
+  }, []);
+
+  // STATE AKTUALISIERUNG NUR NACH LOSLASSEN
+  const handleSplitPointCommit = (index: number, lat: number, lng: number) => {
       setSplitPoints(prev => {
           const next = [...prev];
           next[index] = { lat, lng };
           return next;
       });
-  }, []);
+  };
 
   const handleSplitPointDelete = (index: number) => {
       if (splitPoints.length <= 1) {
@@ -235,7 +255,6 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const handleMapClick = (lat: number, lng: number) => {
       if (!editingField) return;
       if (isSplitting) {
-          // Unbegrenzte Punkte hinzufügen
           setSplitPoints(prev => [...prev, { lat, lng }]);
       } else {
           const newBoundary = [...editingField.boundary, { lat, lng }];
@@ -329,9 +348,20 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                         {isSplitting && splitPoints.length > 0 && (
                             <>
                                 {splitPoints.map((p, i) => (
-                                    <SplitPointMarker key={`split-${i}`} index={i} position={p} onDrag={handleSplitPointDrag} onDelete={handleSplitPointDelete} />
+                                    <SplitPointMarker 
+                                        key={`split-${i}`} 
+                                        index={i} 
+                                        position={p} 
+                                        onMove={handleSplitPointMove} 
+                                        onCommit={handleSplitPointCommit} 
+                                        onDelete={handleSplitPointDelete} 
+                                    />
                                 ))}
-                                {splitPoints.length >= 2 && <Polyline positions={splitPoints.map(p => [p.lat, p.lng])} pathOptions={{ color: '#ef4444', weight: 5, dashArray: '10, 15', lineCap: 'round' }} />}
+                                <Polyline 
+                                    ref={polylineRef}
+                                    positions={splitPoints.map(p => [p.lat, p.lng])} 
+                                    pathOptions={{ color: '#ef4444', weight: 5, dashArray: '10, 15', lineCap: 'round' }} 
+                                />
                             </>
                         )}
                     </>
@@ -364,7 +394,7 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                      <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-[11px] text-blue-700 font-bold leading-tight">
                          {splitPoints.length === 0 && "Klicke den Startpunkt auf der Karte an."}
                          {splitPoints.length >= 1 && "Klicke für weitere Kurvenpunkte oder verschiebe die Punkte frei."}
-                         {splitPoints.length >= 2 && <div className="mt-1 text-[10px] text-green-600 font-black">Linie wird jetzt LIVE mitverschoben!</div>}
+                         {splitPoints.length >= 2 && <div className="mt-1 text-[10px] text-green-600 font-black">Punkte lassen sich nun butterweich ziehen!</div>}
                      </div>
                  ) : (
                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Ziehe Punkte zum Verschieben • Klicke Karte für neue Punkte</p>
