@@ -12,29 +12,16 @@ import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 
 const MAP_COLORS = {
-    standard: {
-        acker: '#92400E',
-        weide: '#65a30d',
-        grunland: '#15803D',
-        div: '#EAB308',
-        hof: '#2563eb'
-    },
-    satellite: {
-        acker: '#F59E0B',
-        weide: '#BEF264',
-        grunland: '#84CC16',
-        div: '#FEF08A',
-        hof: '#3b82f6'
-    }
+    standard: { acker: '#92400E', weide: '#65a30d', grunland: '#15803D', div: '#EAB308', hof: '#2563eb' },
+    satellite: { acker: '#F59E0B', weide: '#BEF264', grunland: '#84CC16', div: '#FEF08A', hof: '#3b82f6' }
 };
 
 const createCustomIcon = (color: string, svgPath: string) => {
   return L.divIcon({
     className: 'custom-pin-icon',
-    html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; box-shadow: 0 3px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: white; position: relative;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${svgPath}</svg><div style="width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 8px solid ${color}; position: absolute; bottom: -7px; left: 50%; transform: translateX(-50%);"></div></div>`,
-    iconSize: [32, 40],
-    iconAnchor: [16, 40], 
-    popupAnchor: [0, -42]
+    html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; box-shadow: 0 3px 8px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: white; position: relative;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${svgPath}</svg></div>`,
+    iconSize: [32, 32],
+    iconAnchor: [16, 16], 
   });
 };
 
@@ -80,15 +67,18 @@ const VertexMarker = ({ position, index, onDragEnd, onDelete }: { position: GeoP
     );
 };
 
-// Spezial-Komponente für ziehbare Schnittpunkte
-const SplitPointMarker = ({ position, index, onDrag }: { position: GeoPoint, index: number, onDrag: (i: number, lat: number, lng: number) => void }) => {
+const SplitPointMarker = ({ position, index, onDragEnd, onDelete }: { position: GeoPoint, index: number, onDragEnd: (i: number, lat: number, lng: number) => void, onDelete: (i: number) => void }) => {
     const markerRef = useRef<L.Marker>(null);
     const eventHandlers = useMemo(() => ({
-        drag(e: any) {
-            const latlng = e.target.getLatLng();
-            onDrag(index, latlng.lat, latlng.lng);
+        dragend(e: any) {
+            const { lat, lng } = e.target.getLatLng();
+            onDragEnd(index, lat, lng);
+        },
+        click(e: any) {
+            L.DomEvent.stopPropagation(e);
+            onDelete(index);
         }
-    }), [index, onDrag]);
+    }), [index, onDragEnd, onDelete]);
 
     return (
         <Marker
@@ -98,9 +88,9 @@ const SplitPointMarker = ({ position, index, onDrag }: { position: GeoPoint, ind
             ref={markerRef}
             icon={L.divIcon({
                 className: 'split-point-marker',
-                html: '<div style="width: 18px; height: 18px; background: white; border: 4px solid #ef4444; border-radius: 50%; box-shadow: 0 0 8px rgba(239,68,68,0.5); cursor: move;"></div>',
-                iconSize: [18, 18],
-                iconAnchor: [9, 9]
+                html: '<div style="width: 20px; height: 20px; background: white; border: 4px solid #ef4444; border-radius: 50%; box-shadow: 0 0 10px rgba(239,68,68,0.6); cursor: move;"></div>',
+                iconSize: [20, 20],
+                iconAnchor: [10, 10]
             })}
         />
     );
@@ -117,17 +107,19 @@ const MapClickHandler = ({ isEditing, onMapClick }: { isEditing: boolean, onMapC
     return null;
 };
 
-const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: FarmProfile | null, focusField?: Field | null }) => {
+const MapBounds = ({ fields, profile, focusField, isEditing }: { fields: Field[], profile: FarmProfile | null, focusField?: Field | null, isEditing: boolean }) => {
     const map = useMap();
     useEffect(() => {
         const container = map.getContainer();
         const observer = new ResizeObserver(() => { map.invalidateSize(); });
         observer.observe(container);
-        map.invalidateSize();
         return () => observer.disconnect();
     }, [map]);
 
     useEffect(() => {
+        // Zoom-Automatik pausieren wenn wir editieren
+        if (isEditing) return;
+
         if (focusField && focusField.boundary.length > 0) {
              const polygon = L.polygon(focusField.boundary.map(p => [p.lat, p.lng]));
              try { map.fitBounds(polygon.getBounds(), { padding: [50, 50], maxZoom: 18 }); } catch(e) {}
@@ -140,7 +132,7 @@ const MapBounds = ({ fields, profile, focusField }: { fields: Field[], profile: 
             const group = new L.FeatureGroup(layers);
             try { map.fitBounds(group.getBounds(), { padding: [50, 50] }); } catch(e) {}
         }
-    }, [fields, map, profile, focusField]);
+    }, [fields, map, profile, focusField, isEditing]);
     return null;
 };
 
@@ -206,28 +198,24 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     const name = field.name.toUpperCase();
     const colors = mapStyle === 'satellite' ? MAP_COLORS.satellite : MAP_COLORS.standard;
     if (usage.includes('DIV') || name.includes('DIV')) return colors.div;
-    const isWeide = usage.includes('WEIDE') || name.includes('WEIDE');
     if (field.type === 'Acker') return colors.acker;
-    if (isWeide) return colors.weide;
-    return colors.grunland;
+    return (usage.includes('WEIDE') || name.includes('WEIDE')) ? colors.weide : colors.grunland;
   };
 
   const handleVertexDragEnd = (index: number, lat: number, lng: number) => {
       if (!editingField || isSplitting) return;
       const newBoundary = [...editingField.boundary];
       newBoundary[index] = { lat, lng };
-      const newArea = calculateArea(newBoundary);
-      setEditingField({ ...editingField, boundary: newBoundary, areaHa: newArea });
+      setEditingField({ ...editingField, boundary: newBoundary, areaHa: calculateArea(newBoundary) });
   };
 
   const handleVertexDelete = (index: number) => {
       if (!editingField || isSplitting) return;
       const newBoundary = editingField.boundary.filter((_, i) => i !== index);
-      const newArea = calculateArea(newBoundary);
-      setEditingField({ ...editingField, boundary: newBoundary, areaHa: newArea });
+      setEditingField({ ...editingField, boundary: newBoundary, areaHa: calculateArea(newBoundary) });
   };
 
-  const handleSplitPointDrag = (index: number, lat: number, lng: number) => {
+  const handleSplitPointDragEnd = (index: number, lat: number, lng: number) => {
       setSplitPoints(prev => {
           const next = [...prev];
           next[index] = { lat, lng };
@@ -235,24 +223,27 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
       });
   };
 
+  const handleSplitPointDelete = (index: number) => {
+      if (splitPoints.length <= 2) return;
+      setSplitPoints(prev => prev.filter((_, i) => i !== index));
+  };
+
   const handleMapClick = (lat: number, lng: number) => {
       if (!editingField) return;
       if (isSplitting) {
-          if (splitPoints.length < 2) setSplitPoints(prev => [...prev, { lat, lng }]);
+          setSplitPoints(prev => [...prev, { lat, lng }]);
       } else {
           const newBoundary = [...editingField.boundary, { lat, lng }];
-          const newArea = calculateArea(newBoundary);
-          setEditingField({ ...editingField, boundary: newBoundary, areaHa: newArea });
+          setEditingField({ ...editingField, boundary: newBoundary, areaHa: calculateArea(newBoundary) });
       }
   };
 
   const executeSplit = async () => {
     if (!editingField || splitPoints.length < 2) return;
     
-    const result = splitPolygon(editingField.boundary, splitPoints[0], splitPoints[1]);
+    const result = splitPolygon(editingField.boundary, splitPoints);
     if (result) {
         const [polyA, polyB] = result;
-        
         const fieldA: Field = { ...editingField, boundary: polyA, areaHa: calculateArea(polyA) };
         const fieldB: Field = {
             ...editingField,
@@ -261,10 +252,8 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
             boundary: polyB,
             areaHa: calculateArea(polyB)
         };
-
         await dbService.saveField(fieldA);
         await dbService.saveField(fieldB);
-        
         cancelEdit();
         loadData();
     } else {
@@ -290,32 +279,28 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const legendData = useMemo(() => {
       const colors = mapStyle === 'satellite' ? MAP_COLORS.satellite : MAP_COLORS.standard;
       const data = {
-          grunland: { label: 'Grünland (Mähwiese)', color: colors.grunland, present: false },
+          grunland: { label: 'Grünland', color: colors.grunland, present: false },
           weide: { label: 'Dauerweide', color: colors.weide, present: false },
           acker: { label: 'Acker', color: colors.acker, present: false },
-          div: { label: 'Div. Flächen (DIVNFZ)', color: colors.div, present: false }
+          div: { label: 'Div. Flächen', color: colors.div, present: false }
       };
       fields.forEach(f => {
           const usage = f.usage?.toUpperCase() || '';
           const name = f.name.toUpperCase();
-          const displayColor = getFieldColor(f);
-          if (usage.includes('DIV') || name.includes('DIV')) { data.div.present = true; data.div.color = displayColor; } 
-          else if (f.type === 'Grünland' && (usage.includes('WEIDE') || name.includes('WEIDE'))) { data.weide.present = true; data.weide.color = displayColor; } 
-          else if (f.type === 'Acker') { data.acker.present = true; data.acker.color = displayColor; } 
-          else if (f.type === 'Grünland') { data.grunland.present = true; data.grunland.color = displayColor; }
+          if (usage.includes('DIV') || name.includes('DIV')) data.div.present = true;
+          else if (f.type === 'Grünland' && (usage.includes('WEIDE') || name.includes('WEIDE'))) data.weide.present = true;
+          else if (f.type === 'Acker') data.acker.present = true;
+          else data.grunland.present = true;
       });
       return data;
   }, [fields, mapStyle]);
-
-  const hasSlurry = useMemo(() => storages.some(s => s.type === FertilizerType.SLURRY), [storages]);
-  const hasManure = useMemo(() => storages.some(s => s.type === FertilizerType.MANURE), [storages]);
 
   return (
     <div className="h-full w-full relative bg-slate-900 min-h-[600px]">
          <div className="absolute inset-0 z-0">
              <MapContainer key="map-page-main" center={[47.5, 14.5]} zoom={7} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                 <TileLayer url={mapStyle === 'standard' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} />
-                <MapBounds fields={fields} profile={profile} focusField={editingField} />
+                <MapBounds fields={fields} profile={profile} focusField={editingField} isEditing={isEditing} />
                 <MapClickHandler isEditing={isEditing} onMapClick={handleMapClick} />
 
                 {profile?.addressGeo && !isEditing && (
@@ -324,14 +309,11 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                     </Marker>
                 )}
 
-                {fields.map(f => {
-                    if (isEditing && editingField?.id === f.id) return null; 
-                    return (
-                        <Polygon key={f.id} positions={f.boundary.map(p => [p.lat, p.lng])} color={getFieldColor(f)} weight={2} fillOpacity={0.5} {...{ eventHandlers: { click: (e: any) => { if (isEditing) return; L.DomEvent.stopPropagation(e); setSelectedField(f); } } } as any}>
-                          <Popup><div className="font-bold">{f.name}</div><div className="text-xs">{f.areaHa.toFixed(2)} ha</div></Popup>
-                        </Polygon>
-                    );
-                })}
+                {fields.map(f => (
+                    (isEditing && editingField?.id === f.id) ? null : (
+                        <Polygon key={f.id} positions={f.boundary.map(p => [p.lat, p.lng])} color={getFieldColor(f)} weight={2} fillOpacity={0.5} {...{ eventHandlers: { click: (e: any) => { if (isEditing) return; L.DomEvent.stopPropagation(e); setSelectedField(f); } } } as any} />
+                    )
+                ))}
 
                 {isEditing && editingField && (
                     <>
@@ -342,14 +324,9 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                         {isSplitting && splitPoints.length > 0 && (
                             <>
                                 {splitPoints.map((p, i) => (
-                                    <SplitPointMarker 
-                                        key={`split-${i}`} 
-                                        index={i} 
-                                        position={p} 
-                                        onDrag={handleSplitPointDrag} 
-                                    />
+                                    <SplitPointMarker key={`split-${i}`} index={i} position={p} onDragEnd={handleSplitPointDragEnd} onDelete={handleSplitPointDelete} />
                                 ))}
-                                {splitPoints.length === 2 && <Polyline positions={splitPoints.map(p => [p.lat, p.lng])} pathOptions={{ color: '#ef4444', weight: 3, dashArray: '10, 10' }} />}
+                                {splitPoints.length >= 2 && <Polyline positions={splitPoints.map(p => [p.lat, p.lng])} pathOptions={{ color: '#ef4444', weight: 4, dashArray: '10, 10' }} />}
                             </>
                         )}
                     </>
@@ -363,7 +340,7 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
 
          <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400]">
             <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 hover:text-green-600"><Layers size={24} /></button>
-            <button onClick={() => navigator.geolocation.getCurrentPosition(pos => alert(`Pos: ${pos.coords.latitude.toFixed(5)}, ${pos.coords.longitude.toFixed(5)}`))} className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 hover:text-blue-600"><LocateFixed size={24} /></button>
+            <button onClick={() => navigator.geolocation.getCurrentPosition(pos => {})} className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 hover:text-blue-600"><LocateFixed size={24} /></button>
          </div>
 
          {isEditing && editingField && (
@@ -380,12 +357,12 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                  
                  {isSplitting ? (
                      <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-[11px] text-blue-700 font-bold leading-tight">
-                         {splitPoints.length === 0 && "Klicke den Startpunkt der Trennlinie an."}
-                         {splitPoints.length === 1 && "Klicke jetzt den Endpunkt der Trennlinie an."}
-                         {splitPoints.length === 2 && "Schnittlinie OK? Du kannst die roten Punkte jetzt noch präzise verschieben."}
+                         {splitPoints.length === 0 && "Klicke den Startpunkt an."}
+                         {splitPoints.length >= 1 && "Klicke auf die Karte für weitere Punkte oder verschiebe die roten Punkte frei."}
+                         {splitPoints.length >= 2 && <div className="mt-1 text-[9px] opacity-75">Tipp: Ein Klick auf einen roten Punkt löscht diesen wieder.</div>}
                      </div>
                  ) : (
-                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Punkte ziehen zum Verschieben • Karte klicken für neue Punkte</p>
+                     <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Ziehe Punkte zum Verschieben • Klicke Karte für neue Punkte</p>
                  )}
 
                  <div className="flex space-x-2">
@@ -396,9 +373,9 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                          </>
                      ) : (
                          <>
-                            <button onClick={() => setIsSplitting(true)} className="p-3 bg-amber-50 text-amber-700 rounded-xl font-bold border border-amber-200 shadow-sm active:scale-95 transition-all" title="Feld teilen"><Scissors size={20}/></button>
+                            <button onClick={() => setIsSplitting(true)} className="p-3 bg-amber-50 text-amber-700 rounded-xl font-bold border border-amber-200" title="Feld teilen"><Scissors size={20}/></button>
                             <button onClick={cancelEdit} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm">Abbruch</button>
-                            <button onClick={saveGeometry} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm shadow-lg shadow-blue-100 active:scale-95 transition-all">SPEICHERN</button>
+                            <button onClick={saveGeometry} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm shadow-lg">SPEICHERN</button>
                          </>
                      )}
                  </div>
@@ -413,9 +390,6 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                  {legendData.weide.present && <LegendPoly color={legendData.weide.color} label={legendData.weide.label} />}
                  {legendData.acker.present && <LegendPoly color={legendData.acker.color} label={legendData.acker.label} />}
                  {legendData.div.present && <LegendPoly color={legendData.div.color} label={legendData.div.label} />}
-                 {(legendData.grunland.present || legendData.acker.present || legendData.weide.present || legendData.div.present) && (hasSlurry || hasManure) && <div className="h-px bg-slate-200 my-2"></div>}
-                 {hasSlurry && <div className="flex items-center mb-1"><div className="w-4 h-4 rounded-full mr-2 bg-[#78350f] border-2 border-white shadow-sm"></div><span>Gülle Lager</span></div>}
-                 {hasManure && <div className="flex items-center mb-1"><div className="w-4 h-4 rounded-full mr-2 bg-[#d97706] border-2 border-white shadow-sm"></div><span>Mist Lager</span></div>}
              </div>
          )}
 
