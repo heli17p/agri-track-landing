@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from 'react';
 /* Added Droplets to imports */
-import { X, Terminal, User, Search, Trash2, AlertTriangle, Database, Layers, TrendingUp, MapPin, Droplets } from 'lucide-react';
+import { X, Terminal, User, Search, Trash2, AlertTriangle, Database, Layers, TrendingUp, MapPin, Droplets, RefreshCw, Box, CheckCircle2 } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { StorageLocation, FertilizerType, FarmProfile } from '../../types';
@@ -249,6 +248,56 @@ export const DiagnosticModal: React.FC<DiagnoseProps> = (props) => {
                 {props.activeDiagTab === 'logs' && (
                     <div className="bg-black text-green-400 p-3 rounded h-full overflow-y-auto whitespace-pre-wrap">
                         {props.logs.length === 0 ? "Keine Logs." : props.logs.join('\n')}
+                    </div>
+                )}
+
+                {props.activeDiagTab === 'inspector' && (
+                    <div className="space-y-4">
+                        <div className="bg-blue-600 p-4 rounded-xl text-white shadow-lg">
+                            <div className="flex justify-between items-center mb-2">
+                                <h4 className="font-black uppercase tracking-tighter flex items-center"><Box size={14} className="mr-2"/> Cloud-Abfrage</h4>
+                                <button onClick={props.runInspector} disabled={props.inspectorLoading} className="p-1 hover:bg-white/20 rounded-lg transition-colors">
+                                    <RefreshCw size={14} className={props.inspectorLoading ? 'animate-spin' : ''}/>
+                                </button>
+                            </div>
+                            <p className="text-[10px] opacity-80 leading-tight">Live-Daten direkt vom Unraid-Server / Firebase für Farm-ID "{props.userInfo?.uid ? 'Sync Aktiv' : 'Keine ID'}"</p>
+                        </div>
+
+                        {props.inspectorLoading ? (
+                            <div className="py-12 text-center text-slate-400 animate-pulse">
+                                <RefreshCw className="animate-spin mx-auto mb-2" size={24}/>
+                                <p className="font-bold text-[10px] uppercase">Lade Server-Struktur...</p>
+                            </div>
+                        ) : props.inspectorData ? (
+                            <div className="grid grid-cols-1 gap-3">
+                                {[
+                                    { label: 'Felder', count: props.inspectorData.fields?.length || 0, icon: Layers, color: 'text-green-600' },
+                                    { label: 'Tätigkeiten', count: props.inspectorData.activities?.length || 0, icon: Database, color: 'text-blue-600' },
+                                    { label: 'Lagerplätze', count: props.inspectorData.storages?.length || 0, icon: Droplets, color: 'text-amber-600' },
+                                    { label: 'Maschinen', count: props.inspectorData.equipment?.length || 0, icon: Terminal, color: 'text-purple-600' },
+                                    { label: 'Typen/Gruppen', count: props.inspectorData.categories?.length || 0, icon: Search, color: 'text-slate-600' }
+                                ].map((item, idx) => (
+                                    <div key={idx} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between">
+                                        <div className="flex items-center space-x-3">
+                                            <div className={`p-2 bg-slate-50 rounded-lg ${item.color}`}><item.icon size={16}/></div>
+                                            <span className="font-bold text-slate-700">{item.label}</span>
+                                        </div>
+                                        <div className="flex items-center space-x-2">
+                                            <span className="font-black text-slate-900 text-sm">{item.count}</span>
+                                            {item.count > 0 && <CheckCircle2 size={12} className="text-green-500"/>}
+                                        </div>
+                                    </div>
+                                ))}
+                                <div className="mt-4 p-3 bg-slate-800 rounded-xl text-[9px] text-slate-400 font-mono italic">
+                                    {/* Fix: cast reduce result to number for rendering as ReactNode to satisfy TypeScript */}
+                                    Zusammenfassung: {(Object.values(props.inspectorData || {}) as any[]).reduce((a: number, b: any) => a + (Array.isArray(b) ? b.length : 0), 0) as number} Dokumente am Server gefunden.
+                                </div>
+                            </div>
+                        ) : (
+                            <div className="py-12 text-center text-slate-400">
+                                <p>Klicke oben auf Aktualisieren um den Server zu scannen.</p>
+                            </div>
+                        )}
                     </div>
                 )}
 

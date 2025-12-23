@@ -73,6 +73,10 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [showRulesHelp, setShowRulesHelp] = useState(false);
   const [conflicts, setConflicts] = useState([]);
   const [conflictSearchId, setConflictSearchId] = useState('');
+  
+  // Inspector State
+  const [inspectorData, setInspectorData] = useState<any>(null);
+  const [inspectorLoading, setInspectorLoading] = useState(false);
 
   const loadAll = async () => {
     const s = await dbService.getSettings(); setSettings(s);
@@ -115,6 +119,19 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
     } finally {
         setIsSaving(false);
     }
+  };
+
+  const handleRunInspector = async () => {
+      if (!settings.farmId) return;
+      setInspectorLoading(true);
+      try {
+          const data = await dbService.inspectCloudData(settings.farmId);
+          setInspectorData(data);
+      } catch (e) {
+          console.error(e);
+      } finally {
+          setInspectorLoading(false);
+      }
   };
 
   const handleLogout = async () => {
@@ -169,7 +186,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
         <DiagnosticModal 
             show={showDiagnose} onClose={() => setShowDiagnose(false)} activeDiagTab={activeDiagTab} setActiveDiagTab={setActiveDiagTab}
-            userInfo={userInfo} cloudStats={cloudStats} logs={logs} inspectorData={null} inspectorLoading={false} runInspector={() => {}}
+            userInfo={userInfo} cloudStats={cloudStats} logs={logs} inspectorData={inspectorData} inspectorLoading={inspectorLoading} runInspector={handleRunInspector}
             conflicts={conflicts} conflictsLoading={false} conflictSearchId={conflictSearchId} setConflictSearchId={setConflictSearchId}
             loadConflicts={() => dbService.findFarmConflicts(conflictSearchId).then(setConflicts as any)} deleteConflict={id => dbService.deleteSettingsDoc(id).then(loadAll)}
             handleForceDeleteFarm={() => dbService.forceDeleteSettings(conflictSearchId).then(loadAll)} handlePingTest={() => dbService.testCloudConnection().then(r => alert(r.message))}
