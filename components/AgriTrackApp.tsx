@@ -6,7 +6,7 @@ import { TrackingPage } from '../pages/TrackingPage';
 import { MapPage } from '../pages/MapPage';
 import { FieldsPage } from '../pages/FieldsPage';
 import { SettingsPage } from '../pages/SettingsPage';
-import { WelcomeGate } from './WelcomeGate'; // Import bleibt gleich, Dateipräsenz wurde oben sichergestellt
+import { WelcomeGate } from './WelcomeGate';
 import { ShieldCheck, CloudOff, RefreshCw } from 'lucide-react';
 import { isCloudConfigured } from '../services/storage';
 import { dbService } from '../services/db';
@@ -23,18 +23,29 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
-  // State für die direkte Tab-Navigation in den Einstellungen
-  const [settingsTab, setSettingsTab] = useState<'profile' | 'storage' | 'general' | 'sync' | 'equipment'>('profile');
-
   const loadSettings = async () => {
-      const s = await dbService.getSettings();
-      setSettings(s);
-      setIsLoadingSettings(false);
+      // Beim Starten der App versuchen wir immer, die neuesten Settings aus der Cloud zu holen
+      // Falls wir an einem geteilten PC sind, stellen wir so sicher, dass wir nicht die lokalen
+      // Reste des vorherigen Benutzers anzeigen.
+      setIsLoadingSettings(true);
+      try {
+          // Erst Sync anstoßen, um Cloud-Daten lokal verfügbar zu machen
+          await dbService.syncActivities(); 
+          const s = await dbService.getSettings();
+          setSettings(s);
+      } catch (e) {
+          console.error("Initial settings load failed", e);
+      } finally {
+          setIsLoadingSettings(false);
+      }
   };
 
   useEffect(() => {
       loadSettings();
-      const unsub = dbService.onDatabaseChange(loadSettings);
+      const unsub = dbService.onDatabaseChange(async () => {
+          const s = await dbService.getSettings();
+          setSettings(s);
+      });
       return () => unsub();
   }, []);
 
@@ -48,6 +59,8 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       if (fieldId) setMapFocusFieldId(fieldId);
       setCurrentView('MAP');
   };
+
+  const [settingsTab, setSettingsTab] = useState<'profile' | 'storage' | 'general' | 'sync' | 'equipment'>('profile');
 
   const openSettingsTab = (tab: 'profile' | 'storage' | 'general' | 'sync' | 'equipment') => {
       setSettingsTab(tab);
@@ -74,11 +87,18 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       }
   };
 
-  if (isLoadingSettings) return <div className="h-full w-full flex items-center justify-center bg-slate-50"><RefreshCw className="animate-spin text-green-600" size={32}/></div>;
+  if (isLoadingSettings) {
+      return (
+          <div className="h-full w-full flex flex-col items-center justify-center bg-slate-50">
+              <RefreshCw className="animate-spin text-green-600 mb-4" size={40}/>
+              <p className="text-slate-500 font-bold animate-pulse">Sichere Verbindung wird aufgebaut...</p>
+          </div>
+      );
+  }
 
   const isLive = isCloudConfigured();
   
-  // SICHERHEITS-CHECK: Wenn eingeloggt, aber keine Farm-ID vorhanden, zeige das Welcome-Gate
+  // SICHERHEITS-CHECK: Wenn eingeloggt, aber keinem Hof zugeordnet, Sperre aktivieren
   const needsFarmAssignment = isLive && !settings.farmId;
 
   if (needsFarmAssignment) {

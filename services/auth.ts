@@ -19,12 +19,9 @@ export const authService = {
         try {
             const result = await auth.signInWithEmailAndPassword(email, pass);
             
-            // NON-BLOCKING MIGRATION:
-            // Wir warten NICHT auf die Migration, damit der Login sofort durchgeht.
-            // Die Migration läuft im Hintergrund.
-            dbService.migrateGuestDataToCloud().catch(err => {
-                console.warn("[Auth] Hintergrund-Migration Fehler (nicht kritisch):", err);
-            });
+            // Nach dem Login erzwingen wir einen Sync, um sicherzustellen, 
+            // dass wir die Daten dieses spezifischen Users laden.
+            await dbService.syncActivities();
             
             return result.user;
         } catch (error: any) {
@@ -37,12 +34,7 @@ export const authService = {
         if (!auth) throw new Error("Cloud nicht verfügbar.");
         try {
             const result = await auth.createUserWithEmailAndPassword(email, pass);
-            
-            // Auch hier: Non-blocking
-            dbService.migrateGuestDataToCloud().catch(err => {
-                console.warn("[Auth] Hintergrund-Migration Fehler (nicht kritisch):", err);
-            });
-
+            // Neue Benutzer starten immer ohne lokale Altdaten
             return result.user;
         } catch (error: any) {
             console.error("Register Error:", error);
@@ -53,9 +45,24 @@ export const authService = {
     logout: async () => {
         if (!auth) return;
         try {
+            // WICHTIG: Bevor wir ausloggen, löschen wir alle lokalen Farm-Daten vom PC.
+            // Das verhindert, dass der nächste Benutzer (am selben PC/Browser) die Daten sieht.
+            const keysToRemove = [
+                'agritrack_settings_full',
+                'agritrack_activities',
+                'agritrack_fields',
+                'agritrack_storage',
+                'agritrack_profile',
+                'agritrack_equipment',
+                'agritrack_tillage_categories',
+                'lastSyncSuccess',
+                'agritrack_guest_mode'
+            ];
+            keysToRemove.forEach(key => localStorage.removeItem(key));
+            
             await auth.signOut();
-            // Optional: Lokale Daten löschen bei Logout? 
-            // Fürs erste behalten wir sie, damit man offline weiterarbeiten kann.
+            // Seite neu laden um alle States sauber zu resetten
+            window.location.reload();
         } catch (error) {
             console.error("Logout Error:", error);
         }
@@ -81,9 +88,9 @@ const translateAuthError = (code: string): Error => {
         case 'auth/email-already-in-use': return new Error('E-Mail wird bereits verwendet.');
         case 'auth/weak-password': return new Error('Passwort muss mindestens 6 Zeichen haben.');
         case 'auth/invalid-credential': return new Error('Zugangsdaten ungültig.');
-        case 'auth/operation-not-allowed': return new Error('Login-Methode nicht aktiviert. Bitte Admin kontaktieren (Firebase Console).');
+        case 'auth/operation-not-allowed': return new Error('Login-Methode nicht aktiviert.');
         case 'auth/network-request-failed': return new Error('Netzwerkfehler. Bitte Internetverbindung prüfen.');
-        default: return new Error(`Fehler: ${code}`); // Zeigt den echten Code an, falls unbekannt
+        default: return new Error(`Fehler: ${code}`);
     }
 };
 
