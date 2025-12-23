@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 /* Added Droplets to imports */
 import { X, Terminal, User, Search, Trash2, AlertTriangle, Database, Layers, TrendingUp, MapPin, Droplets, RefreshCw, Box, CheckCircle2 } from 'lucide-react';
@@ -6,12 +7,24 @@ import L from 'leaflet';
 import { StorageLocation, FertilizerType, FarmProfile } from '../../types';
 
 // Icons für den Map-Picker innerhalb des Modals
-const createCustomIcon = (color: string, path: string) => L.divIcon({ 
-    className: 'custom-pin', 
-    html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 2px 5px rgba(0,0,0,0.2);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${path}</svg></div>`, 
-    iconSize: [32, 32], 
-    iconAnchor: [16, 16] 
-});
+const createCustomIcon = (color: string, svgPath: string) => {
+  const pinSvg = `
+    <svg width="36" height="46" viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 3px 4px rgba(0,0,0,0.4));">
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 18 12 18s12-9 12-18c0-6.63-5.37-12-12-12z" fill="${color}" stroke="white" stroke-width="1.5"/>
+      <g transform="translate(5, 5) scale(0.6)">
+        ${svgPath.replace(/currentColor/g, 'white')}
+      </g>
+    </svg>
+  `;
+  
+  return L.divIcon({
+    className: 'custom-pin-icon',
+    html: `<div style="width: 36px; height: 46px; display: flex; align-items: center; justify-content: center;">${pinSvg}</div>`,
+    iconSize: [36, 46],
+    iconAnchor: [18, 46]
+  });
+};
+
 const slurryIcon = createCustomIcon('#78350f', '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>');
 const manureIcon = createCustomIcon('#d97706', '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>');
 

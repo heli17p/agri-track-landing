@@ -43,14 +43,24 @@ const getStorageColor = (storageId: string | undefined, allStorages: StorageLoca
 
 const createStorageIcon = (color: string, type: FertilizerType) => {
     const path = type === FertilizerType.SLURRY 
-        ? '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>'
-        : '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>';
+        ? '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z" stroke="white" stroke-width="2"/>'
+        : '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" stroke-width="2"/>';
     
+    const pinSvg = `
+      <svg width="36" height="46" viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 3px 4px rgba(0,0,0,0.4));">
+        <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 18 12 18s12-9 12-18c0-6.63-5.37-12-12-12z" fill="${color}" stroke="white" stroke-width="1.5"/>
+        <g transform="translate(5, 5) scale(0.6)">
+          ${path}
+        </g>
+      </svg>
+    `;
+
     return L.divIcon({ 
-        className: 'storage-pin', 
-        html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white; box-shadow: 0 3px 6px rgba(0,0,0,0.3);"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${path}</svg></div>`, 
-        iconSize: [32, 32], 
-        iconAnchor: [16, 16] 
+        className: 'storage-pin-icon', 
+        html: `<div style="width: 36px; height: 46px; display: flex; align-items: center; justify-content: center;">${pinSvg}</div>`, 
+        iconSize: [36, 46], 
+        iconAnchor: [18, 46],
+        popupAnchor: [0, -40]
     });
 };
 

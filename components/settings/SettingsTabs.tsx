@@ -12,9 +12,18 @@ const SharedBadge = () => <span className="text-[10px] bg-blue-100 text-blue-700
 // Marker Icon für die Hofstelle in der Vorschau
 const farmMarkerIcon = L.divIcon({ 
     className: 'custom-pin', 
-    html: `<div style="background-color: #2563eb; width: 28px; height: 28px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white; shadow: 0 2px 4px rgba(0,0,0,0.2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18M5 21V7l8-5 8 5v14"/></svg></div>`, 
-    iconSize: [28, 28], 
-    iconAnchor: [14, 14] 
+    html: `
+      <div style="width: 32px; height: 42px; display: flex; align-items: center; justify-content: center;">
+        <svg width="32" height="42" viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 2px 3px rgba(0,0,0,0.3));">
+          <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 18 12 18s12-9 12-18c0-6.63-5.37-12-12-12z" fill="#2563eb" stroke="white" stroke-width="1.5"/>
+          <g transform="translate(6, 6) scale(0.5)">
+            <path d="M3 21h18M5 21V7l8-5 8 5v14" stroke="white" stroke-width="2.5" fill="none"/>
+          </g>
+        </svg>
+      </div>
+    `, 
+    iconSize: [32, 42], 
+    iconAnchor: [16, 42] 
 });
 
 export const ProfileTab: React.FC<{ profile: FarmProfile, setProfile: (p: any) => void, onPickMap: () => void }> = ({ profile, setProfile, onPickMap }) => {
