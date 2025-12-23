@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2, X } from 'lucide-react';
+import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2, X, Share2, Key } from 'lucide-react';
 import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, EquipmentCategory, ActivityType } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
 import { dbService, generateId } from '../../services/db';
@@ -327,7 +327,7 @@ export const GeneralTab: React.FC<{ settings: AppSettings, setSettings: (s: any)
 );
 
 export const SyncTab: React.FC<{ authState: any, settings: AppSettings, cloudStats: any, localStats: any, connectMode: string, setConnectMode: (m: any) => void, inputFarmId: string, setInputFarmId: (v: string) => void, inputPin: string, setInputPin: (v: string) => void, searchStatus: string, foundOwnerEmail: string | null, connectError: string | null, onSearch: () => void, onJoin: () => void, onCreate: () => void, onForceUpload: () => void, onManualDownload: () => void, onShowDiagnose: () => void, onLogout: () => void }> = (props) => (
-    <div className="space-y-6 max-w-lg mx-auto">
+    <div className="space-y-6 max-w-lg mx-auto pb-10">
         
         {/* AGRICLOUD / FIREBASE INFO CARD */}
         <div className="bg-gradient-to-br from-green-600 to-green-800 text-white p-6 rounded-2xl shadow-xl overflow-hidden relative">
@@ -345,12 +345,47 @@ export const SyncTab: React.FC<{ authState: any, settings: AppSettings, cloudSta
             </div>
         </div>
 
+        {/* WORKER ACCESS CARD / JOIN INFO (NEW) */}
+        {props.authState && props.settings.farmId && (
+            <div className="bg-white p-6 rounded-2xl shadow-sm border-2 border-dashed border-blue-200 relative overflow-hidden group">
+                <div className="absolute -right-4 -top-4 text-blue-50 opacity-50 group-hover:scale-110 transition-transform"><UserPlus size={100}/></div>
+                <div className="relative z-10">
+                    <div className="flex items-center space-x-2 mb-3 text-blue-600 font-black uppercase text-[10px] tracking-wider"><Share2 size={14}/> <span>Hof-Zugang für Arbeiter teilen</span></div>
+                    <p className="text-slate-500 text-xs mb-4 leading-relaxed">Deine Mitarbeiter können sich ebenfalls mit deinem Hof verbinden. Sag ihnen einfach diese Daten:</p>
+                    
+                    <div className="grid grid-cols-2 gap-3">
+                        <div className="bg-blue-50 p-3 rounded-xl border border-blue-100">
+                            <span className="block text-[9px] font-bold text-blue-400 uppercase mb-1">Farm-ID</span>
+                            <span className="text-lg font-black text-blue-800 font-mono tracking-wider">{props.settings.farmId}</span>
+                        </div>
+                        <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                            <span className="block text-[9px] font-bold text-slate-400 uppercase mb-1">Hof-PIN</span>
+                            <span className="text-lg font-black text-slate-800 font-mono tracking-wider">{props.settings.farmPin || '----'}</span>
+                        </div>
+                    </div>
+                    
+                    <div className="mt-4 p-2 bg-blue-600 text-white rounded-lg flex items-center justify-center text-[10px] font-black uppercase tracking-widest cursor-pointer active:scale-95 transition-all" onClick={() => {
+                        const text = `Servus! Hier sind die Zugangsdaten für unseren Hof in der AgriTrack Austria App:\n\nFarm-ID: ${props.settings.farmId}\nHof-PIN: ${props.settings.farmPin}\n\nApp laden & unter Sync 'Hof beitreten' klicken.`;
+                        if (navigator.share) {
+                            navigator.share({ title: 'Hof Zugang teilen', text: text });
+                        } else {
+                            navigator.clipboard.writeText(text);
+                            alert("Zugangsdaten in die Zwischenablage kopiert!");
+                        }
+                    }}>
+                        <Share2 size={14} className="mr-2"/> Zugangsdaten per WhatsApp / SMS senden
+                    </div>
+                </div>
+            </div>
+        )}
+
         <div className={`p-6 rounded-2xl border-2 flex flex-col items-center text-center shadow-sm transition-all ${props.authState && props.settings.farmId ? 'bg-green-50 border-green-200' : 'bg-slate-100 border-slate-300'}`}>
             <div className="relative mb-3"><div className={`p-4 rounded-full ${props.authState && props.settings.farmId ? 'bg-green-200 text-green-800' : 'bg-slate-200 text-slate-600'}`}>{props.authState ? <ShieldCheck size={40}/> : <CloudOff size={40}/>}</div>{props.authState && <div className="absolute -bottom-1 -right-1 w-5 h-5 bg-green-500 border-2 border-white rounded-full animate-pulse shadow-sm"></div>}</div>
             <h3 className="font-black text-xl text-slate-800">{props.authState ? (props.settings.farmId ? 'Verbindung aktiv' : 'Bereit (Kein Hof)') : 'Offline Modus'}</h3>
             {props.authState && (<><div className="mt-2 flex items-center text-xs font-bold text-green-700 bg-white/50 px-3 py-1 rounded-full border border-green-100"><User size={12} className="mr-1.5"/> {props.authState.email}</div><button onClick={props.onLogout} className="mt-4 flex items-center text-[10px] font-black text-red-600 uppercase tracking-widest hover:bg-red-50 px-3 py-1.5 rounded-lg transition-colors border border-transparent hover:border-red-100"><LogOut size={12} className="mr-1.5"/> Verbindung trennen</button></>)}
             {props.authState && props.settings.farmId && <div className="mt-4 text-[10px] font-black text-slate-400 uppercase tracking-widest">Farm ID: <span className="text-slate-700">{props.settings.farmId}</span></div>}
         </div>
+        
         {props.authState && props.settings.farmId && (<div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4"><h4 className="text-[10px] font-black text-slate-400 uppercase tracking-widest flex items-center"><RefreshCw size={14} className="mr-2"/> Synchronisations-Status</h4><div className="grid grid-cols-2 gap-4"><div className="bg-slate-50 p-4 rounded-xl border border-slate-100 flex flex-col items-center"><span className="text-2xl font-black text-slate-800">{props.localStats.total}</span><span className="text-[9px] font-bold text-slate-500 uppercase">Lokal (Handy)</span></div><div className="bg-blue-50 p-4 rounded-xl border border-blue-100 flex flex-col items-center"><span className="text-2xl font-black text-blue-700">{props.cloudStats.total === -1 ? '...' : props.cloudStats.total}</span><span className="text-[9px] font-bold text-blue-500 uppercase">Cloud (Server)</span></div></div>{props.localStats.total === props.cloudStats.total ? (<div className="flex items-center justify-center text-green-600 text-xs font-bold py-1"><CheckCircle2 size={14} className="mr-1.5"/> Alle Daten sind aktuell</div>) : (<div className="text-[10px] text-center text-slate-400 italic">Unterschiede? Nutze "Daten hochladen" um manuell zu sichern.</div>)}</div>)}
         {props.authState && !props.settings.farmId && props.connectMode === 'VIEW' && (<div className="grid grid-cols-1 gap-4"><button onClick={() => props.setConnectMode('JOIN')} className="bg-white p-6 rounded-xl border-2 border-slate-200 hover:border-blue-500 flex items-center font-bold text-blue-600 transition-all active:scale-95"><UserPlus size={24} className="mr-3"/> Hof beitreten</button><button onClick={() => props.setConnectMode('CREATE')} className="bg-white p-6 rounded-xl border-2 border-slate-200 hover:border-green-500 flex items-center font-bold text-green-600 transition-all active:scale-95"><Plus size={24} className="mr-3"/> Hof neu erstellen</button></div>)}
         {props.authState && props.settings.farmId && (<div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-3"><button onClick={props.onForceUpload} className="w-full py-4 bg-blue-600 text-white rounded-xl font-black shadow-lg shadow-blue-100 flex items-center justify-center active:scale-95 transition-all"><Cloud size={18} className="mr-2"/> Daten jetzt sichern</button><button onClick={props.onManualDownload} className="w-full py-3 bg-white border border-slate-300 text-slate-700 rounded-xl font-bold flex items-center justify-center active:scale-95 transition-all"><DownloadCloud size={18} className="mr-2"/> Server-Daten laden</button><button onClick={props.onShowDiagnose} className="w-full py-3 bg-slate-100 text-slate-600 rounded-xl font-bold flex items-center justify-center active:scale-95 transition-all"><Terminal size={18} className="mr-2"/> 🛠 Diagnose-Tool</button></div>)}
