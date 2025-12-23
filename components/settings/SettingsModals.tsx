@@ -1,5 +1,5 @@
 
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 /* Added Droplets to imports */
 import { X, Terminal, User, Search, Trash2, AlertTriangle, Database, Layers, TrendingUp, MapPin, Droplets } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
@@ -16,13 +16,23 @@ const createCustomIcon = (color: string, path: string) => L.divIcon({
 const slurryIcon = createCustomIcon('#78350f', '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z"/>');
 const manureIcon = createCustomIcon('#d97706', '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>');
 
-const LocationPickerMap = ({ position, onPick, icon }: any) => {
+const LocationPickerMap = ({ position, onPick, icon, mapStyle }: any) => {
     const map = useMap();
-    React.useEffect(() => { setTimeout(() => map.invalidateSize(), 200); if (position) map.setView(position, map.getZoom() || 15); }, [map]);
+    useEffect(() => { 
+        setTimeout(() => map.invalidateSize(), 200); 
+        if (position) map.setView(position, map.getZoom() || 15); 
+    }, [map, position]);
+    
     useMapEvents({ click(e) { onPick(e.latlng.lat, e.latlng.lng); } });
+    
     return (
         <>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+            <TileLayer 
+                url={mapStyle === 'standard' 
+                    ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                } 
+            />
             {position && <Marker draggable={true} eventHandlers={{ dragend(e) { onPick(e.target.getLatLng().lat, e.target.getLatLng().lng); } }} position={position} icon={icon} />}
         </>
     );
@@ -37,6 +47,8 @@ interface StorageEditProps {
 }
 
 export const StorageEditModal: React.FC<StorageEditProps> = ({ storage, setStorage, onSave, onDelete, onClose }) => {
+    const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
+
     return (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
             <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col animate-in zoom-in-95 duration-200">
@@ -127,10 +139,21 @@ export const StorageEditModal: React.FC<StorageEditProps> = ({ storage, setStora
                             <MapContainer center={storage.geo} zoom={15} style={{ height: '100%', width: '100%' }} zoomControl={false}>
                                 <LocationPickerMap 
                                     position={storage.geo} 
+                                    mapStyle={mapStyle}
                                     onPick={(lat: any, lng: any) => setStorage({...storage, geo: { lat, lng }})} 
                                     icon={storage.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
                                 />
                             </MapContainer>
+                            
+                            {/* Satellite Toggle Button */}
+                            <button 
+                                onClick={(e) => { e.preventDefault(); setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard'); }}
+                                className="absolute top-2 right-2 z-[400] bg-white/90 p-2 rounded-lg shadow-sm border border-slate-200 text-slate-700 hover:text-green-600 transition-colors"
+                                title="Ansicht umschalten"
+                            >
+                                <Layers size={14} />
+                            </button>
+
                             <div className="absolute bottom-2 right-2 z-[400] bg-white/90 px-2 py-1 rounded-lg text-[10px] font-bold text-slate-500 shadow-sm border border-slate-200 flex items-center">
                                 <MapPin size={10} className="mr-1"/> Marker ziehen
                             </div>
@@ -157,7 +180,6 @@ export const StorageEditModal: React.FC<StorageEditProps> = ({ storage, setStora
     );
 };
 
-/* Added DiagnoseProps interface definition */
 interface DiagnoseProps {
     show: boolean;
     onClose: () => void;
