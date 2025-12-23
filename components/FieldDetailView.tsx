@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { X, Calendar, Leaf, Ruler, MapPin, Palette, Map as MapIcon, Save, Trash2, AlertTriangle, Truck, Wheat, Hammer, FileText, Database, Filter, Droplets, Layers, Edit2, Tag } from 'lucide-react';
+import { X, Calendar, Leaf, Ruler, MapPin, Palette, Map as MapIcon, Save, Trash2, AlertTriangle, Truck, Wheat, Hammer, FileText, Database, Filter, Droplets, Layers, Edit2, Tag, Check } from 'lucide-react';
 import { Field, ActivityRecord, ActivityType, FertilizerType, HarvestType, TillageType, StorageLocation } from '../types';
 import { dbService } from '../services/db';
 import { ActivityDetailView } from './ActivityDetailView';
@@ -15,6 +15,18 @@ interface Props {
 
 const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
 const MANURE_PALETTE = ['#d97706', '#ea580c', '#f59e0b', '#c2410c', '#fb923c'];
+
+// Vordefinierte Farben für die Schlag-Markierung
+const FIELD_COLORS = [
+    { label: 'Standard', value: undefined }, // Nutzt Logik basierend auf Typ
+    { label: 'Grünland', value: '#15803D' },
+    { label: 'Acker', value: '#92400E' },
+    { label: 'Wiese hell', value: '#84CC16' },
+    { label: 'Weide', value: '#65a30d' },
+    { label: 'Mais/Getreide', value: '#EAB308' },
+    { label: 'Spezial', value: '#2563eb' },
+    { label: 'Achtung', value: '#ef4444' },
+];
 
 const getStorageColor = (storageId: string | undefined, allStorages: StorageLocation[]) => {
     if (!storageId) return '#78350f'; 
@@ -68,6 +80,7 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
 
   const handleSave = async () => {
     await dbService.saveField(editedField);
+    setIsDirty(true); // Verhindert Schließen ohne Rückmeldung wenn gewünscht, aber hier setzen wir Dirty zurück
     setIsDirty(false);
     if (onUpdate) onUpdate();
   };
@@ -115,11 +128,15 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
       });
   }, [history, filterYear, filterType]);
 
+  // Aktuelle Kopfzeilen-Farbe bestimmen
+  const currentHeaderColor = editedField.color || (editedField.type === 'Acker' ? '#92400E' : '#15803D');
+
   return (
     <div className="fixed inset-0 z-[1000] flex justify-end" onClick={() => setDeleteStep('idle')}>
       <div className="absolute inset-0 bg-black/30" onClick={(e) => { e.stopPropagation(); onClose(); }} />
       <div className="relative w-full max-w-md bg-white h-full shadow-2xl flex flex-col animate-slide-right" onClick={(e) => e.stopPropagation()}>
-        <div className="p-4 text-white flex justify-between items-center shrink-0 transition-colors shadow-sm z-10" style={{ backgroundColor: editedField.color || (editedField.type === 'Acker' ? '#92400E' : '#15803D') }}>
+        {/* Header */}
+        <div className="p-4 text-white flex justify-between items-center shrink-0 transition-all shadow-sm z-10" style={{ backgroundColor: currentHeaderColor }}>
           <div className="flex-1 mr-4">
              <input type="text" value={editedField.name} onChange={(e) => handleChange('name', e.target.value)} className="w-full bg-transparent border-b border-white/30 text-xl font-bold text-white placeholder-white/70 focus:outline-none focus:border-white"/>
              <div className="text-white/80 text-sm flex items-center mt-1"><Leaf size={14} className="mr-1"/> <select value={editedField.type} onChange={(e) => handleChange('type', e.target.value)} className="bg-transparent border-none text-white text-sm focus:ring-0 cursor-pointer p-0"><option value="Grünland" className="text-slate-800">Grünland</option><option value="Acker" className="text-slate-800">Acker</option></select></div>
@@ -128,6 +145,7 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50">
+          {/* Geometrie & Infos */}
           <div className="grid grid-cols-2 gap-4">
             <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
                 <div className="flex items-center text-slate-500 mb-1 text-xs uppercase font-bold"><Ruler size={14} className="mr-1" /> Fläche (ha)</div>
@@ -148,6 +166,25 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
                 className="w-full bg-transparent text-lg font-bold text-slate-800 focus:outline-none border-b border-transparent focus:border-blue-500"
                 placeholder="Noch kein Code hinterlegt"
               />
+          </div>
+
+          {/* FARBAUSWAHL - NEU */}
+          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
+              <div className="flex items-center text-slate-500 mb-3 text-xs uppercase font-bold"><Palette size={14} className="mr-1" /> Farbe auf Karte</div>
+              <div className="flex flex-wrap gap-3">
+                  {FIELD_COLORS.map((col) => (
+                      <button
+                        key={col.label}
+                        onClick={() => handleChange('color', col.value)}
+                        className={`w-10 h-10 rounded-full border-4 flex items-center justify-center transition-all ${editedField.color === col.value ? 'border-slate-300 scale-110 shadow-md' : 'border-transparent hover:scale-105'}`}
+                        style={{ backgroundColor: col.value || (editedField.type === 'Acker' ? '#92400E' : '#15803D') }}
+                        title={col.label}
+                      >
+                          {editedField.color === col.value && <Check size={18} className="text-white" />}
+                          {!col.value && !editedField.color && <Check size={18} className="text-white" />}
+                      </button>
+                  ))}
+              </div>
           </div>
 
           <button 
@@ -179,6 +216,7 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
               </div>
           )}
 
+          {/* Aktivitäten-Historie */}
           <div className="pt-2">
             <div className="flex justify-between items-center mb-3"><h3 className="font-bold text-lg flex items-center text-slate-700"><Calendar size={20} className="mr-2 text-green-600"/> Aktivitäten</h3></div>
             <div className="flex space-x-2 mb-4">
