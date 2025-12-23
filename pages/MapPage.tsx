@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Popup, useMap, useMapEvents, Polyline } from 'react-leaflet';
 import { Layers, Building2, Save, X, Move, MousePointerClick, Undo2, Trash2, Scissors, Check, LocateFixed, AlertTriangle } from 'lucide-react';
@@ -74,6 +75,32 @@ const VertexMarker = ({ position, index, onDragEnd, onDelete }: { position: GeoP
                 html: '<div style="width: 14px; height: 14px; background: white; border: 3px solid #2563eb; border-radius: 50%; box-shadow: 0 0 3px rgba(0,0,0,0.5); cursor: pointer;"></div>',
                 iconSize: [14, 14],
                 iconAnchor: [7, 7]
+            })}
+        />
+    );
+};
+
+// Spezial-Komponente für ziehbare Schnittpunkte
+const SplitPointMarker = ({ position, index, onDrag }: { position: GeoPoint, index: number, onDrag: (i: number, lat: number, lng: number) => void }) => {
+    const markerRef = useRef<L.Marker>(null);
+    const eventHandlers = useMemo(() => ({
+        drag(e: any) {
+            const latlng = e.target.getLatLng();
+            onDrag(index, latlng.lat, latlng.lng);
+        }
+    }), [index, onDrag]);
+
+    return (
+        <Marker
+            draggable={true}
+            eventHandlers={eventHandlers}
+            position={[position.lat, position.lng]}
+            ref={markerRef}
+            icon={L.divIcon({
+                className: 'split-point-marker',
+                html: '<div style="width: 18px; height: 18px; background: white; border: 4px solid #ef4444; border-radius: 50%; box-shadow: 0 0 8px rgba(239,68,68,0.5); cursor: move;"></div>',
+                iconSize: [18, 18],
+                iconAnchor: [9, 9]
             })}
         />
     );
@@ -161,14 +188,12 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     }
   };
 
-  // Fix: Added handleStartEditGeometry to fix line 373 compilation error
   const handleStartEditGeometry = (field: Field) => {
     setSelectedField(null);
     setEditingField({ ...field });
     setIsEditing(true);
   };
 
-  // Fix: Added handleDeleteField to fix line 373 compilation error
   const handleDeleteField = async (id: string) => {
     await dbService.deleteField(id);
     setSelectedField(null);
@@ -202,6 +227,14 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
       setEditingField({ ...editingField, boundary: newBoundary, areaHa: newArea });
   };
 
+  const handleSplitPointDrag = (index: number, lat: number, lng: number) => {
+      setSplitPoints(prev => {
+          const next = [...prev];
+          next[index] = { lat, lng };
+          return next;
+      });
+  };
+
   const handleMapClick = (lat: number, lng: number) => {
       if (!editingField) return;
       if (isSplitting) {
@@ -220,10 +253,7 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     if (result) {
         const [polyA, polyB] = result;
         
-        // Update Original mit Teil A
         const fieldA: Field = { ...editingField, boundary: polyA, areaHa: calculateArea(polyA) };
-        
-        // Neues Feld für Teil B
         const fieldB: Field = {
             ...editingField,
             id: generateId(),
@@ -311,8 +341,15 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                         ))}
                         {isSplitting && splitPoints.length > 0 && (
                             <>
-                                {splitPoints.map((p, i) => <Marker key={i} position={[p.lat, p.lng]} icon={L.divIcon({ html: '<div style="width:12px;height:12px;background:red;border-radius:50%;border:2px solid white;"></div>', iconSize:[12,12], iconAnchor:[6,6] })} />)}
-                                {splitPoints.length === 2 && <Polyline positions={splitPoints.map(p => [p.lat, p.lng])} pathOptions={{ color: 'red', weight: 3, dashArray: '10, 10' }} />}
+                                {splitPoints.map((p, i) => (
+                                    <SplitPointMarker 
+                                        key={`split-${i}`} 
+                                        index={i} 
+                                        position={p} 
+                                        onDrag={handleSplitPointDrag} 
+                                    />
+                                ))}
+                                {splitPoints.length === 2 && <Polyline positions={splitPoints.map(p => [p.lat, p.lng])} pathOptions={{ color: '#ef4444', weight: 3, dashArray: '10, 10' }} />}
                             </>
                         )}
                     </>
@@ -342,10 +379,10 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                  </div>
                  
                  {isSplitting ? (
-                     <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-xs text-blue-700 font-medium">
+                     <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-[11px] text-blue-700 font-bold leading-tight">
                          {splitPoints.length === 0 && "Klicke den Startpunkt der Trennlinie an."}
                          {splitPoints.length === 1 && "Klicke jetzt den Endpunkt der Trennlinie an."}
-                         {splitPoints.length === 2 && "Linie OK? Klicke auf 'Schnitt bestätigen'."}
+                         {splitPoints.length === 2 && "Schnittlinie OK? Du kannst die roten Punkte jetzt noch präzise verschieben."}
                      </div>
                  ) : (
                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Punkte ziehen zum Verschieben • Karte klicken für neue Punkte</p>
@@ -359,9 +396,9 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                          </>
                      ) : (
                          <>
-                            <button onClick={() => setIsSplitting(true)} className="p-3 bg-amber-50 text-amber-700 rounded-xl font-bold border border-amber-200" title="Feld teilen"><Scissors size={20}/></button>
+                            <button onClick={() => setIsSplitting(true)} className="p-3 bg-amber-50 text-amber-700 rounded-xl font-bold border border-amber-200 shadow-sm active:scale-95 transition-all" title="Feld teilen"><Scissors size={20}/></button>
                             <button onClick={cancelEdit} className="flex-1 py-3 bg-slate-100 text-slate-600 rounded-xl font-bold text-sm">Abbruch</button>
-                            <button onClick={saveGeometry} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm shadow-lg">SPEICHERN</button>
+                            <button onClick={saveGeometry} className="flex-[2] py-3 bg-blue-600 text-white rounded-xl font-black text-sm shadow-lg shadow-blue-100 active:scale-95 transition-all">SPEICHERN</button>
                          </>
                      )}
                  </div>
@@ -392,3 +429,4 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     </div>
   );
 };
+
