@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Popup, useMap, useMapEvents, Polyline } from 'react-leaflet';
 import { Layers, Building2, Save, X, Move, MousePointerClick, Undo2, Trash2, Scissors, Check, LocateFixed, AlertTriangle } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
@@ -67,18 +67,19 @@ const VertexMarker = ({ position, index, onDragEnd, onDelete }: { position: GeoP
     );
 };
 
-const SplitPointMarker = ({ position, index, onDragEnd, onDelete }: { position: GeoPoint, index: number, onDragEnd: (i: number, lat: number, lng: number) => void, onDelete: (i: number) => void }) => {
+// Spezial-Marker für Schnittpunkte mit Live-Update
+const SplitPointMarker = ({ position, index, onDrag, onDelete }: { position: GeoPoint, index: number, onDrag: (i: number, lat: number, lng: number) => void, onDelete: (i: number) => void }) => {
     const markerRef = useRef<L.Marker>(null);
     const eventHandlers = useMemo(() => ({
-        dragend(e: any) {
+        drag(e: any) {
             const { lat, lng } = e.target.getLatLng();
-            onDragEnd(index, lat, lng);
+            onDrag(index, lat, lng);
         },
         click(e: any) {
             L.DomEvent.stopPropagation(e);
             onDelete(index);
         }
-    }), [index, onDragEnd, onDelete]);
+    }), [index, onDrag, onDelete]);
 
     return (
         <Marker
@@ -88,9 +89,9 @@ const SplitPointMarker = ({ position, index, onDragEnd, onDelete }: { position: 
             ref={markerRef}
             icon={L.divIcon({
                 className: 'split-point-marker',
-                html: '<div style="width: 20px; height: 20px; background: white; border: 4px solid #ef4444; border-radius: 50%; box-shadow: 0 0 10px rgba(239,68,68,0.6); cursor: move;"></div>',
-                iconSize: [20, 20],
-                iconAnchor: [10, 10]
+                html: '<div style="width: 24px; height: 24px; background: white; border: 5px solid #ef4444; border-radius: 50%; box-shadow: 0 0 15px rgba(239,68,68,0.6); cursor: move;"></div>',
+                iconSize: [24, 24],
+                iconAnchor: [12, 12]
             })}
         />
     );
@@ -117,7 +118,6 @@ const MapBounds = ({ fields, profile, focusField, isEditing }: { fields: Field[]
     }, [map]);
 
     useEffect(() => {
-        // Zoom-Automatik pausieren wenn wir editieren
         if (isEditing) return;
 
         if (focusField && focusField.boundary.length > 0) {
@@ -215,22 +215,27 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
       setEditingField({ ...editingField, boundary: newBoundary, areaHa: calculateArea(newBoundary) });
   };
 
-  const handleSplitPointDragEnd = (index: number, lat: number, lng: number) => {
+  // Live-Update für Schnittpunkte
+  const handleSplitPointDrag = useCallback((index: number, lat: number, lng: number) => {
       setSplitPoints(prev => {
           const next = [...prev];
           next[index] = { lat, lng };
           return next;
       });
-  };
+  }, []);
 
   const handleSplitPointDelete = (index: number) => {
-      if (splitPoints.length <= 2) return;
+      if (splitPoints.length <= 1) {
+          setSplitPoints([]);
+          return;
+      }
       setSplitPoints(prev => prev.filter((_, i) => i !== index));
   };
 
   const handleMapClick = (lat: number, lng: number) => {
       if (!editingField) return;
       if (isSplitting) {
+          // Unbegrenzte Punkte hinzufügen
           setSplitPoints(prev => [...prev, { lat, lng }]);
       } else {
           const newBoundary = [...editingField.boundary, { lat, lng }];
@@ -324,9 +329,9 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                         {isSplitting && splitPoints.length > 0 && (
                             <>
                                 {splitPoints.map((p, i) => (
-                                    <SplitPointMarker key={`split-${i}`} index={i} position={p} onDragEnd={handleSplitPointDragEnd} onDelete={handleSplitPointDelete} />
+                                    <SplitPointMarker key={`split-${i}`} index={i} position={p} onDrag={handleSplitPointDrag} onDelete={handleSplitPointDelete} />
                                 ))}
-                                {splitPoints.length >= 2 && <Polyline positions={splitPoints.map(p => [p.lat, p.lng])} pathOptions={{ color: '#ef4444', weight: 4, dashArray: '10, 10' }} />}
+                                {splitPoints.length >= 2 && <Polyline positions={splitPoints.map(p => [p.lat, p.lng])} pathOptions={{ color: '#ef4444', weight: 5, dashArray: '10, 15', lineCap: 'round' }} />}
                             </>
                         )}
                     </>
@@ -357,9 +362,9 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                  
                  {isSplitting ? (
                      <div className="bg-blue-50 p-3 rounded-xl border border-blue-100 text-[11px] text-blue-700 font-bold leading-tight">
-                         {splitPoints.length === 0 && "Klicke den Startpunkt an."}
-                         {splitPoints.length >= 1 && "Klicke auf die Karte für weitere Punkte oder verschiebe die roten Punkte frei."}
-                         {splitPoints.length >= 2 && <div className="mt-1 text-[9px] opacity-75">Tipp: Ein Klick auf einen roten Punkt löscht diesen wieder.</div>}
+                         {splitPoints.length === 0 && "Klicke den Startpunkt auf der Karte an."}
+                         {splitPoints.length >= 1 && "Klicke für weitere Kurvenpunkte oder verschiebe die Punkte frei."}
+                         {splitPoints.length >= 2 && <div className="mt-1 text-[10px] text-green-600 font-black">Linie wird jetzt LIVE mitverschoben!</div>}
                      </div>
                  ) : (
                      <p className="text-[10px] text-slate-500 font-bold uppercase tracking-tight">Ziehe Punkte zum Verschieben • Klicke Karte für neue Punkte</p>
