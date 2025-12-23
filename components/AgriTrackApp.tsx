@@ -8,7 +8,7 @@ import { FieldsPage } from '../pages/FieldsPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { WelcomeGate } from './WelcomeGate';
 import { ShieldCheck, CloudOff, RefreshCw } from 'lucide-react';
-import { isCloudConfigured } from '../services/storage';
+import { isCloudConfigured, auth, db } from '../services/storage';
 import { dbService } from '../services/db';
 import { AppSettings, DEFAULT_SETTINGS } from '../types';
 
@@ -24,12 +24,26 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
   const loadSettings = async () => {
-      // Beim Starten der App versuchen wir immer, die neuesten Settings aus der Cloud zu holen
-      // Falls wir an einem geteilten PC sind, stellen wir so sicher, dass wir nicht die lokalen
-      // Reste des vorherigen Benutzers anzeigen.
       setIsLoadingSettings(true);
       try {
-          // Erst Sync anstoßen, um Cloud-Daten lokal verfügbar zu machen
+          // SICHERHEITS-CHECK: Falls eingeloggt, prüfen ob Betriebsleiter mich gesperrt hat
+          if (isCloudConfigured()) {
+              const userId = auth!.currentUser!.uid;
+              const doc = await db.collection("settings").doc(userId).get();
+              if (!doc.exists) {
+                  // Wenn Doc weg, aber lokale FarmID da -> Wir wurden gekickt!
+                  const local = await dbService.getSettings();
+                  if (local.farmId) {
+                      console.warn("User was removed from farm by manager.");
+                      await dbService.saveSettings({ ...DEFAULT_SETTINGS });
+                      setSettings(DEFAULT_SETTINGS);
+                      setIsLoadingSettings(false);
+                      return;
+                  }
+              }
+          }
+
+          // Normaler Ladevorgang
           await dbService.syncActivities(); 
           const s = await dbService.getSettings();
           setSettings(s);

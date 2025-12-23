@@ -195,8 +195,9 @@ export const dbService = {
 
         const updatedStorages = storages.map(s => {
             if (distribution[s.id] && distribution[s.id] > 0) {
-                const newLevel = Math.max(0, s.currentLevel - distribution[s.id]);
-                if (newLevel !== s.currentLevel) {
+                const iLevel = s.currentLevel;
+                const newLevel = Math.max(0, iLevel - distribution[s.id]);
+                if (newLevel !== iLevel) {
                     changed = true;
                     return { ...s, currentLevel: newLevel };
                 }
@@ -307,6 +308,22 @@ export const dbService = {
     syncActivities: async () => {
         if (!isCloudConfigured()) return;
         
+        const currentLocalSettings = loadSettings();
+        
+        // SICHERHEITS-CHECK: Existiert mein Eintrag noch in der Cloud?
+        // Wenn nicht (weil Boss mich gelöscht hat), fliegen wir raus.
+        try {
+            const userId = auth.currentUser!.uid;
+            const mySettingsDoc = await db.collection("settings").doc(userId).get();
+            if (!mySettingsDoc.exists && currentLocalSettings.farmId) {
+                console.warn("Hof-Zuordnung wurde vom Betriebsleiter entfernt.");
+                const resetSettings = { ...DEFAULT_SETTINGS };
+                localStorage.setItem('agritrack_settings_full', JSON.stringify(resetSettings));
+                window.location.reload();
+                return;
+            }
+        } catch(e) { console.error("Identity check failed", e); }
+
         const cloudActivities = await fetchCloudData('activity', true); 
         const cloudFields = await fetchCloudData('field', true);
         const cloudStorages = await fetchCloudData('storage', true);
@@ -321,7 +338,6 @@ export const dbService = {
         if (cloudEquipment.length > 0) localStorage.setItem('agritrack_equipment', JSON.stringify(cloudEquipment));
         if (cloudCategories.length > 0) localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cloudCategories));
 
-        const currentLocalSettings = loadSettings();
         if (currentLocalSettings.farmId) {
             const masterSettings = await fetchFarmMasterSettings(currentLocalSettings.farmId);
             
@@ -329,7 +345,7 @@ export const dbService = {
                 const sharedKeys: (keyof AppSettings)[] = [
                     'slurryLoadSize', 'manureLoadSize', 
                     'spreadWidth', 'slurrySpreadWidth', 'manureSpreadWidth',
-                    'minSpeed', 'maxSpeed', 'storageRadius'
+                    'minSpeed', 'maxSpeed', 'storageRadius', 'farmPin' // PIN mit synchronisieren!
                 ];
                 
                 let settingsChanged = false;
@@ -344,12 +360,33 @@ export const dbService = {
 
                 if (settingsChanged) {
                     localStorage.setItem('agritrack_settings_full', JSON.stringify(newSettings));
-                    addLog("[Sync] Globale Hof-Einstellungen aktualisiert.");
+                    addLog("[Sync] Globale Hof-Einstellungen & PIN aktualisiert.");
                 }
             }
         }
 
         notifySync();
+    },
+
+    // NEU: Mitgliederverwaltung
+    getFarmMembers: async (farmId: string) => {
+        if (!isCloudConfigured()) return [];
+        const snap = await db.collection("settings").where("farmId", "==", String(farmId)).get();
+        return snap.docs.map(d => {
+            const data = d.data();
+            return {
+                userId: d.id,
+                email: data.ownerEmail || 'Unbekannt',
+                lastUpdate: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'N/A'
+            };
+        });
+    },
+
+    removeFarmMember: async (userId: string) => {
+        if (!isCloudConfigured()) return;
+        // Wir löschen das Settings-Dokument des Benutzers. 
+        // Beim nächsten Sync merkt der Benutzer das und wird ausgeloggt.
+        await db.collection("settings").doc(userId).delete();
     },
 
     migrateGuestDataToCloud: async () => {
