@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, FileUp, Trash2, ChevronLeft, Save, Search, Filter, AlertTriangle, Map as MapIcon, Layers, Edit2 } from 'lucide-react';
+import { Plus, FileUp, Trash2, ChevronLeft, Save, Search, Filter, AlertTriangle, Map as MapIcon, Layers, Edit2, Tag } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { Field } from '../types';
 import { ImportPage } from './ImportPage';
@@ -30,9 +30,9 @@ const MapBounds = ({ fields, selectedField }: { fields: Field[], selectedField: 
             const sidebarOffset = window.innerWidth > 640 ? 450 : 0;
 
             map.fitBounds(polygon.getBounds(), { 
-                paddingTopLeft: [50, 50], // Reduziert von 150 -> 50
-                paddingBottomRight: [50 + sidebarOffset, 50], // Reduziert
-                maxZoom: 15, // Etwas mehr Zoom erlauben für einzelne Felder
+                paddingTopLeft: [50, 50], 
+                paddingBottomRight: [50 + sidebarOffset, 50], 
+                maxZoom: 15, 
                 animate: true,
                 duration: 1.0
             });
@@ -46,8 +46,8 @@ const MapBounds = ({ fields, selectedField }: { fields: Field[], selectedField: 
                 validFields.map(f => L.polygon(f.boundary.map(p => [p.lat, p.lng])))
             );
             map.fitBounds(group.getBounds(), { 
-                padding: [30, 30], // Reduziert von 80 -> 30, damit Felder größer wirken
-                maxZoom: 16, // Erlaubt näheren Zoom, falls Felder nah beieinander liegen
+                padding: [30, 30], 
+                maxZoom: 16, 
                 animate: true 
             });
         }
@@ -90,26 +90,20 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
 
     if (confirmDeleteId === id) {
         // Second click: Execute Delete
-        
-        // 1. Optimistic UI: Remove from view immediately
         setFields(prev => prev.filter(f => f.id !== id));
         if (selectedField?.id === id) setSelectedField(null);
         setConfirmDeleteId(null);
 
         try {
-            // 2. DB Operation
             await dbService.deleteField(id);
-            // 3. Consistency check
             loadFields();
         } catch (e) {
             console.error(e);
             alert("Fehler beim Löschen.");
-            loadFields(); // Revert
+            loadFields(); 
         }
     } else {
-        // First click: Arm the button
         setConfirmDeleteId(id);
-        // Auto-reset after 3 seconds
         setTimeout(() => {
              setConfirmDeleteId(prev => prev === id ? null : prev);
         }, 3000);
@@ -128,6 +122,7 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
       areaHa: 0,
       type: 'Grünland',
       usage: '',
+      codes: '',
       boundary: []
     });
     setView('form');
@@ -149,33 +144,29 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
       const fieldToSave = editingField as Field;
       if (!fieldToSave.id) fieldToSave.id = generateId();
 
-      // Save incomplete field
       await dbService.saveField(fieldToSave);
       
-      // Navigate to Map
       if (onNavigateToMap) {
           onNavigateToMap(fieldToSave.id);
       }
   };
 
-  // Filter Logic
   const filteredFields = fields.filter(field => {
     const matchesSearch = 
         field.name.toLowerCase().includes(searchTerm.toLowerCase()) || 
-        field.usage.toLowerCase().includes(searchTerm.toLowerCase());
+        field.usage.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (field.codes && field.codes.toLowerCase().includes(searchTerm.toLowerCase()));
     
     const matchesType = filterType === 'All' || field.type === filterType;
     
     return matchesSearch && matchesType;
   });
 
-  // Calculate Stats
   const totalCount = filteredFields.length;
   const totalArea = filteredFields.reduce((sum, f) => sum + (f.areaHa || 0), 0);
 
   const getFieldColor = (field: Field) => {
-      // Highlight selected field
-      if (selectedField?.id === field.id) return '#3b82f6'; // Bright Blue
+      if (selectedField?.id === field.id) return '#3b82f6'; 
 
       if (field.color) return field.color;
       if (mapStyle === 'satellite') {
@@ -236,15 +227,27 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
              </div>
           </div>
 
-          <div>
-            <label className="block text-sm font-medium text-slate-700">Nutzung (eAMA Code)</label>
-            <input 
-              type="text" 
-              value={editingField.usage || ''} 
-              onChange={e => setEditingField({...editingField, usage: e.target.value})}
-              className="mt-1 block w-full rounded-md border-slate-300 shadow-sm border p-2"
-              placeholder="z.B. Mähwiese / Weide"
-            />
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Nutzung (SNAR)</label>
+              <input 
+                type="text" 
+                value={editingField.usage || ''} 
+                onChange={e => setEditingField({...editingField, usage: e.target.value})}
+                className="mt-1 block w-full rounded-md border-slate-300 shadow-sm border p-2"
+                placeholder="z.B. Mähwiese"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-slate-700">Codes (eAMA ID)</label>
+              <input 
+                type="text" 
+                value={editingField.codes || ''} 
+                onChange={e => setEditingField({...editingField, codes: e.target.value})}
+                className="mt-1 block w-full rounded-md border-slate-300 shadow-sm border p-2"
+                placeholder="z.B. 12345"
+              />
+            </div>
           </div>
           
            <div>
@@ -277,8 +280,6 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
 
   return (
     <div className="h-full bg-slate-50 flex flex-col relative overflow-hidden">
-      
-      {/* Top Section: Map */}
       <div className="h-[40vh] w-full relative bg-slate-200 border-b border-slate-300 shrink-0">
           <MapContainer center={[47.5, 14.5]} zoom={10} style={{ height: '100%', width: '100%' }}>
             <TileLayer 
@@ -314,7 +315,6 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
          </button>
       </div>
 
-      {/* Header & Controls */}
       <div className="p-4 bg-white shadow-sm z-10 space-y-3 shrink-0">
         <div className="flex justify-between items-center">
             <div>
@@ -333,13 +333,12 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
             </div>
         </div>
 
-        {/* Search & Filter Bar */}
         <div className="flex space-x-2">
             <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={16} />
                 <input 
                     type="text" 
-                    placeholder="Suchen..." 
+                    placeholder="Suchen (Name, Nutzung, Code)..." 
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
                     className="w-full pl-9 pr-4 py-2 bg-slate-100 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-green-500"
@@ -360,7 +359,6 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
         </div>
       </div>
 
-      {/* List */}
       <div className="flex-1 overflow-y-auto p-4 space-y-3 pb-24 bg-slate-50">
         {filteredFields.length === 0 ? (
             <div className="text-center py-10 text-slate-500">
@@ -379,14 +377,18 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
                       : 'bg-white border-transparent hover:border-green-100'
                   }`}
                 >
-                    {/* Clickable Area for Details/Selection */}
                     <div 
                         onClick={() => setSelectedField(field)}
                         className="flex-1 p-2 cursor-pointer"
                     >
                         <div className="font-bold text-lg truncate flex items-center">
                             {field.name}
-                            {selectedField?.id === field.id && <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full animate-pulse"></span>}
+                            {field.codes && (
+                                <span className="ml-2 px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-mono rounded border border-slate-200 flex items-center shrink-0">
+                                    <Tag size={8} className="mr-1"/> {field.codes}
+                                </span>
+                            )}
+                            {selectedField?.id === field.id && <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full animate-pulse shrink-0"></span>}
                         </div>
                         <div className="text-sm text-slate-500 flex items-center space-x-2">
                             <span className={`inline-block w-2 h-2 rounded-full ${field.type === 'Acker' ? 'bg-amber-600' : 'bg-green-600'}`}></span>
@@ -396,7 +398,6 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
                         </div>
                     </div>
 
-                    {/* Dedicated Edit Button */}
                     <button 
                         onClick={(e) => {
                             e.preventDefault();
@@ -409,7 +410,6 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
                         <Edit2 size={20} />
                     </button>
 
-                    {/* Separate 2-Step Delete Button */}
                     <button 
                         type="button"
                         onClick={(e) => {

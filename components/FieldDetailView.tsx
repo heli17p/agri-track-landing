@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { X, Calendar, Leaf, Ruler, MapPin, Palette, Map as MapIcon, Save, Trash2, AlertTriangle, Truck, Wheat, Hammer, FileText, Database, Filter, Droplets, Layers, Edit2 } from 'lucide-react';
+import { X, Calendar, Leaf, Ruler, MapPin, Palette, Map as MapIcon, Save, Trash2, AlertTriangle, Truck, Wheat, Hammer, FileText, Database, Filter, Droplets, Layers, Edit2, Tag } from 'lucide-react';
 import { Field, ActivityRecord, ActivityType, FertilizerType, HarvestType, TillageType, StorageLocation } from '../types';
 import { dbService } from '../services/db';
 import { ActivityDetailView } from './ActivityDetailView';
@@ -129,11 +129,27 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
 
         <div className="flex-1 overflow-y-auto p-4 space-y-6 bg-slate-50">
           <div className="grid grid-cols-2 gap-4">
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm"><div className="flex items-center text-slate-500 mb-1 text-xs uppercase font-bold"><Ruler size={14} className="mr-1" /> Fläche (ha)</div><input type="number" step="0.01" value={editedField.areaHa} onChange={(e) => handleChange('areaHa', parseFloat(e.target.value))} className="w-full bg-transparent text-2xl font-bold text-slate-800 focus:outline-none border-b border-transparent focus:border-green-500" readOnly/></div>
-            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm"><div className="flex items-center text-slate-500 mb-1 text-xs uppercase font-bold"><MapPin size={14} className="mr-1" /> Nutzung</div><input type="text" value={editedField.usage} onChange={(e) => handleChange('usage', e.target.value)} className="w-full bg-transparent text-lg font-bold text-slate-800 focus:outline-none border-b border-transparent focus:border-green-500"/></div>
+            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                <div className="flex items-center text-slate-500 mb-1 text-xs uppercase font-bold"><Ruler size={14} className="mr-1" /> Fläche (ha)</div>
+                <input type="number" step="0.01" value={editedField.areaHa} onChange={(e) => handleChange('areaHa', parseFloat(e.target.value))} className="w-full bg-transparent text-2xl font-bold text-slate-800 focus:outline-none border-b border-transparent focus:border-green-500" readOnly/>
+            </div>
+            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                <div className="flex items-center text-slate-500 mb-1 text-xs uppercase font-bold"><MapPin size={14} className="mr-1" /> Nutzung</div>
+                <input type="text" value={editedField.usage || ''} onChange={(e) => handleChange('usage', e.target.value)} className="w-full bg-transparent text-lg font-bold text-slate-800 focus:outline-none border-b border-transparent focus:border-green-500"/>
+            </div>
           </div>
 
-          {/* NEU: Button zum Bearbeiten der Geometrie */}
+          <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+              <div className="flex items-center text-slate-500 mb-1 text-xs uppercase font-bold"><Tag size={14} className="mr-1" /> Codes (eAMA / Referenz)</div>
+              <input 
+                type="text" 
+                value={editedField.codes || ''} 
+                onChange={(e) => handleChange('codes', e.target.value)} 
+                className="w-full bg-transparent text-lg font-bold text-slate-800 focus:outline-none border-b border-transparent focus:border-blue-500"
+                placeholder="Noch kein Code hinterlegt"
+              />
+          </div>
+
           <button 
             onClick={() => onEditGeometry && onEditGeometry(editedField)}
             className="w-full py-4 bg-blue-50 text-blue-700 border-2 border-blue-200 rounded-2xl font-black flex items-center justify-center hover:bg-blue-100 transition-all shadow-sm group"
@@ -142,7 +158,6 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
               Geometrie auf Karte bearbeiten
           </button>
 
-          {/* Herkunft-Zusammenfassung (Kumulativ) */}
           {field.detailedSources && Object.keys(field.detailedSources).length > 0 && (
               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
                   <h3 className="font-bold text-slate-700 text-sm flex items-center"><Database size={16} className="mr-2 text-amber-600"/> Dünger-Herkunft (Gesamt)</h3>
