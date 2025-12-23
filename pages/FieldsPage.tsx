@@ -65,6 +65,7 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
   const [fields, setFields] = useState<Field[]>([]);
   const [editingField, setEditingField] = useState<Partial<Field>>({});
   const [selectedField, setSelectedField] = useState<Field | null>(null);
+  const [hoveredFieldId, setHoveredFieldId] = useState<string | null>(null);
 
   // Search & Filter State
   const [searchTerm, setSearchTerm] = useState('');
@@ -291,20 +292,27 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
             />
             <MapBounds fields={filteredFields} selectedField={selectedField} />
             
-            {filteredFields.map(f => (
-                <Polygon 
-                    key={`${f.id}-${f.color || 'default'}-${selectedField?.id === f.id ? 'sel' : ''}`}
-                    positions={f.boundary.map(p => [p.lat, p.lng])} 
-                    color={getFieldColor(f)}
-                    weight={selectedField?.id === f.id ? 3 : 1}
-                    fillOpacity={selectedField?.id === f.id ? 0.6 : 0.4}
-                    {...{ eventHandlers: {
-                        click: () => setSelectedField(f)
-                    }} as any}
-                >
-                    <Popup>{f.name}</Popup>
-                </Polygon>
-            ))}
+            {filteredFields.map(f => {
+                const isHovered = hoveredFieldId === f.id;
+                const isSelected = selectedField?.id === f.id;
+                
+                return (
+                    <Polygon 
+                        key={`${f.id}-${f.color || 'default'}-${isSelected ? 'sel' : ''}-${isHovered ? 'hov' : ''}`}
+                        positions={f.boundary.map(p => [p.lat, p.lng])} 
+                        color={getFieldColor(f)}
+                        weight={isSelected ? 3 : (isHovered ? 4 : 1)}
+                        fillOpacity={isSelected ? 0.6 : (isHovered ? 0.7 : 0.4)}
+                        {...{ eventHandlers: {
+                            click: () => setSelectedField(f),
+                            mouseover: () => setHoveredFieldId(f.id),
+                            mouseout: () => setHoveredFieldId(null)
+                        }} as any}
+                    >
+                        <Popup>{f.name}</Popup>
+                    </Polygon>
+                );
+            })}
           </MapContainer>
 
           <button 
@@ -368,69 +376,78 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
                 }
             </div>
         ) : (
-            filteredFields.map(field => (
-                <div 
-                  key={field.id} 
-                  className={`p-2 rounded-xl shadow-sm flex items-center border transition-all ${
-                      selectedField?.id === field.id 
-                      ? 'bg-blue-50 border-blue-300 ring-1 ring-blue-200' 
-                      : 'bg-white border-transparent hover:border-green-100'
-                  }`}
-                >
+            filteredFields.map(field => {
+                const isSelected = selectedField?.id === field.id;
+                const isHovered = hoveredFieldId === field.id;
+                
+                return (
                     <div 
-                        onClick={() => setSelectedField(field)}
-                        className="flex-1 p-2 cursor-pointer"
+                      key={field.id} 
+                      onMouseEnter={() => setHoveredFieldId(field.id)}
+                      onMouseLeave={() => setHoveredFieldId(null)}
+                      className={`p-2 rounded-xl shadow-sm flex items-center border transition-all ${
+                          isSelected 
+                          ? 'bg-blue-50 border-blue-300 ring-1 ring-blue-200' 
+                          : isHovered 
+                            ? 'bg-green-50 border-green-200' 
+                            : 'bg-white border-transparent hover:border-green-100'
+                      }`}
                     >
-                        <div className="font-bold text-lg truncate flex items-center">
-                            {field.name}
-                            {field.codes && (
-                                <span className="ml-2 px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-mono rounded border border-slate-200 flex items-center shrink-0">
-                                    <Tag size={8} className="mr-1"/> {field.codes}
-                                </span>
-                            )}
-                            {selectedField?.id === field.id && <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full animate-pulse shrink-0"></span>}
+                        <div 
+                            onClick={() => setSelectedField(field)}
+                            className="flex-1 p-2 cursor-pointer"
+                        >
+                            <div className="font-bold text-lg truncate flex items-center">
+                                {field.name}
+                                {field.codes && (
+                                    <span className="ml-2 px-1.5 py-0.5 bg-slate-100 text-slate-500 text-[10px] font-mono rounded border border-slate-200 flex items-center shrink-0">
+                                        <Tag size={8} className="mr-1"/> {field.codes}
+                                    </span>
+                                )}
+                                {isSelected && <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full animate-pulse shrink-0"></span>}
+                            </div>
+                            <div className="text-sm text-slate-500 flex items-center space-x-2">
+                                <span 
+                                    className="inline-block w-2.5 h-2.5 rounded-full shadow-sm"
+                                    style={{ backgroundColor: getFieldColor(field) }}
+                                ></span>
+                                <span>{field.areaHa.toFixed(2)} ha</span>
+                                <span className="text-slate-300">|</span>
+                                <span className="truncate">{field.usage}</span>
+                            </div>
                         </div>
-                        <div className="text-sm text-slate-500 flex items-center space-x-2">
-                            <span 
-                                className="inline-block w-2.5 h-2.5 rounded-full shadow-sm"
-                                style={{ backgroundColor: getFieldColor(field) }}
-                            ></span>
-                            <span>{field.areaHa.toFixed(2)} ha</span>
-                            <span className="text-slate-300">|</span>
-                            <span className="truncate">{field.usage}</span>
-                        </div>
+
+                        <button 
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleEdit(field);
+                            }}
+                            className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                            title="Bearbeiten"
+                        >
+                            <Edit2 size={20} />
+                        </button>
+
+                        <button 
+                            type="button"
+                            onClick={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleDelete(field.id);
+                            }}
+                            className={`p-3 rounded-lg transition-all z-20 relative select-none active:scale-95 ml-2 ${
+                                confirmDeleteId === field.id 
+                                ? 'bg-red-600 text-white shadow-lg' 
+                                : 'text-slate-300 hover:text-red-500 hover:bg-red-50'
+                            }`}
+                            title="Feld löschen"
+                        >
+                            {confirmDeleteId === field.id ? <AlertTriangle size={20} /> : <Trash2 size={20} />}
+                        </button>
                     </div>
-
-                    <button 
-                        onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleEdit(field);
-                        }}
-                        className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
-                        title="Bearbeiten"
-                    >
-                        <Edit2 size={20} />
-                    </button>
-
-                    <button 
-                        type="button"
-                        onClick={(e) => {
-                            e.preventDefault();
-                            e.stopPropagation();
-                            handleDelete(field.id);
-                        }}
-                        className={`p-3 rounded-lg transition-all z-20 relative select-none active:scale-95 ml-2 ${
-                            confirmDeleteId === field.id 
-                            ? 'bg-red-600 text-white shadow-lg' 
-                            : 'text-slate-300 hover:text-red-500 hover:bg-red-50'
-                        }`}
-                        title="Feld löschen"
-                    >
-                        {confirmDeleteId === field.id ? <AlertTriangle size={20} /> : <Trash2 size={20} />}
-                    </button>
-                </div>
-            ))
+                );
+            })
         )}
       </div>
 
