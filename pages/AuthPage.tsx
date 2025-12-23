@@ -114,13 +114,29 @@ export const AuthPage: React.FC<Props> = ({ onLoginSuccess, onGuestAccess }) => 
 
                 <div className="bg-white rounded-2xl shadow-2xl overflow-hidden">
                     <div className="flex border-b border-slate-100">
-                        <button onClick={() => setMode('LOGIN')} className={`flex-1 py-4 text-sm font-bold transition-colors ${mode === 'LOGIN' ? 'text-agri-600 border-b-2 border-agri-600 bg-green-50/50' : 'text-slate-400 hover:text-slate-600'}`}>Anmelden</button>
-                        <button onClick={() => setMode('REGISTER')} className={`flex-1 py-4 text-sm font-bold transition-colors ${mode === 'REGISTER' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-400 hover:text-slate-600'}`}>Registrieren</button>
+                        <button onClick={() => { setMode('LOGIN'); setError(null); }} className={`flex-1 py-4 text-sm font-bold transition-colors ${mode === 'LOGIN' ? 'text-agri-600 border-b-2 border-agri-600 bg-green-50/50' : 'text-slate-400 hover:text-slate-600'}`}>Anmelden</button>
+                        <button onClick={() => { setMode('REGISTER'); setError(null); }} className={`flex-1 py-4 text-sm font-bold transition-colors ${mode === 'REGISTER' ? 'text-blue-600 border-b-2 border-blue-600 bg-blue-50/50' : 'text-slate-400 hover:text-slate-600'}`}>Registrieren</button>
                     </div>
 
                     <div className="p-8">
                         <form onSubmit={handleSubmit} className="space-y-5">
-                            {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex items-start"><AlertCircle size={16} className="mr-2 mt-0.5 shrink-0"/>{error}</div>}
+                            {error && (
+                                <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm flex flex-col items-start animate-in fade-in slide-in-from-top-2">
+                                    <div className="flex items-start">
+                                        <AlertCircle size={16} className="mr-2 mt-0.5 shrink-0"/>
+                                        <span>{error}</span>
+                                    </div>
+                                    {mode === 'LOGIN' && error.includes('Hast du dich schon registriert?') && (
+                                        <button 
+                                            type="button" 
+                                            onClick={() => { setMode('REGISTER'); setError(null); }}
+                                            className="mt-2 text-xs font-black uppercase tracking-widest text-red-700 hover:underline"
+                                        >
+                                            Jetzt registrieren
+                                        </button>
+                                    )}
+                                </div>
+                            )}
                             {message && <div className="bg-blue-50 text-blue-600 p-3 rounded-lg text-sm flex items-start"><CheckCircle2 size={16} className="mr-2 mt-0.5 shrink-0"/>{message}</div>}
 
                             <div>

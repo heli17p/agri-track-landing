@@ -91,6 +91,7 @@ const translateAuthError = (code: string): Error => {
         case 'auth/user-disabled': return new Error('Benutzerkonto deaktiviert.');
         case 'auth/user-not-found': return new Error('Konto nicht gefunden.');
         case 'auth/wrong-password': return new Error('Falsches Passwort.');
+        case 'auth/invalid-credential': return new Error('E-Mail oder Passwort nicht korrekt. Hast du dich schon registriert?');
         case 'auth/email-already-in-use': return new Error('Diese E-Mail wird bereits verwendet.');
         case 'auth/weak-password': return new Error('Passwort muss mindestens 6 Zeichen haben.');
         default: return new Error(`Fehler: ${code}`);
