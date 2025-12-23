@@ -9,9 +9,9 @@ import { StorageLocation, FertilizerType, FarmProfile } from '../../types';
 // Icons für den Map-Picker innerhalb des Modals
 const createCustomIcon = (color: string, svgPath: string) => {
   const pinSvg = `
-    <svg width="36" height="46" viewBox="0 0 24 30" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 3px 4px rgba(0,0,0,0.4));">
-      <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 18 12 18s12-9 12-18c0-6.63-5.37-12-12-12z" fill="${color}" stroke="white" stroke-width="1.5"/>
-      <g transform="translate(5, 5) scale(0.6)">
+    <svg width="22" height="30" viewBox="0 0 24 32" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 1.5px 2px rgba(0,0,0,0.3));">
+      <path d="M12 0C5.37 0 0 5.37 0 12c0 9 12 20 12 20s12-11 12-20c0-6.63-5.37-12-12-12z" fill="${color}" stroke="white" stroke-width="2"/>
+      <g transform="translate(6, 6) scale(0.5)">
         ${svgPath.replace(/currentColor/g, 'white')}
       </g>
     </svg>
@@ -19,9 +19,9 @@ const createCustomIcon = (color: string, svgPath: string) => {
   
   return L.divIcon({
     className: 'custom-pin-icon',
-    html: `<div style="width: 36px; height: 46px; display: flex; align-items: center; justify-content: center;">${pinSvg}</div>`,
-    iconSize: [36, 46],
-    iconAnchor: [18, 46]
+    html: `<div style="width: 22px; height: 30px; display: flex; align-items: center; justify-content: center;">${pinSvg}</div>`,
+    iconSize: [22, 30],
+    iconAnchor: [11, 30]
   });
 };
 
