@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2 } from 'lucide-react';
+import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2, X } from 'lucide-react';
 import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, EquipmentCategory, ActivityType } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
 import { dbService, generateId } from '../../services/db';
@@ -115,40 +115,79 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
 
             {showCatManager && (
                 <div className="p-5 border-t border-slate-100 bg-slate-50/50 space-y-4 animate-in slide-in-from-top-2">
-                    <div className="bg-white p-4 rounded-xl border border-slate-200 space-y-3">
-                        <label className="text-[10px] font-black text-slate-400 uppercase tracking-widest">
-                            {editingCatId ? 'Gruppe umbenennen' : 'Neue Gruppe anlegen'}
-                        </label>
+                    
+                    {/* EINGABEBEREICH - DESIGN-UPDATE */}
+                    <div className={`p-4 rounded-xl border-2 transition-all ${editingCatId ? 'bg-amber-50 border-amber-300 ring-4 ring-amber-100' : 'bg-white border-slate-100 shadow-sm'}`}>
+                        <div className="flex justify-between items-center mb-2 px-1">
+                            <label className={`text-[10px] font-black uppercase tracking-widest ${editingCatId ? 'text-amber-600' : 'text-slate-400'}`}>
+                                {editingCatId ? 'Gruppe umbenennen' : 'Neue Gruppe anlegen'}
+                            </label>
+                            {editingCatId && (
+                                <button onClick={() => { setEditingCatId(null); setNewCatName(''); }} className="text-amber-700 p-1 hover:bg-amber-100 rounded-full"><X size={14}/></button>
+                            )}
+                        </div>
                         <div className="flex space-x-2">
-                            <input type="text" value={newCatName} onChange={e => setNewCatName(e.target.value)} className="flex-1 p-2 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 font-bold text-sm" placeholder="z.B. Walze..." />
-                            <select value={newCatParent} onChange={e => setNewCatParent(e.target.value as ActivityType)} className="p-2 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold">
-                                <option value={ActivityType.TILLAGE}>Boden</option>
-                                <option value={ActivityType.FERTILIZATION}>Düngung</option>
-                                <option value={ActivityType.HARVEST}>Ernte</option>
-                            </select>
-                            <button onClick={handleAddCategory} className="bg-purple-600 text-white px-3 py-2 rounded-lg font-bold text-xs">{editingCatId ? 'OK' : 'OK'}</button>
+                            <input 
+                                type="text" 
+                                value={newCatName} 
+                                onChange={e => setNewCatName(e.target.value)} 
+                                className="flex-1 p-2.5 bg-white border border-slate-200 rounded-lg outline-none focus:ring-2 focus:ring-purple-500 font-bold text-sm shadow-inner" 
+                                placeholder="z.B. Walze..." 
+                                autoFocus={!!editingCatId}
+                            />
+                            {!editingCatId && (
+                                <select value={newCatParent} onChange={e => setNewCatParent(e.target.value as ActivityType)} className="p-2.5 bg-slate-50 border border-slate-200 rounded-lg text-xs font-bold outline-none">
+                                    <option value={ActivityType.TILLAGE}>Boden</option>
+                                    <option value={ActivityType.FERTILIZATION}>Düngung</option>
+                                    <option value={ActivityType.HARVEST}>Ernte</option>
+                                </select>
+                            )}
+                            <button 
+                                onClick={handleAddCategory} 
+                                className={`px-4 py-2.5 rounded-lg font-black text-xs shadow-md transition-all active:scale-95 ${editingCatId ? 'bg-amber-600 text-white' : 'bg-purple-600 text-white'}`}
+                            >
+                                {editingCatId ? 'SPEICHERN' : 'OK'}
+                            </button>
                         </div>
                     </div>
                     
+                    {/* GRUPPEN LISTE */}
                     <div className="space-y-4">
-                        {[ActivityType.FERTILIZATION, ActivityType.TILLAGE, ActivityType.HARVEST].map(parent => (
-                            <div key={parent}>
-                                <h4 className="text-[9px] font-black text-slate-400 uppercase mb-2 flex items-center">{getParentIcon(parent)} {parent}</h4>
-                                <div className="flex flex-wrap gap-2">
-                                    {categories.filter(c => c.parentType === parent).map(cat => (
-                                        <div key={cat.id} className="bg-white border border-slate-200 pl-3 pr-1 py-1 rounded-full flex items-center shadow-sm">
-                                            <span 
-                                                className="text-[10px] font-black text-slate-700 uppercase tracking-tighter mr-2 cursor-pointer hover:text-purple-600"
-                                                onClick={() => handleEditCategory(cat)}
-                                            >
-                                                {cat.name}
-                                            </span>
-                                            <button onClick={() => handleDeleteCategory(cat.id)} className="p-1 text-slate-300 hover:text-red-500 transition-colors"><Trash2 size={10}/></button>
-                                        </div>
-                                    ))}
+                        {[ActivityType.FERTILIZATION, ActivityType.TILLAGE, ActivityType.HARVEST].map(parent => {
+                            const groupCats = categories.filter(c => c.parentType === parent);
+                            if (groupCats.length === 0 && parent !== ActivityType.FERTILIZATION) return null;
+                            
+                            return (
+                                <div key={parent}>
+                                    <h4 className="text-[9px] font-black text-slate-400 uppercase mb-2 flex items-center tracking-widest">{getParentIcon(parent)} {parent}</h4>
+                                    <div className="flex flex-wrap gap-2">
+                                        {groupCats.map(cat => {
+                                            const isEditing = editingCatId === cat.id;
+                                            return (
+                                                <div 
+                                                    key={cat.id} 
+                                                    onClick={() => handleEditCategory(cat)}
+                                                    className={`group pl-3 pr-1 py-1 rounded-full flex items-center shadow-sm border transition-all cursor-pointer ${isEditing ? 'bg-amber-100 border-amber-400 scale-105 shadow-amber-200' : 'bg-white border-slate-200 hover:border-purple-300'}`}
+                                                >
+                                                    <span className={`text-[10px] font-black uppercase tracking-tighter mr-2 ${isEditing ? 'text-amber-700' : 'text-slate-700'}`}>
+                                                        {cat.name}
+                                                    </span>
+                                                    <div className="flex items-center space-x-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <div className="p-1 text-slate-400"><Edit2 size={10}/></div>
+                                                        <button 
+                                                            onClick={(e) => { e.stopPropagation(); handleDeleteCategory(cat.id); }} 
+                                                            className="p-1 text-slate-300 hover:text-red-500 transition-colors"
+                                                        >
+                                                            <Trash2 size={10}/>
+                                                        </button>
+                                                    </div>
+                                                </div>
+                                            );
+                                        })}
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            );
+                        })}
                     </div>
                 </div>
             )}
