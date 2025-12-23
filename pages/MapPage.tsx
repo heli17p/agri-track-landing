@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Popup, useMap, useMapEvents, Polyline } from 'react-leaflet';
-import { Layers, Building2, Save, X, Move, MousePointerClick, Undo2, Trash2, Scissors, Check, LocateFixed, AlertTriangle } from 'lucide-react';
+import { Layers, Building2, Save, X, Move, MousePointerClick, Undo2, Trash2, Scissors, Check, LocateFixed, AlertTriangle, Droplets } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { Field, StorageLocation, FarmProfile, FertilizerType, GeoPoint } from '../types';
 import { FieldDetailView } from '../components/FieldDetailView';
@@ -145,12 +145,23 @@ const MapBounds = ({ fields, profile, focusField, isEditing }: { fields: Field[]
 };
 
 const LegendPoly = ({ color, label }: { color: string, label: string }) => (
-    <div className="flex items-center mb-1">
-        <div className="relative w-4 h-4 mr-2 shadow-sm rounded-sm overflow-hidden">
+    <div className="flex items-center mb-1.5">
+        <div className="relative w-4 h-4 mr-2 shadow-sm rounded-sm overflow-hidden shrink-0">
             <div className="absolute inset-0" style={{ backgroundColor: color, opacity: 0.5 }}></div>
             <div className="absolute inset-0 border-2" style={{ borderColor: color }}></div>
         </div>
-        <span className="text-slate-700">{label}</span>
+        <span className="text-slate-700 font-medium truncate">{label}</span>
+    </div>
+);
+
+const LegendMarker = ({ color, label, path }: { color: string, label: string, path: string }) => (
+    <div className="flex items-center mb-1.5">
+        <div className="w-4 h-4 mr-2 rounded-full border border-white shadow-sm flex items-center justify-center shrink-0" style={{ backgroundColor: color }}>
+            <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="white" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                <path d={path} />
+            </svg>
+        </div>
+        <span className="text-slate-700 font-medium truncate">{label}</span>
     </div>
 );
 
@@ -180,7 +191,8 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const loadData = async () => {
     const f = await dbService.getFields();
     setFields(f);
-    setStorages(await dbService.getStorageLocations());
+    const s = await dbService.getStorageLocations();
+    setStorages(s);
     const p = await dbService.getFarmProfile();
     if (p.length > 0) setProfile(p[0]);
 
@@ -306,8 +318,11 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
           grunland: { label: 'Grünland', color: colors.grunland, present: false },
           weide: { label: 'Dauerweide', color: colors.weide, present: false },
           acker: { label: 'Acker', color: colors.acker, present: false },
-          div: { label: 'Div. Flächen', color: colors.div, present: false }
+          div: { label: 'Div. Flächen', color: colors.div, present: false },
+          slurry: { label: 'Gülle-Lager', color: '#78350f', path: iconPaths.droplet, present: false },
+          manure: { label: 'Mist-Lager', color: '#d97706', path: iconPaths.layers, present: false }
       };
+
       fields.forEach(f => {
           const usage = f.usage?.toUpperCase() || '';
           const name = f.name.toUpperCase();
@@ -316,8 +331,14 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
           else if (f.type === 'Acker') data.acker.present = true;
           else data.grunland.present = true;
       });
+
+      storages.forEach(s => {
+          if (s.type === FertilizerType.SLURRY) data.slurry.present = true;
+          if (s.type === FertilizerType.MANURE) data.manure.present = true;
+      });
+
       return data;
-  }, [fields, mapStyle]);
+  }, [fields, storages, mapStyle]);
 
   return (
     <div className="h-full w-full relative bg-slate-900 min-h-[600px]">
@@ -374,8 +395,8 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
          </div>
 
          <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400]">
-            <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 hover:text-green-600"><Layers size={24} /></button>
-            <button onClick={() => navigator.geolocation.getCurrentPosition(pos => {})} className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 hover:text-blue-600"><LocateFixed size={24} /></button>
+            <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 hover:text-green-600 transition-colors"><Layers size={24} /></button>
+            <button onClick={() => navigator.geolocation.getCurrentPosition(pos => {})} className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 hover:text-blue-600 transition-colors"><LocateFixed size={24} /></button>
          </div>
 
          {isEditing && editingField && (
@@ -418,13 +439,28 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
          )}
 
          {!isEditing && (
-             <div className="absolute top-4 left-4 bg-white/90 p-3 rounded-lg shadow-lg z-[400] text-xs backdrop-blur-sm border border-slate-200 pointer-events-none max-w-[200px]">
-                 <div className="font-bold mb-2 text-slate-700">Legende</div>
-                 {profile?.addressGeo && <div className="flex items-center mb-1"><div className="w-4 h-4 rounded-full mr-2 bg-[#2563eb] border-2 border-white shadow-sm"></div><span>Hofstelle</span></div>}
-                 {legendData.grunland.present && <LegendPoly color={legendData.grunland.color} label={legendData.grunland.label} />}
-                 {legendData.weide.present && <LegendPoly color={legendData.weide.color} label={legendData.weide.label} />}
-                 {legendData.acker.present && <LegendPoly color={legendData.acker.color} label={legendData.acker.label} />}
-                 {legendData.div.present && <LegendPoly color={legendData.div.color} label={legendData.div.label} />}
+             <div className="absolute top-4 left-4 bg-white/95 p-3 rounded-xl shadow-2xl z-[400] text-xs backdrop-blur-sm border border-slate-200 max-w-[200px] animate-in fade-in slide-in-from-left-4 duration-500">
+                 <div className="font-black mb-3 text-slate-800 uppercase tracking-widest border-b border-slate-100 pb-1 flex items-center">
+                     <Layers size={14} className="mr-2 text-green-600"/> Legende
+                 </div>
+                 
+                 <div className="space-y-0.5">
+                    {profile?.addressGeo && <LegendMarker color="#2563eb" label="Hofstelle" path={iconPaths.house} />}
+                    
+                    {/* Schlagarten */}
+                    {legendData.acker.present && <LegendPoly color={legendData.acker.color} label={legendData.acker.label} />}
+                    {legendData.grunland.present && <LegendPoly color={legendData.grunland.color} label={legendData.grunland.label} />}
+                    {legendData.weide.present && <LegendPoly color={legendData.weide.color} label={legendData.weide.label} />}
+                    {legendData.div.present && <LegendPoly color={legendData.div.color} label={legendData.div.label} />}
+
+                    {/* Lagerarten - Dynamisch */}
+                    {(legendData.slurry.present || legendData.manure.present) && (
+                        <div className="pt-2 mt-2 border-t border-slate-100">
+                            {legendData.slurry.present && <LegendMarker color={legendData.slurry.color} label={legendData.slurry.label} path={legendData.slurry.path} />}
+                            {legendData.manure.present && <LegendMarker color={legendData.manure.color} label={legendData.manure.label} path={legendData.manure.path} />}
+                        </div>
+                    )}
+                 </div>
              </div>
          )}
 
