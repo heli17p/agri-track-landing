@@ -6,7 +6,7 @@ import { TrackingPage } from '../pages/TrackingPage';
 import { MapPage } from '../pages/MapPage';
 import { FieldsPage } from '../pages/FieldsPage';
 import { SettingsPage } from '../pages/SettingsPage';
-import { WelcomeGate } from './WelcomeGate';
+import { WelcomeGate } from './WelcomeGate'; // Import bleibt gleich, Dateipräsenz wurde oben sichergestellt
 import { ShieldCheck, CloudOff, RefreshCw } from 'lucide-react';
 import { isCloudConfigured } from '../services/storage';
 import { dbService } from '../services/db';
@@ -23,7 +23,7 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
-  // New State for handling direct tab navigation
+  // State für die direkte Tab-Navigation in den Einstellungen
   const [settingsTab, setSettingsTab] = useState<'profile' | 'storage' | 'general' | 'sync' | 'equipment'>('profile');
 
   const loadSettings = async () => {
@@ -74,11 +74,11 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       }
   };
 
-  if (isLoadingSettings) return <div className="h-full w-full flex items-center justify-center bg-slate-50"><RefreshCw className="animate-spin text-agri-600" size={32}/></div>;
+  if (isLoadingSettings) return <div className="h-full w-full flex items-center justify-center bg-slate-50"><RefreshCw className="animate-spin text-green-600" size={32}/></div>;
 
   const isLive = isCloudConfigured();
   
-  // SECURITY CHECK: If logged in but no Farm ID, show the Welcome Gate
+  // SICHERHEITS-CHECK: Wenn eingeloggt, aber keine Farm-ID vorhanden, zeige das Welcome-Gate
   const needsFarmAssignment = isLive && !settings.farmId;
 
   if (needsFarmAssignment) {
