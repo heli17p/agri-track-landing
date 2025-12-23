@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef, useMemo } from 'react';
-import { Save, User, Database, Settings, Cloud, CheckCircle, RefreshCw, X, Move, Wrench } from 'lucide-react';
+import { Save, User, Database, Settings, Cloud, CheckCircle, RefreshCw, X, Move, Wrench, Layers } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { authService } from '../services/auth';
 import { syncData } from '../services/sync';
@@ -16,14 +16,33 @@ interface Props { initialTab?: 'profile' | 'storage' | 'general' | 'sync' | 'equ
 const createCustomIcon = (color: string, path: string) => L.divIcon({ className: 'custom-pin', html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${path}</svg></div>`, iconSize: [32, 32], iconAnchor: [16, 16] });
 const farmIcon = createCustomIcon('#2563eb', '<path d="M3 21h18M5 21V7l8-5 8 5v14"/>');
 
-const LocationPickerMap = ({ position, onPick, icon }: any) => {
+const LocationPickerMap = ({ position, onPick, icon, mapStyle }: any) => {
     const map = useMap();
-    useEffect(() => { setTimeout(() => map.invalidateSize(), 200); if (position) map.setView(position, map.getZoom() || 15); }, [map]);
+    useEffect(() => { 
+        setTimeout(() => map.invalidateSize(), 200); 
+        if (position) map.setView(position, map.getZoom() || 15); 
+    }, [map, position]);
+    
     useMapEvents({ click(e) { onPick(e.latlng.lat, e.latlng.lng); } });
+    
     return (
         <>
-            <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-            {position && <Marker draggable={true} eventHandlers={{ dragend(e) { onPick(e.target.getLatLng().lat, e.target.getLatLng().lng); } }} position={position} icon={icon || farmIcon} />}
+            <TileLayer 
+                url={mapStyle === 'standard' 
+                    ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                    : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                } 
+            />
+            {position && (
+                <Marker 
+                    draggable={true} 
+                    eventHandlers={{ 
+                        dragend(e) { onPick(e.target.getLatLng().lat, e.target.getLatLng().lng); } 
+                    }} 
+                    position={position} 
+                    icon={icon || farmIcon} 
+                />
+            )}
         </>
     );
 };
@@ -33,7 +52,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [profile, setProfile] = useState<FarmProfile>({ farmId: '', operatorName: '', address: '', totalAreaHa: 0 });
   const [storages, setStorages] = useState<StorageLocation[]>([]);
-  const [equipment, setEquipment] = useState<Equipment[]>([]); // NEU
+  const [equipment, setEquipment] = useState<Equipment[]>([]); 
   const [isSaving, setIsSaving] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [authState, setAuthState] = useState<any>(null);
@@ -44,6 +63,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
   const [showDiagnose, setShowDiagnose] = useState(false);
   const [activeDiagTab, setActiveDiagTab] = useState('status');
   const [showMapPicker, setShowMapPicker] = useState<'profile' | 'storage' | null>(null);
+  const [pickerMapStyle, setPickerMapStyle] = useState<'standard' | 'satellite'>('standard');
   const [logs, setLogs] = useState<string[]>([]);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState({ status: '', percent: 0 });
@@ -58,7 +78,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
     const s = await dbService.getSettings(); setSettings(s);
     const p = await dbService.getFarmProfile(); if(p.length) setProfile(p[0]);
     const st = await dbService.getStorageLocations(); setStorages(st);
-    const eq = await dbService.getEquipment(); setEquipment(eq); // NEU
+    const eq = await dbService.getEquipment(); setEquipment(eq); 
     setLocalStats(await dbService.getLocalStats());
     if (s.farmId) setCloudStats(await dbService.getCloudStats(s.farmId));
   };
@@ -97,7 +117,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                 {[
                     { id: 'profile', icon: User, label: 'Betrieb' },
                     { id: 'storage', icon: Database, label: 'Lager' },
-                    { id: 'equipment', icon: Wrench, label: 'Geräte' }, // NEU
+                    { id: 'equipment', icon: Wrench, label: 'Geräte' },
                     { id: 'general', icon: Settings, label: 'Optionen' },
                     { id: 'sync', icon: Cloud, label: 'Sync' }
                 ].map(tab => (
@@ -147,8 +167,38 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
 
         {showMapPicker === 'profile' && (
             <div className="fixed inset-0 z-[1000] bg-black/80 flex flex-col animate-in fade-in">
-                <div className="bg-white p-4 flex justify-between items-center"><h3 className="font-bold">Hofstelle wählen</h3><button onClick={() => setShowMapPicker(null)} className="px-4 py-2 bg-slate-900 text-white rounded-lg font-bold">Fertig</button></div>
-                <div className="flex-1 relative"><MapContainer center={profile.addressGeo || { lat: 47.5, lng: 14.5 }} zoom={13} style={{ height: '100%', width: '100%' }} zoomControl={false}><LocationPickerMap position={profile.addressGeo} onPick={(lat: any, lng: any) => setProfile({...profile, addressGeo: { lat, lng }})} icon={farmIcon}/></MapContainer></div>
+                <div className="bg-white p-4 flex justify-between items-center shadow-md z-10">
+                    <h3 className="font-bold text-slate-800">Hofstelle wählen</h3>
+                    <button 
+                        onClick={() => setShowMapPicker(null)} 
+                        className="px-6 py-2 bg-slate-900 text-white rounded-xl font-bold active:scale-95 transition-all"
+                    >
+                        Fertig
+                    </button>
+                </div>
+                <div className="flex-1 relative">
+                    <MapContainer center={profile.addressGeo || { lat: 47.5, lng: 14.5 }} zoom={13} style={{ height: '100%', width: '100%' }} zoomControl={false}>
+                        <LocationPickerMap 
+                            position={profile.addressGeo} 
+                            mapStyle={pickerMapStyle}
+                            onPick={(lat: any, lng: any) => setProfile({...profile, addressGeo: { lat, lng }})} 
+                            icon={farmIcon}
+                        />
+                    </MapContainer>
+                    
+                    {/* Satellite Toggle */}
+                    <button 
+                        onClick={() => setPickerMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')}
+                        className="absolute top-4 right-4 z-[400] bg-white p-3 rounded-xl shadow-xl border border-slate-200 text-slate-700 hover:text-green-600 transition-colors"
+                        title="Ansicht umschalten"
+                    >
+                        <Layers size={24} />
+                    </button>
+                    
+                    <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-[400] bg-white/90 backdrop-blur px-4 py-2 rounded-full shadow-lg border border-slate-200 text-[10px] font-black text-slate-500 uppercase tracking-widest text-center whitespace-nowrap">
+                        Tippe auf die Karte oder ziehe den Marker
+                    </div>
+                </div>
             </div>
         )}
     </div>
