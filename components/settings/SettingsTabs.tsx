@@ -4,21 +4,98 @@ import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, C
 import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, EquipmentCategory, ActivityType } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
 import { dbService, generateId } from '../../services/db';
+import { MapContainer, TileLayer, Marker } from 'react-leaflet';
+import L from 'leaflet';
 
 const SharedBadge = () => <span className="text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded ml-1 inline-flex items-center"><Cloud size={10} className="mr-1"/> Sync</span>;
 
-export const ProfileTab: React.FC<{ profile: FarmProfile, setProfile: (p: any) => void, onPickMap: () => void }> = ({ profile, setProfile, onPickMap }) => (
-    <div className="space-y-4 max-w-lg mx-auto">
-        <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
-            <h3 className="font-bold text-lg mb-4 text-slate-800">Betriebsdaten</h3>
-            <div className="space-y-4">
-                <div><label className="block text-sm font-bold text-slate-500 mb-1">Betriebsname</label><input type="text" value={profile.operatorName} onChange={(e) => setProfile({...profile, operatorName: e.target.value})} className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none" /></div>
-                <div><label className="block text-sm font-bold text-slate-500 mb-1">Anschrift</label><textarea value={profile.address} onChange={(e) => setProfile({...profile, address: e.target.value})} rows={3} className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none" /></div>
-                <div><label className="block text-sm font-bold text-slate-500 mb-1">Hofstelle</label><button onClick={onPickMap} className="w-full py-3 border-2 border-dashed border-slate-300 rounded-lg text-slate-500 font-bold hover:bg-slate-50 flex items-center justify-center"><MapPin size={18} className="mr-2"/> {profile.addressGeo ? `Position gesetzt` : 'Auf Karte wählen'}</button></div>
+// Marker Icon für die Hofstelle in der Vorschau
+const farmMarkerIcon = L.divIcon({ 
+    className: 'custom-pin', 
+    html: `<div style="background-color: #2563eb; width: 28px; height: 28px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white; shadow: 0 2px 4px rgba(0,0,0,0.2);"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M3 21h18M5 21V7l8-5 8 5v14"/></svg></div>`, 
+    iconSize: [28, 28], 
+    iconAnchor: [14, 14] 
+});
+
+export const ProfileTab: React.FC<{ profile: FarmProfile, setProfile: (p: any) => void, onPickMap: () => void }> = ({ profile, setProfile, onPickMap }) => {
+    const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
+
+    return (
+        <div className="space-y-4 max-w-lg mx-auto">
+            <div className="bg-white p-6 rounded-xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-lg mb-4 text-slate-800">Betriebsdaten</h3>
+                <div className="space-y-4">
+                    <div>
+                        <label className="block text-sm font-bold text-slate-500 mb-1">Betriebsname</label>
+                        <input 
+                            type="text" 
+                            value={profile.operatorName} 
+                            onChange={(e) => setProfile({...profile, operatorName: e.target.value})} 
+                            className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none" 
+                        />
+                    </div>
+                    <div>
+                        <label className="block text-sm font-bold text-slate-500 mb-1">Anschrift</label>
+                        <textarea 
+                            value={profile.address} 
+                            onChange={(e) => setProfile({...profile, address: e.target.value})} 
+                            rows={3} 
+                            className="w-full p-3 border border-slate-200 rounded-lg focus:ring-2 focus:ring-green-500 outline-none" 
+                        />
+                    </div>
+                    
+                    <div className="space-y-2">
+                        <label className="block text-sm font-bold text-slate-500 mb-1">Hofstelle</label>
+                        
+                        {/* Kartenvorschau wenn Position existiert */}
+                        {profile.addressGeo && (
+                            <div className="h-48 w-full rounded-xl overflow-hidden border border-slate-200 relative mb-2 shadow-inner bg-slate-100">
+                                <MapContainer 
+                                    center={profile.addressGeo} 
+                                    zoom={15} 
+                                    style={{ height: '100%', width: '100%' }} 
+                                    zoomControl={false}
+                                    scrollWheelZoom={false}
+                                    dragging={false}
+                                    doubleClickZoom={false}
+                                >
+                                    <TileLayer 
+                                        url={mapStyle === 'standard' 
+                                            ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                                            : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+                                        } 
+                                    />
+                                    <Marker position={profile.addressGeo} icon={farmMarkerIcon} />
+                                </MapContainer>
+                                
+                                {/* Satelliten-Toggle Overlay */}
+                                <button 
+                                    onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')}
+                                    className="absolute top-2 right-2 z-[400] bg-white/90 p-2 rounded-lg shadow-sm border border-slate-200 text-slate-700 hover:text-green-600 transition-colors"
+                                    title="Kartenansicht umschalten"
+                                >
+                                    <Layers size={16} />
+                                </button>
+                                
+                                <div className="absolute bottom-2 left-2 z-[400] bg-white/80 px-2 py-1 rounded text-[10px] font-bold text-slate-500 backdrop-blur-sm">
+                                    {profile.addressGeo.lat.toFixed(5)}, {profile.addressGeo.lng.toFixed(5)}
+                                </div>
+                            </div>
+                        )}
+
+                        <button 
+                            onClick={onPickMap} 
+                            className={`w-full py-3 border-2 border-dashed rounded-lg font-bold flex items-center justify-center transition-all ${profile.addressGeo ? 'border-blue-200 text-blue-600 bg-blue-50/30 hover:bg-blue-50' : 'border-slate-300 text-slate-500 hover:bg-slate-50'}`}
+                        >
+                            <MapPin size={18} className="mr-2"/> 
+                            {profile.addressGeo ? 'Position ändern' : 'Hofstelle auf Karte wählen'}
+                        </button>
+                    </div>
+                </div>
             </div>
         </div>
-    </div>
-);
+    );
+};
 
 export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => void }> = ({ equipment, onUpdate }) => {
   const [showAdd, setShowAdd] = useState(false);
