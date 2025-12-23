@@ -16,16 +16,24 @@ interface Props {
 const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
 const MANURE_PALETTE = ['#d97706', '#ea580c', '#f59e0b', '#c2410c', '#fb923c'];
 
-// Vordefinierte Farben für die Schlag-Markierung
+// Erweiterte Farbpalette für die Schlag-Markierung
 const FIELD_COLORS = [
-    { label: 'Standard', value: undefined }, // Nutzt Logik basierend auf Typ
-    { label: 'Grünland', value: '#15803D' },
-    { label: 'Acker', value: '#92400E' },
-    { label: 'Wiese hell', value: '#84CC16' },
-    { label: 'Weide', value: '#65a30d' },
-    { label: 'Mais/Getreide', value: '#EAB308' },
-    { label: 'Spezial', value: '#2563eb' },
-    { label: 'Achtung', value: '#ef4444' },
+    { label: 'Standard', value: undefined }, 
+    { label: 'Grünland', value: '#15803D' },    // Dunkelgrün
+    { label: 'Wiese hell', value: '#84CC16' },  // Hellgrün
+    { label: 'Weide', value: '#65a30d' },       // Olivgrün
+    { label: 'Kleegras', value: '#059669' },    // Smaragd
+    { label: 'Wald/Rand', value: '#064e3b' },   // Waldgrün
+    { label: 'Acker', value: '#92400E' },       // Braun
+    { label: 'Brache', value: '#78350f' },      // Dunkelbraun
+    { label: 'Mais', value: '#EAB308' },        // Goldgelb
+    { label: 'Getreide', value: '#f59e0b' },    // Bernstein
+    { label: 'Raps/Blüten', value: '#FDE047' }, // Hellgelb
+    { label: 'Sonderkultur', value: '#db2777' },// Pink
+    { label: 'Obst/Wein', value: '#7c3aed' },   // Lila
+    { label: 'Wasser/Graben', value: '#2563eb' },// Blau
+    { label: 'Achtung', value: '#ef4444' },     // Rot
+    { label: 'Inaktiv', value: '#64748b' },     // Grau
 ];
 
 const getStorageColor = (storageId: string | undefined, allStorages: StorageLocation[]) => {
@@ -80,7 +88,6 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
 
   const handleSave = async () => {
     await dbService.saveField(editedField);
-    setIsDirty(true); // Verhindert Schließen ohne Rückmeldung wenn gewünscht, aber hier setzen wir Dirty zurück
     setIsDirty(false);
     if (onUpdate) onUpdate();
   };
@@ -168,20 +175,21 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
               />
           </div>
 
-          {/* FARBAUSWAHL - NEU */}
+          {/* ERWEITERTE FARBAUSWAHL */}
           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
               <div className="flex items-center text-slate-500 mb-3 text-xs uppercase font-bold"><Palette size={14} className="mr-1" /> Farbe auf Karte</div>
-              <div className="flex flex-wrap gap-3">
+              <div className="grid grid-cols-4 gap-3">
                   {FIELD_COLORS.map((col) => (
                       <button
                         key={col.label}
                         onClick={() => handleChange('color', col.value)}
-                        className={`w-10 h-10 rounded-full border-4 flex items-center justify-center transition-all ${editedField.color === col.value ? 'border-slate-300 scale-110 shadow-md' : 'border-transparent hover:scale-105'}`}
+                        className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center transition-all ${editedField.color === col.value ? 'border-slate-800 scale-105 shadow-md' : 'border-slate-100 hover:border-slate-300'}`}
                         style={{ backgroundColor: col.value || (editedField.type === 'Acker' ? '#92400E' : '#15803D') }}
                         title={col.label}
                       >
-                          {editedField.color === col.value && <Check size={18} className="text-white" />}
-                          {!col.value && !editedField.color && <Check size={18} className="text-white" />}
+                          {editedField.color === col.value && <Check size={18} className="text-white drop-shadow-md" />}
+                          {!col.value && !editedField.color && <Check size={18} className="text-white drop-shadow-md" />}
+                          <span className="text-[7px] text-white font-black uppercase mt-0.5 drop-shadow-sm truncate w-full px-0.5 text-center leading-none">{col.label}</span>
                       </button>
                   ))}
               </div>
