@@ -1,3 +1,4 @@
+
 import React, { useState, useEffect } from 'react';
 import { BottomNav } from './BottomNav';
 import { Dashboard } from '../pages/Dashboard';
@@ -5,9 +6,11 @@ import { TrackingPage } from '../pages/TrackingPage';
 import { MapPage } from '../pages/MapPage';
 import { FieldsPage } from '../pages/FieldsPage';
 import { SettingsPage } from '../pages/SettingsPage';
+import { WelcomeGate } from './WelcomeGate';
 import { ShieldCheck, CloudOff, RefreshCw } from 'lucide-react';
 import { isCloudConfigured } from '../services/storage';
 import { dbService } from '../services/db';
+import { AppSettings, DEFAULT_SETTINGS } from '../types';
 
 interface Props {
     onFullScreenToggle?: (isFullScreen: boolean) => void;
@@ -16,12 +19,24 @@ interface Props {
 export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   const [currentView, setCurrentView] = useState('DASHBOARD');
   const [mapFocusFieldId, setMapFocusFieldId] = useState<string | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
-  
   const [isActiveTracking, setIsActiveTracking] = useState(false);
+  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [isLoadingSettings, setIsLoadingSettings] = useState(true);
 
   // New State for handling direct tab navigation
-  const [settingsTab, setSettingsTab] = useState<'profile' | 'storage' | 'general' | 'sync'>('profile');
+  const [settingsTab, setSettingsTab] = useState<'profile' | 'storage' | 'general' | 'sync' | 'equipment'>('profile');
+
+  const loadSettings = async () => {
+      const s = await dbService.getSettings();
+      setSettings(s);
+      setIsLoadingSettings(false);
+  };
+
+  useEffect(() => {
+      loadSettings();
+      const unsub = dbService.onDatabaseChange(loadSettings);
+      return () => unsub();
+  }, []);
 
   useEffect(() => {
       if (onFullScreenToggle) {
@@ -29,19 +44,12 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       }
   }, [isActiveTracking, currentView, onFullScreenToggle]);
 
-  useEffect(() => {
-      // Listen for sync events to show loading indicator in header
-      // We don't have a direct 'start' event, but we can infer from other states or just keep it simple.
-      // Actually, let's keep it simple for now and just show connected status.
-      // Or we can add a listener if we really want to animate the cloud icon.
-  }, []);
-
   const navigateToMap = (fieldId?: string) => {
       if (fieldId) setMapFocusFieldId(fieldId);
       setCurrentView('MAP');
   };
 
-  const openSettingsTab = (tab: 'profile' | 'storage' | 'general' | 'sync') => {
+  const openSettingsTab = (tab: 'profile' | 'storage' | 'general' | 'sync' | 'equipment') => {
       setSettingsTab(tab);
       setCurrentView('SETTINGS');
   };
@@ -61,15 +69,22 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       if (tabId === 'map') setCurrentView('MAP');
       if (tabId === 'fields') setCurrentView('FIELDS');
       if (tabId === 'settings') {
-          // Default to profile when clicking main nav, unless already in settings
           if (currentView !== 'SETTINGS') setSettingsTab('profile'); 
           setCurrentView('SETTINGS');
       }
   };
 
+  if (isLoadingSettings) return <div className="h-full w-full flex items-center justify-center bg-slate-50"><RefreshCw className="animate-spin text-agri-600" size={32}/></div>;
+
   const isLive = isCloudConfigured();
   
-  // Show Chrome if NOT tracking OR if tracking but looking at another tab
+  // SECURITY CHECK: If logged in but no Farm ID, show the Welcome Gate
+  const needsFarmAssignment = isLive && !settings.farmId;
+
+  if (needsFarmAssignment) {
+      return <WelcomeGate onSetupComplete={loadSettings} />;
+  }
+
   const showChrome = !isActiveTracking || (isActiveTracking && currentView !== 'TRACKING');
   const isFullscreenView = currentView === 'MAP' || (currentView === 'TRACKING' && isActiveTracking);
 
@@ -113,30 +128,23 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       {/* CONTENT AREA */}
       <div className="flex-1 relative w-full overflow-hidden">
          <div className={`absolute inset-0 ${isFullscreenView ? 'overflow-hidden' : 'overflow-y-auto overflow-x-hidden'}`}>
-            
-            {/* Standard Views - Conditionally Rendered */}
             {currentView === 'DASHBOARD' && <Dashboard onNavigate={(tab) => setCurrentView(tab.toUpperCase())} />}
             {currentView === 'MAP' && <MapPage initialEditFieldId={mapFocusFieldId} clearInitialEdit={() => setMapFocusFieldId(null)} />}
             {currentView === 'FIELDS' && <FieldsPage onNavigateToMap={navigateToMap} />}
             {currentView === 'SETTINGS' && <SettingsPage initialTab={settingsTab} />}
 
-            {/* Tracking Page - ALWAYS Rendered but hidden if not needed (to keep GPS alive) */}
             <div className={currentView === 'TRACKING' ? 'w-full h-full' : 'hidden'}>
                 <TrackingPage 
-                    onMinimize={() => {
-                        // Switch view but keep tracking active
-                        setCurrentView('DASHBOARD');
-                    }} 
+                    onMinimize={() => setCurrentView('DASHBOARD')} 
                     onNavigate={(view) => setCurrentView(view)} 
                     onTrackingStateChange={setIsActiveTracking} 
                 />
             </div>
-
          </div>
       </div>
 
-      {/* NAVIGATION */}
       {showChrome && <BottomNav activeTab={activeTabId()} setActiveTab={handleTabChange} />}
     </div>
   );
 };
+
