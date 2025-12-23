@@ -391,7 +391,10 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
                             {selectedField?.id === field.id && <span className="ml-2 w-2 h-2 bg-blue-500 rounded-full animate-pulse shrink-0"></span>}
                         </div>
                         <div className="text-sm text-slate-500 flex items-center space-x-2">
-                            <span className={`inline-block w-2 h-2 rounded-full ${field.type === 'Acker' ? 'bg-amber-600' : 'bg-green-600'}`}></span>
+                            <span 
+                                className="inline-block w-2.5 h-2.5 rounded-full shadow-sm"
+                                style={{ backgroundColor: getFieldColor(field) }}
+                            ></span>
                             <span>{field.areaHa.toFixed(2)} ha</span>
                             <span className="text-slate-300">|</span>
                             <span className="truncate">{field.usage}</span>
