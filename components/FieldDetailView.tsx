@@ -1,6 +1,6 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { X, Calendar, Leaf, Ruler, MapPin, Palette, Map as MapIcon, Save, Trash2, AlertTriangle, Truck, Wheat, Hammer, FileText, Database, Filter, Droplets, Layers, Edit2, Tag, Check } from 'lucide-react';
+import { X, Calendar, Leaf, Ruler, MapPin, Palette, Map as MapIcon, Save, Trash2, AlertTriangle, Truck, Wheat, Hammer, FileText, Database, Filter, Droplets, Layers, Edit2, Tag, Check, ChevronDown, ChevronUp } from 'lucide-react';
 import { Field, ActivityRecord, ActivityType, FertilizerType, HarvestType, TillageType, StorageLocation } from '../types';
 import { dbService } from '../services/db';
 import { ActivityDetailView } from './ActivityDetailView';
@@ -56,6 +56,7 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
   const [selectedActivity, setSelectedActivity] = useState<ActivityRecord | null>(null);
   const [filterYear, setFilterYear] = useState<number | 'all'>('all');
   const [filterType, setFilterType] = useState<ActivityType | 'all'>('all');
+  const [showColorPicker, setShowColorPicker] = useState(false);
 
   const loadHistory = async () => {
       if (field.id) {
@@ -175,24 +176,45 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
               />
           </div>
 
-          {/* ERWEITERTE FARBAUSWAHL */}
-          <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm">
-              <div className="flex items-center text-slate-500 mb-3 text-xs uppercase font-bold"><Palette size={14} className="mr-1" /> Farbe auf Karte</div>
-              <div className="grid grid-cols-4 gap-3">
-                  {FIELD_COLORS.map((col) => (
-                      <button
-                        key={col.label}
-                        onClick={() => handleChange('color', col.value)}
-                        className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center transition-all ${editedField.color === col.value ? 'border-slate-800 scale-105 shadow-md' : 'border-slate-100 hover:border-slate-300'}`}
-                        style={{ backgroundColor: col.value || (editedField.type === 'Acker' ? '#92400E' : '#15803D') }}
-                        title={col.label}
-                      >
-                          {editedField.color === col.value && <Check size={18} className="text-white drop-shadow-md" />}
-                          {!col.value && !editedField.color && <Check size={18} className="text-white drop-shadow-md" />}
-                          <span className="text-[7px] text-white font-black uppercase mt-0.5 drop-shadow-sm truncate w-full px-0.5 text-center leading-none">{col.label}</span>
-                      </button>
-                  ))}
-              </div>
+          {/* EINKLAPPBARE FARBAUSWAHL */}
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+              <button 
+                onClick={() => setShowColorPicker(!showColorPicker)}
+                className="w-full p-4 flex justify-between items-center hover:bg-slate-50 transition-colors"
+              >
+                  <div className="flex items-center">
+                    <Palette size={16} className="mr-2 text-slate-500" /> 
+                    <span className="text-xs uppercase font-bold text-slate-600">Farbe auf Karte</span>
+                    {/* Farbvorschau wenn eingeklappt */}
+                    {!showColorPicker && (
+                      <div 
+                        className="ml-3 w-4 h-4 rounded-full border border-slate-200"
+                        style={{ backgroundColor: editedField.color || (editedField.type === 'Acker' ? '#92400E' : '#15803D') }}
+                      />
+                    )}
+                  </div>
+                  {showColorPicker ? <ChevronUp size={18} className="text-slate-400" /> : <ChevronDown size={18} className="text-slate-400" />}
+              </button>
+              
+              {showColorPicker && (
+                <div className="p-4 pt-0 animate-in slide-in-from-top-2 duration-200">
+                    <div className="grid grid-cols-4 gap-3">
+                        {FIELD_COLORS.map((col) => (
+                            <button
+                                key={col.label}
+                                onClick={() => handleChange('color', col.value)}
+                                className={`aspect-square rounded-xl border-2 flex flex-col items-center justify-center transition-all ${editedField.color === col.value ? 'border-slate-800 scale-105 shadow-md' : 'border-slate-100 hover:border-slate-300'}`}
+                                style={{ backgroundColor: col.value || (editedField.type === 'Acker' ? '#92400E' : '#15803D') }}
+                                title={col.label}
+                            >
+                                {editedField.color === col.value && <Check size={18} className="text-white drop-shadow-md" />}
+                                {!col.value && !editedField.color && <Check size={18} className="text-white drop-shadow-md" />}
+                                <span className="text-[7px] text-white font-black uppercase mt-0.5 drop-shadow-sm truncate w-full px-0.5 text-center leading-none">{col.label}</span>
+                            </button>
+                        ))}
+                    </div>
+                </div>
+              )}
           </div>
 
           <button 
