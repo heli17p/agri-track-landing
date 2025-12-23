@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Plus, FileUp, Trash2, ChevronLeft, Save, Search, Filter, AlertTriangle, Map as MapIcon, Layers } from 'lucide-react';
+import { Plus, FileUp, Trash2, ChevronLeft, Save, Search, Filter, AlertTriangle, Map as MapIcon, Layers, Edit2 } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
 import { Field } from '../types';
 import { ImportPage } from './ImportPage';
@@ -297,9 +297,9 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
                     color={getFieldColor(f)}
                     weight={selectedField?.id === f.id ? 3 : 1}
                     fillOpacity={selectedField?.id === f.id ? 0.6 : 0.4}
-                    eventHandlers={{
+                    {...{ eventHandlers: {
                         click: () => setSelectedField(f)
-                    }}
+                    }} as any}
                 >
                     <Popup>{f.name}</Popup>
                 </Polygon>
@@ -396,6 +396,19 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
                         </div>
                     </div>
 
+                    {/* Dedicated Edit Button */}
+                    <button 
+                        onClick={(e) => {
+                            e.preventDefault();
+                            e.stopPropagation();
+                            handleEdit(field);
+                        }}
+                        className="p-3 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Bearbeiten"
+                    >
+                        <Edit2 size={20} />
+                    </button>
+
                     {/* Separate 2-Step Delete Button */}
                     <button 
                         type="button"
@@ -432,6 +445,7 @@ export const FieldsPage: React.FC<Props> = ({ onNavigateToMap }) => {
                 await loadFields();
             }}
             onEditGeometry={(field) => {
+                 setSelectedField(null);
                  if (onNavigateToMap) onNavigateToMap(field.id);
             }}
         />
