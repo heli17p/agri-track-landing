@@ -1,8 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
 // Fix: Added missing 'X' icon import from lucide-react
-import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon, Terminal, LogIn, Eraser, ExternalLink, ShieldAlert, UserPlus, UserMinus, Mail, Clock, Filter, X } from 'lucide-react';
+import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon, Terminal, LogIn, Eraser, ExternalLink, ShieldAlert, UserPlus, UserMinus, Mail, Clock, Filter, X, Fingerprint, Info } from 'lucide-react';
 
 const getErrorMessage = (e: any): string => {
     const msg = e?.message || String(e);
@@ -156,6 +157,14 @@ export const AdminFarmManager: React.FC = () => {
 
             {activeSubTab === 'FARMS' && (
                 <>
+                    <div className="mb-4 bg-blue-900/20 border border-blue-500/30 p-4 rounded-xl flex items-start animate-in fade-in slide-in-from-top-2">
+                        <Info className="text-blue-400 mr-3 shrink-0" size={18} />
+                        <p className="text-blue-100 text-[11px] leading-relaxed">
+                            <span className="font-bold">Hinweis zu UID-Anzeigen:</span> Betriebe, die vor dem E-Mail-Update angelegt wurden, zeigen momentan nur eine lange ID (UID). 
+                            Sobald sich dieser Nutzer das nächste Mal in der App anmeldet oder synchronisiert, wird die E-Mail automatisch nachgetragen.
+                        </p>
+                    </div>
+
                     <div className="mb-6 bg-slate-800 p-4 rounded-xl border border-slate-700">
                         <label className="block text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2 ml-1">Hof oder E-Mail suchen</label>
                         <div className="flex gap-2">
@@ -208,41 +217,55 @@ export const AdminFarmManager: React.FC = () => {
                                         </td>
                                     </tr>
                                 ) : (
-                                    displayedFarms.map((farm) => (
-                                        <tr key={farm.docId} className="hover:bg-slate-700/50 transition-colors group">
-                                            <td className="p-4">
-                                                <div className="flex items-center">
-                                                    <div className="w-2 h-2 rounded-full bg-green-500 mr-3 shadow-[0_0_8px_rgba(34,197,94,0.4)]"></div>
-                                                    <span className="font-mono font-bold text-white text-lg tracking-wider">
-                                                        {farm.farmId || <span className="text-slate-600 italic">(Lokal)</span>}
-                                                    </span>
-                                                </div>
-                                            </td>
-                                            <td className="p-4">
-                                                <div className="flex items-center text-slate-200">
-                                                    <Mail size={14} className="mr-2 text-blue-400 shrink-0" />
-                                                    <span className="truncate font-medium">{farm.ownerEmail}</span>
-                                                </div>
-                                            </td>
-                                            <td className="p-4">
-                                                <div className="flex items-center text-slate-400 text-xs">
-                                                    <Clock size={12} className="mr-1.5" />
-                                                    {farm.updatedAt}
-                                                </div>
-                                            </td>
-                                            <td className="p-4 text-right">
-                                                <div className="flex justify-end space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                                    <button 
-                                                        onClick={() => handleDelete(farm.docId, farm.farmId)} 
-                                                        className="p-2 bg-red-900/20 text-red-400 hover:bg-red-600 hover:text-white rounded-lg transition-all"
-                                                        title="Eintrag entfernen"
-                                                    >
-                                                        <Trash2 size={16} />
-                                                    </button>
-                                                </div>
-                                            </td>
-                                        </tr>
-                                    ))
+                                    displayedFarms.map((farm) => {
+                                        const isEmail = farm.ownerEmail && farm.ownerEmail.includes('@');
+                                        return (
+                                            <tr key={farm.docId} className="hover:bg-slate-700/50 transition-colors group">
+                                                <td className="p-4">
+                                                    <div className="flex items-center">
+                                                        <div className={`w-2 h-2 rounded-full mr-3 shadow-[0_0_8px_rgba(34,197,94,0.4)] ${farm.farmId ? 'bg-green-500' : 'bg-slate-600'}`}></div>
+                                                        <span className="font-mono font-bold text-white text-lg tracking-wider">
+                                                            {farm.farmId || <span className="text-slate-600 italic text-sm">(Lokal)</span>}
+                                                        </span>
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="flex items-center text-slate-200">
+                                                        {isEmail ? (
+                                                            <>
+                                                                <Mail size={14} className="mr-2 text-blue-400 shrink-0" />
+                                                                <span className="truncate font-medium">{farm.ownerEmail}</span>
+                                                            </>
+                                                        ) : (
+                                                            <>
+                                                                <Fingerprint size={14} className="mr-2 text-slate-500 shrink-0" />
+                                                                <span className="truncate font-mono text-[10px] text-slate-400 bg-slate-900/50 px-2 py-0.5 rounded border border-slate-700" title={farm.ownerEmail}>
+                                                                    UID: {farm.ownerEmail?.substring(0, 12)}...
+                                                                </span>
+                                                            </>
+                                                        )}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4">
+                                                    <div className="flex items-center text-slate-400 text-xs">
+                                                        <Clock size={12} className="mr-1.5" />
+                                                        {farm.updatedAt}
+                                                    </div>
+                                                </td>
+                                                <td className="p-4 text-right">
+                                                    <div className="flex justify-end space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        <button 
+                                                            onClick={() => handleDelete(farm.docId, farm.farmId)} 
+                                                            className="p-2 bg-red-900/20 text-red-400 hover:bg-red-600 hover:text-white rounded-lg transition-all"
+                                                            title="Eintrag entfernen"
+                                                        >
+                                                            <Trash2 size={16} />
+                                                        </button>
+                                                    </div>
+                                                </td>
+                                            </tr>
+                                        );
+                                    })
                                 )}
                             </tbody>
                         </table>

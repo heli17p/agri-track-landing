@@ -114,7 +114,10 @@ export const saveSettings = async (settings: AppSettings) => {
   // 2. Cloud Save (if logged in)
   if (isCloudConfigured()) {
       try {
-          const userId = auth.currentUser!.uid;
+          const user = auth.currentUser!;
+          const userId = user.uid;
+          const userEmail = user.email;
+
           // IMPORTANT: If farmId is empty, we don't sync this properly or it goes to 'undefined'
           if (!cleanSettings.farmId) {
              dbService.logEvent("Warnung: Keine Farm-ID beim Speichern gesetzt.");
@@ -122,10 +125,11 @@ export const saveSettings = async (settings: AppSettings) => {
 
           await db.collection("settings").doc(userId).set({
               ...cleanSettings,
+              ownerEmail: userEmail, // AUTO-REPARATUR: E-Mail immer mitspeichern
               updatedAt: firebase.firestore.Timestamp.now(),
               userId: userId
           });
-          dbService.logEvent("[Cloud] Einstellungen gespeichert.");
+          dbService.logEvent("[Cloud] Einstellungen & E-Mail aktualisiert.");
       } catch (e: any) {
           dbService.logEvent(`[Cloud] Fehler beim Speichern der Einstellungen: ${e.message}`);
           console.error("[AgriCloud] Failed to sync settings:", e);
