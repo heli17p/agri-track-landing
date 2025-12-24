@@ -1,13 +1,14 @@
 
 import React, { useState, useEffect } from 'react';
-import { Cloud, ShieldCheck, Tractor, X, Smartphone, WifiOff, Lock, PlayCircle } from 'lucide-react';
+import { Cloud, ShieldCheck, Tractor, X, Smartphone, WifiOff, Lock, PlayCircle, MessageSquarePlus } from 'lucide-react';
 import { dbService } from '../services/db';
 
 interface HeroProps {
   onLaunchApp: () => void;
+  onNavigateToFeedback: () => void;
 }
 
-export const Hero: React.FC<HeroProps> = ({ onLaunchApp }) => {
+export const Hero: React.FC<HeroProps> = ({ onLaunchApp, onNavigateToFeedback }) => {
   const [showSyncModal, setShowSyncModal] = useState(false);
   const [displayCount, setDisplayCount] = useState<number>(50); // Startwert fest auf 50
 
@@ -80,6 +81,14 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp }) => {
               Wie funktioniert der Speicher?
             </button>
           </div>
+
+          <button 
+            onClick={onNavigateToFeedback}
+            className="mt-6 flex items-center text-sm font-semibold text-agri-400 hover:text-agri-300 transition-colors group"
+          >
+            <MessageSquarePlus className="mr-2 w-5 h-5 group-hover:scale-110 transition-transform" />
+            Einen Wunsch äußern oder Fehler melden
+          </button>
 
           <div className="mt-12 flex flex-col sm:flex-row gap-6 sm:gap-12 text-sm text-gray-400">
             <div className="flex items-center">

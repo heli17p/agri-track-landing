@@ -117,7 +117,10 @@ const App: React.FC = () => {
       <main className="flex-1 relative overflow-hidden flex flex-col w-full h-full">
         {activeTab === Tab.HOME && !isFullScreen && (
           <div className="h-full overflow-y-auto">
-            <Hero onLaunchApp={() => setActiveTab(Tab.APP)} />
+            <Hero 
+              onLaunchApp={() => setActiveTab(Tab.APP)} 
+              onNavigateToFeedback={() => setActiveTab(Tab.FEEDBACK)}
+            />
             <AppShowcase />
             <footer className="bg-white border-t border-gray-200 mt-auto shrink-0 py-8 text-center text-gray-500 text-sm">
                 &copy; {new Date().getFullYear()} AgriTrack Austria. Open Source & Forever Live.
