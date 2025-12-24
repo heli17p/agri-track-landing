@@ -7,11 +7,18 @@ import { AgriTrackApp } from './components/AgriTrackApp';
 import { AppShowcase } from './components/AppShowcase';
 import { AuthPage } from './pages/AuthPage';
 import { Tab, FeedbackTicket } from './types';
-import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight, LogOut, CloudOff, Database, Mail, UserPlus, ThumbsUp, MessageCircle, ArrowUpRight } from 'lucide-react';
+import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight, LogOut, CloudOff, Database, Mail, UserPlus, ThumbsUp, MessageCircle, ArrowUpRight, ShieldCheck } from 'lucide-react';
 import { authService } from './services/auth';
 import { dbService } from './services/db';
 import { syncData } from './services/sync';
 import { AdminFarmManager } from './components/AdminFarmManager';
+
+// Liste der berechtigten Admin-E-Mails
+const ADMIN_EMAILS = [
+  'admin@agritrack.at', 
+  'office@agritrack.at',
+  'deine-email@beispiel.at' // Ersetzen Sie dies durch Ihre E-Mail
+];
 
 // Kleine Vorschau-Komponente für die Landingpage
 const CommunityTeaser: React.FC<{ onNavigate: () => void }> = ({ onNavigate }) => {
@@ -81,14 +88,12 @@ const CommunityTeaser: React.FC<{ onNavigate: () => void }> = ({ onNavigate }) =
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.HOME);
   const [isAdmin, setIsAdmin] = useState(false);
-  const [showLoginModal, setShowLoginModal] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isEmailVerified, setIsEmailVerified] = useState(false);
   const [isGuest, setIsGuest] = useState(false);
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const [adminView, setAdminView] = useState<'TICKETS' | 'FARMS'>('TICKETS');
 
   useEffect(() => {
       const guestPref = localStorage.getItem('agritrack_guest_mode');
@@ -101,10 +106,19 @@ const App: React.FC = () => {
               setIsGuest(false);
               localStorage.removeItem('agritrack_guest_mode');
               setCurrentUserEmail(user.email);
+              
+              // ADMIN CHECK: Prüfen ob E-Mail in der Admin-Liste ist
+              if (user.email && ADMIN_EMAILS.includes(user.email)) {
+                  setIsAdmin(true);
+              } else {
+                  setIsAdmin(false);
+              }
+
               if (user.emailVerified) syncData().catch(e => console.log("Sync delay", e));
           } else {
               setIsAuthenticated(false);
               setIsEmailVerified(false);
+              setIsAdmin(false);
           }
           setIsLoadingAuth(false);
       });
@@ -121,6 +135,7 @@ const App: React.FC = () => {
       await authService.logout();
       setIsGuest(false);
       setIsAuthenticated(false);
+      setIsAdmin(false);
       setActiveTab(Tab.HOME);
   };
 
@@ -135,7 +150,6 @@ const App: React.FC = () => {
       );
   }
 
-  // Ein Nutzer gilt als "bereit", wenn er Gast ist ODER eingeloggt UND verifiziert
   const isAppReady = isGuest || (isAuthenticated && isEmailVerified);
 
   return (
@@ -157,15 +171,23 @@ const App: React.FC = () => {
                 <span className="ml-2 text-xl font-bold text-gray-900 tracking-tight">AgriTrack<span className="text-agri-600">.AT</span></span>
                 </div>
                 <div className="flex items-center">
-                    <div className="hidden md:flex space-x-8 items-center mr-8">
+                    <div className="hidden md:flex space-x-6 items-center mr-8">
                     <button onClick={() => setActiveTab(Tab.HOME)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.HOME ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}><LayoutDashboard className="w-4 h-4 mr-2" /> Übersicht</button>
                     <button onClick={() => setActiveTab(Tab.APP)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.APP ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}><Smartphone className="w-4 h-4 mr-2" /> Web App</button>
-                    <button onClick={() => setActiveTab(Tab.FEEDBACK)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium relative group ${activeTab === Tab.FEEDBACK ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
-                      <MessageSquarePlus className="w-4 h-4 mr-2" /> 
-                      Kummerkasten
-                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-agri-500 rounded-full animate-ping opacity-75"></span>
-                    </button>
+                    <button onClick={() => setActiveTab(Tab.FEEDBACK)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.FEEDBACK ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}><MessageSquarePlus className="w-4 h-4 mr-2" /> Kummerkasten</button>
+                    
+                    {/* ADMIN TAB: Nur sichtbar wenn isAdmin true ist */}
+                    {isAdmin && (
+                      <button 
+                        onClick={() => setActiveTab(Tab.ADMIN)} 
+                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest transition-all ${activeTab === Tab.ADMIN ? 'bg-red-600 text-white shadow-lg' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
+                      >
+                        <ShieldCheck className="w-3.5 h-3.5 mr-1.5" /> 
+                        Admin
+                      </button>
+                    )}
                     </div>
+
                     <div className="border-l border-gray-200 pl-4 flex items-center space-x-2">
                         {isAuthenticated || isGuest ? (
                             <button onClick={handleUserLogout} className="flex items-center text-sm font-medium px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg hover:text-red-600 transition-colors">
@@ -210,7 +232,15 @@ const App: React.FC = () => {
 
         {activeTab === Tab.FEEDBACK && !isFullScreen && (
           <div className="h-full overflow-y-auto bg-slate-50">
-            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12"><FeedbackBoard isAdmin={false} /></div>
+            <div className="max-w-3xl mx-auto px-4 sm:px-6 lg:px-8 py-12">
+              <FeedbackBoard isAdmin={isAdmin} />
+            </div>
+          </div>
+        )}
+
+        {activeTab === Tab.ADMIN && isAdmin && !isFullScreen && (
+          <div className="h-full overflow-y-auto bg-slate-900">
+            <AdminFarmManager />
           </div>
         )}
       </main>
