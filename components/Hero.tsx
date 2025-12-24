@@ -81,21 +81,17 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp }) => {
             </button>
           </div>
 
-          <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-6 text-sm text-gray-400">
+          <div className="mt-12 flex flex-col sm:flex-row gap-6 sm:gap-12 text-sm text-gray-400">
             <div className="flex items-center">
               <ShieldCheck className="w-5 h-5 mr-2 text-agri-500" />
-              <span>100% Datentrennung</span>
+              <span className="font-medium text-gray-300">100% Datentrennung pro Betrieb</span>
             </div>
             <div className="flex items-center">
-              <span className="w-5 h-5 mr-2 text-agri-500 flex items-center justify-center font-bold border border-agri-500 rounded-full text-xs">AI</span>
-              <span>KI-Gewarteter Code</span>
-            </div>
-            <div className="flex items-center">
-              <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse" />
-              <span className="tabular-nums font-black text-white text-base mr-1">
+              <div className="w-2.5 h-2.5 bg-green-500 rounded-full mr-3 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
+              <span className="tabular-nums font-black text-white text-base mr-1.5">
                 {displayCount.toLocaleString('de-AT')}
               </span>
-              <span className="font-medium">aktive Betriebe</span>
+              <span className="font-medium text-gray-300">aktive Betriebe online</span>
             </div>
           </div>
         </div>
