@@ -153,7 +153,14 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                   </label>
                   <select value={selectedEquipId} onChange={e => setSelectedEquipId(e.target.value)} className="w-full p-3 rounded-xl border-2 border-blue-200 bg-white font-bold outline-none focus:ring-2 focus:ring-blue-500 shadow-sm text-blue-800 appearance-none">
                     <option value="default">-- Standard nutzen --</option>
-                    {filteredEquipment.map(e => (<option key={e.id} value={e.id}>{e.name} ({e.width}m)</option>))}
+                    {filteredEquipment.map(e => {
+                      const capInfo = e.capacity ? ` | ${e.capacity} ${e.capacityUnit || 'm³'}` : '';
+                      return (
+                        <option key={e.id} value={e.id}>
+                          {e.name} ({e.width}m{capInfo})
+                        </option>
+                      );
+                    })}
                   </select>
                 </div>
               )}
