@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Cloud, ShieldCheck, Tractor, X, Smartphone, WifiOff, Lock, PlayCircle, MessageSquarePlus, Sparkles } from 'lucide-react';
+import { Cloud, ShieldCheck, Tractor, X, Smartphone, WifiOff, Lock, PlayCircle, MessageSquarePlus, Sparkles, Users } from 'lucide-react';
 import { dbService } from '../services/db';
 
 interface HeroProps {
@@ -10,28 +10,26 @@ interface HeroProps {
 
 export const Hero: React.FC<HeroProps> = ({ onLaunchApp, onNavigateToFeedback }) => {
   const [showSyncModal, setShowSyncModal] = useState(false);
-  const [displayCount, setDisplayCount] = useState<number>(50); // Startwert fest auf 50
+  const [userDisplayCount, setUserDisplayCount] = useState<number>(50); // Startwert Benutzer
+  const [farmDisplayCount, setFarmDisplayCount] = useState<number>(40); // Startwert Betriebe
 
   useEffect(() => {
     const fetchAndAnimate = async () => {
-        // Holen der echten Anzahl aus der Cloud
-        const cloudCount = await dbService.getGlobalUserCount();
-        const targetCount = 50 + cloudCount; // 50 Basis-Betriebe + Cloud-Registrierungen
+        // Holen der echten Statistik aus der Cloud
+        const stats = await dbService.getGlobalStats();
+        const targetUsers = 50 + stats.userCount;
+        const targetFarms = 40 + stats.farmCount;
         
-        // Animationsparameter
-        const startValue = 50;
-        const duration = 2000; // 2 Sekunden Animationsdauer
+        const duration = 2000;
         const startTime = performance.now();
 
         const animate = (currentTime: number) => {
             const elapsed = currentTime - startTime;
             const progress = Math.min(elapsed / duration, 1);
-            
-            // Easing: easeOutExpo für einen geschmeidigen Stopp am Ende
             const easeOutExpo = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
             
-            const currentCount = Math.floor(startValue + (targetCount - startValue) * easeOutExpo);
-            setDisplayCount(currentCount);
+            setUserDisplayCount(Math.floor(50 + (targetUsers - 50) * easeOutExpo));
+            setFarmDisplayCount(Math.floor(40 + (targetFarms - 40) * easeOutExpo));
 
             if (progress < 1) {
                 requestAnimationFrame(animate);
@@ -96,17 +94,39 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp, onNavigateToFeedback })
             </div>
           </div>
 
-          <div className="mt-12 flex flex-col sm:flex-row gap-6 sm:gap-12 text-sm text-gray-400">
-            <div className="flex items-center">
-              <ShieldCheck className="w-5 h-5 mr-2 text-agri-500" />
-              <span className="font-medium text-gray-300">100% Datentrennung pro Betrieb</span>
-            </div>
+          <div className="mt-12 flex flex-col sm:flex-row gap-6 sm:gap-12">
             <div className="flex items-center">
               <div className="w-2.5 h-2.5 bg-green-500 rounded-full mr-3 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-              <span className="tabular-nums font-black text-white text-base mr-1.5">
-                {displayCount.toLocaleString('de-AT')}
-              </span>
-              <span className="font-medium text-gray-300">aktive Betriebe online</span>
+              <div className="flex flex-col">
+                <div className="flex items-baseline">
+                  <span className="tabular-nums font-black text-white text-2xl mr-1.5">
+                    {farmDisplayCount.toLocaleString('de-AT')}
+                  </span>
+                  <span className="text-[10px] text-agri-500 font-black uppercase tracking-tighter">Betriebe</span>
+                </div>
+                <span className="text-xs font-medium text-gray-400">aktiv in der AgriCloud</span>
+              </div>
+            </div>
+
+            <div className="flex items-center">
+              <Users className="w-5 h-5 mr-3 text-blue-400" />
+              <div className="flex flex-col">
+                <div className="flex items-baseline">
+                  <span className="tabular-nums font-black text-white text-2xl mr-1.5">
+                    {userDisplayCount.toLocaleString('de-AT')}
+                  </span>
+                  <span className="text-[10px] text-blue-400 font-black uppercase tracking-tighter">Benutzer</span>
+                </div>
+                <span className="text-xs font-medium text-gray-400">registrierte Konten</span>
+              </div>
+            </div>
+
+            <div className="flex items-center">
+              <ShieldCheck className="w-5 h-5 mr-3 text-agri-500" />
+              <div className="flex flex-col">
+                <span className="text-sm font-bold text-white leading-tight">Datentrennung</span>
+                <span className="text-[10px] font-medium text-gray-400 uppercase tracking-tighter">100% Sicher</span>
+              </div>
             </div>
           </div>
         </div>

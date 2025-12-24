@@ -38,15 +38,34 @@ export const dbService = {
     },
 
     // --- Stats ---
-    getGlobalUserCount: async (): Promise<number> => {
-        if (!db) return 0;
+    getGlobalStats: async (): Promise<{ userCount: number, farmCount: number }> => {
+        if (!db) return { userCount: 0, farmCount: 0 };
         try {
             const snapshot = await db.collection("settings").get();
-            return snapshot.size;
+            const userCount = snapshot.size;
+            
+            // Zähle eindeutige Farm-IDs
+            const uniqueFarms = new Set();
+            snapshot.docs.forEach(doc => {
+                const data = doc.data();
+                if (data.farmId) {
+                    uniqueFarms.add(String(data.farmId).trim());
+                }
+            });
+            
+            return {
+                userCount: userCount,
+                farmCount: uniqueFarms.size
+            };
         } catch (e) {
-            console.error("Fehler beim Abrufen der Nutzerstatistik", e);
-            return 0;
+            console.error("Fehler beim Abrufen der Globalen Statistik", e);
+            return { userCount: 0, farmCount: 0 };
         }
+    },
+
+    getGlobalUserCount: async (): Promise<number> => {
+        const stats = await dbService.getGlobalStats();
+        return stats.userCount;
     },
 
     // --- System Admins ---
