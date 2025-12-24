@@ -37,6 +37,21 @@ export const dbService = {
         return () => { const i = dbChangeListeners.indexOf(cb); if(i >= 0) dbChangeListeners.splice(i, 1); };
     },
 
+    // --- Stats ---
+    getGlobalUserCount: async (): Promise<number> => {
+        if (!db) return 0;
+        try {
+            // Wir zählen die Dokumente in der settings Kollektion (1 pro User/Betrieb)
+            // Hinweis: In Produktionsumgebungen mit Millionen Usern wäre ein Counter-Dokument besser.
+            // Für AgriTrack Austria ist dieser direkte Query aktuell am genauesten.
+            const snapshot = await db.collection("settings").get();
+            return snapshot.size;
+        } catch (e) {
+            console.error("Fehler beim Abrufen der Nutzerstatistik", e);
+            return 0;
+        }
+    },
+
     // --- Activities ---
     getActivities: async (): Promise<ActivityRecord[]> => {
         const local = loadLocalData('activity');
