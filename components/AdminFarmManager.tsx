@@ -1,8 +1,8 @@
-
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
-import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon, Terminal, LogIn, Eraser, ExternalLink, ShieldAlert, UserPlus, UserMinus, Mail } from 'lucide-react';
+// Fix: Added missing 'X' icon import from lucide-react
+import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon, Terminal, LogIn, Eraser, ExternalLink, ShieldAlert, UserPlus, UserMinus, Mail, Clock, Filter, X } from 'lucide-react';
 
 const getErrorMessage = (e: any): string => {
     const msg = e?.message || String(e);
@@ -27,7 +27,6 @@ export const AdminFarmManager: React.FC = () => {
     const [searchTerm, setSearchTerm] = useState('');
     const [searchMode, setSearchMode] = useState(false);
     const [currentUser, setCurrentUser] = useState<any>(null);
-    const [showConsoleLink, setShowConsoleLink] = useState(false);
 
     useEffect(() => { 
         const unsub = authService.onAuthStateChanged((u) => setCurrentUser(u));
@@ -70,7 +69,6 @@ export const AdminFarmManager: React.FC = () => {
         setLoading(true);
         setError(null);
         setSearchMode(false);
-        setShowConsoleLink(false);
         try {
             const list = await dbService.adminGetAllFarms();
             setFarms(list);
@@ -90,9 +88,9 @@ export const AdminFarmManager: React.FC = () => {
         
         setLoading(true);
         setError(null);
-        setShowConsoleLink(false);
         setSearchMode(true);
         try {
+            // Wir nutzen die Conflict-Suche (findFarmConflicts), da sie gezielt auf dem Server sucht
             const results = await dbService.findFarmConflicts(searchTerm.trim());
             const mapped = results.map((r: any) => ({
                 docId: r.docId,
@@ -103,7 +101,7 @@ export const AdminFarmManager: React.FC = () => {
                 updatedAt: r.updatedAt
             }));
             setFarms(mapped);
-            if (mapped.length === 0) setError(`Keine sichtbaren Einträge für ID '${searchTerm}'.`);
+            if (mapped.length === 0) setError(`Keine Einträge für '${searchTerm}' gefunden.`);
         } catch (e: any) {
             setError(getErrorMessage(e));
         } finally {
@@ -121,6 +119,15 @@ export const AdminFarmManager: React.FC = () => {
         }
     };
 
+    // Client-seitiges Filtern für die schnelle Ansicht
+    const displayedFarms = farms.filter(f => {
+        const term = searchTerm.toLowerCase();
+        return (
+            String(f.farmId).toLowerCase().includes(term) ||
+            String(f.ownerEmail).toLowerCase().includes(term)
+        );
+    });
+
     return (
         <div className="bg-slate-900 p-6 h-full flex flex-col">
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
@@ -128,6 +135,7 @@ export const AdminFarmManager: React.FC = () => {
                     <h2 className="text-2xl font-bold text-white flex items-center">
                         <ShieldCheck className="mr-2 text-green-500" /> System Verwaltung
                     </h2>
+                    <p className="text-slate-400 text-xs mt-1">Hier werden alle aktiven Cloud-Betriebe gelistet.</p>
                 </div>
                 
                 <div className="flex bg-slate-800 p-1 rounded-xl">
@@ -149,43 +157,98 @@ export const AdminFarmManager: React.FC = () => {
             {activeSubTab === 'FARMS' && (
                 <>
                     <div className="mb-6 bg-slate-800 p-4 rounded-xl border border-slate-700">
-                        <label className="block text-slate-400 text-xs font-bold uppercase mb-2">Gezielte Suche (Server-Query)</label>
+                        <label className="block text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2 ml-1">Hof oder E-Mail suchen</label>
                         <div className="flex gap-2">
                             <div className="relative flex-1">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                 <input 
                                     type="text" 
-                                    placeholder="Farm ID..."
+                                    placeholder="Farm ID oder E-Mail Adresse..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
-                                    className="w-full bg-slate-900 border border-slate-600 text-white pl-10 pr-4 py-3 rounded-lg focus:outline-none"
+                                    className="w-full bg-slate-900 border border-slate-600 text-white pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
                                 />
                             </div>
-                            <button onClick={handleServerSearch} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold">Suchen</button>
+                            <button 
+                                onClick={handleServerSearch} 
+                                className="bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-bold flex items-center transition-colors"
+                            >
+                                <RefreshCw size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
+                                Server-Suche
+                            </button>
                         </div>
+                        {searchMode && (
+                            <button onClick={loadAllFarms} className="mt-3 text-[10px] text-blue-400 font-bold hover:underline flex items-center">
+                                <X size={12} className="mr-1"/> Filter zurücksetzen (Alle anzeigen)
+                            </button>
+                        )}
                     </div>
 
-                    <div className="flex-1 overflow-y-auto bg-slate-800 rounded-xl border border-slate-700">
-                        <table className="w-full text-left">
-                            <thead className="bg-slate-900 text-slate-400 text-xs uppercase sticky top-0">
+                    {error && (
+                        <div className="mb-4 p-3 bg-red-900/30 border border-red-500/50 rounded-lg text-red-400 text-xs flex items-center italic">
+                            <AlertTriangle size={14} className="mr-2 shrink-0"/> {error}
+                        </div>
+                    )}
+
+                    <div className="flex-1 overflow-y-auto bg-slate-800 rounded-xl border border-slate-700 shadow-inner">
+                        <table className="w-full text-left border-collapse">
+                            <thead className="bg-slate-900/80 backdrop-blur text-slate-400 text-[10px] font-black uppercase tracking-widest sticky top-0 z-10">
                                 <tr>
-                                    <th className="p-4">Farm ID</th>
-                                    <th className="p-4">Besitzer</th>
-                                    <th className="p-4 text-right">Aktion</th>
+                                    <th className="p-4 border-b border-slate-700">Farm ID</th>
+                                    <th className="p-4 border-b border-slate-700">E-Mail / Besitzer</th>
+                                    <th className="p-4 border-b border-slate-700">Letztes Update</th>
+                                    <th className="p-4 border-b border-slate-700 text-right">Aktion</th>
                                 </tr>
                             </thead>
                             <tbody className="text-sm text-slate-300 divide-y divide-slate-700">
-                                {farms.map((farm) => (
-                                    <tr key={farm.docId} className="hover:bg-slate-700/50">
-                                        <td className="p-4 font-bold text-white">{farm.farmId || '(Leer)'}</td>
-                                        <td className="p-4">{farm.ownerEmail}</td>
-                                        <td className="p-4 text-right">
-                                            <button onClick={() => handleDelete(farm.docId, farm.farmId)} className="text-red-400 p-2 hover:bg-red-900/30 rounded-lg"><Trash2 size={16} /></button>
+                                {displayedFarms.length === 0 ? (
+                                    <tr>
+                                        <td colSpan={4} className="p-12 text-center text-slate-500 italic">
+                                            Keine Betriebe gefunden.
                                         </td>
                                     </tr>
-                                ))}
+                                ) : (
+                                    displayedFarms.map((farm) => (
+                                        <tr key={farm.docId} className="hover:bg-slate-700/50 transition-colors group">
+                                            <td className="p-4">
+                                                <div className="flex items-center">
+                                                    <div className="w-2 h-2 rounded-full bg-green-500 mr-3 shadow-[0_0_8px_rgba(34,197,94,0.4)]"></div>
+                                                    <span className="font-mono font-bold text-white text-lg tracking-wider">
+                                                        {farm.farmId || <span className="text-slate-600 italic">(Lokal)</span>}
+                                                    </span>
+                                                </div>
+                                            </td>
+                                            <td className="p-4">
+                                                <div className="flex items-center text-slate-200">
+                                                    <Mail size={14} className="mr-2 text-blue-400 shrink-0" />
+                                                    <span className="truncate font-medium">{farm.ownerEmail}</span>
+                                                </div>
+                                            </td>
+                                            <td className="p-4">
+                                                <div className="flex items-center text-slate-400 text-xs">
+                                                    <Clock size={12} className="mr-1.5" />
+                                                    {farm.updatedAt}
+                                                </div>
+                                            </td>
+                                            <td className="p-4 text-right">
+                                                <div className="flex justify-end space-x-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                                    <button 
+                                                        onClick={() => handleDelete(farm.docId, farm.farmId)} 
+                                                        className="p-2 bg-red-900/20 text-red-400 hover:bg-red-600 hover:text-white rounded-lg transition-all"
+                                                        title="Eintrag entfernen"
+                                                    >
+                                                        <Trash2 size={16} />
+                                                    </button>
+                                                </div>
+                                            </td>
+                                        </tr>
+                                    ))
+                                )}
                             </tbody>
                         </table>
+                    </div>
+                    <div className="mt-4 text-[10px] text-slate-500 font-bold uppercase tracking-widest px-1">
+                        Gesamt: {displayedFarms.length} Betriebe in der Liste
                     </div>
                 </>
             )}
