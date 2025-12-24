@@ -9,15 +9,38 @@ interface HeroProps {
 
 export const Hero: React.FC<HeroProps> = ({ onLaunchApp }) => {
   const [showSyncModal, setShowSyncModal] = useState(false);
-  const [farmCount, setFarmCount] = useState<number>(0);
+  const [displayCount, setDisplayCount] = useState<number>(50); // Startwert fest auf 50
 
   useEffect(() => {
-    const fetchStats = async () => {
-        const count = await dbService.getGlobalUserCount();
-        // Wir setzen ein Minimum von 50 an, falls der Counter noch klein ist
-        setFarmCount(Math.max(50, count));
+    const fetchAndAnimate = async () => {
+        // Holen der echten Anzahl aus der Cloud
+        const cloudCount = await dbService.getGlobalUserCount();
+        const targetCount = 50 + cloudCount; // 50 Basis-Betriebe + Cloud-Registrierungen
+        
+        // Animationsparameter
+        const startValue = 50;
+        const duration = 2000; // 2 Sekunden Animationsdauer
+        const startTime = performance.now();
+
+        const animate = (currentTime: number) => {
+            const elapsed = currentTime - startTime;
+            const progress = Math.min(elapsed / duration, 1);
+            
+            // Easing: easeOutExpo für einen geschmeidigen Stopp am Ende
+            const easeOutExpo = progress === 1 ? 1 : 1 - Math.pow(2, -10 * progress);
+            
+            const currentCount = Math.floor(startValue + (targetCount - startValue) * easeOutExpo);
+            setDisplayCount(currentCount);
+
+            if (progress < 1) {
+                requestAnimationFrame(animate);
+            }
+        };
+
+        requestAnimationFrame(animate);
     };
-    fetchStats();
+    
+    fetchAndAnimate();
   }, []);
 
   return (
@@ -69,7 +92,10 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp }) => {
             </div>
             <div className="flex items-center">
               <div className="w-2 h-2 bg-green-500 rounded-full mr-2 animate-pulse" />
-              <span>{farmCount > 0 ? farmCount.toLocaleString('de-AT') : '...'} aktive Betriebe</span>
+              <span className="tabular-nums font-black text-white text-base mr-1">
+                {displayCount.toLocaleString('de-AT')}
+              </span>
+              <span className="font-medium">aktive Betriebe</span>
             </div>
           </div>
         </div>
