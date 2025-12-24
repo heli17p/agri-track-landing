@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { MessageSquarePlus, ThumbsUp, CheckCircle2, Circle, Clock, MessageCircle, Send, User, ChevronDown, ChevronUp, Trash2, Lock } from 'lucide-react';
+import { MessageSquarePlus, ThumbsUp, CheckCircle2, Circle, Clock, MessageCircle, Send, User, ChevronDown, ChevronUp, Trash2, Lock, Info } from 'lucide-react';
 import { FeedbackTicket, FeedbackComment } from '../types';
 import { dbService, generateId } from '../services/db';
 import { authService } from '../services/auth';
@@ -14,6 +14,7 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
   const [isAdding, setIsAdding] = useState(false);
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   
   // New Ticket State
   const [newTitle, setNewTitle] = useState('');
@@ -27,6 +28,7 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
     loadTickets();
     const unsub = authService.onAuthStateChanged((user) => {
         setIsLoggedIn(!!user);
+        setCurrentUserId(user ? user.uid : null);
     });
     return () => unsub();
   }, []);
@@ -38,11 +40,33 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
 
   const handleVote = async (ticket: FeedbackTicket, e: React.MouseEvent) => {
       e.stopPropagation();
-      if (!isLoggedIn) {
+      if (!isLoggedIn || !currentUserId) {
           alert("Bitte melde dich an, um abzustimmen.");
           return;
       }
-      const updated = { ...ticket, votes: ticket.votes + 1 };
+
+      const voterIds = ticket.voterIds || [];
+      const hasVoted = voterIds.includes(currentUserId);
+      
+      let newVoterIds: string[];
+      let newVoteCount: number;
+
+      if (hasVoted) {
+          // Stimme entfernen (Untoggle)
+          newVoterIds = voterIds.filter(id => id !== currentUserId);
+          newVoteCount = Math.max(0, ticket.votes - 1);
+      } else {
+          // Stimme hinzufügen
+          newVoterIds = [...voterIds, currentUserId];
+          newVoteCount = ticket.votes + 1;
+      }
+
+      const updated = { 
+          ...ticket, 
+          votes: newVoteCount, 
+          voterIds: newVoterIds 
+      };
+
       await dbService.saveFeedback(updated);
       loadTickets();
   };
@@ -72,6 +96,7 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
           date: new Date().toISOString(),
           status: 'OPEN',
           votes: 1,
+          voterIds: currentUserId ? [currentUserId] : [],
           comments: []
       };
 
@@ -96,7 +121,7 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
       const newComment: FeedbackComment = {
           id: generateId(),
           text: commentText,
-          author: isAdmin ? 'Admin' : (authorName || 'Gast'),
+          author: authorName || 'Mitglied',
           date: new Date().toISOString()
       };
 
@@ -181,7 +206,7 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
                         <input 
                             type="text" 
                             className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-agri-500"
-                            placeholder="Betrieb ..."
+                            placeholder="Hofname / Vorname ..."
                             value={authorName}
                             onChange={(e) => setAuthorName(e.target.value)}
                         />
@@ -211,129 +236,125 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
                     <p className="text-slate-400 font-medium">Lade Community-Wünsche aus der Cloud...</p>
                 </div>
             ) : (
-                tickets.map(ticket => (
-                    <div key={ticket.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all hover:shadow-md">
-                        <div 
-                            className="p-5 cursor-pointer"
-                            onClick={() => setExpandedTicketId(expandedTicketId === ticket.id ? null : ticket.id)}
-                        >
-                            <div className="flex justify-between items-start">
-                                <div className="flex-1 pr-4">
-                                    <div className="flex items-center space-x-3 mb-2">
-                                        {getStatusBadge(ticket.status)}
-                                        <span className="text-xs text-slate-400">
-                                            {new Date(ticket.date).toLocaleDateString()} • {ticket.author}
-                                        </span>
+                tickets.map(ticket => {
+                    const hasVoted = currentUserId && ticket.voterIds?.includes(currentUserId);
+                    
+                    return (
+                        <div key={ticket.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all hover:shadow-md">
+                            <div 
+                                className="p-5 cursor-pointer"
+                                onClick={() => setExpandedTicketId(expandedTicketId === ticket.id ? null : ticket.id)}
+                            >
+                                <div className="flex justify-between items-start">
+                                    <div className="flex-1 pr-4">
+                                        <div className="flex items-center space-x-3 mb-2">
+                                            {getStatusBadge(ticket.status)}
+                                            <span className="text-xs text-slate-400">
+                                                {new Date(ticket.date).toLocaleDateString()} • {ticket.author}
+                                            </span>
+                                        </div>
+                                        <h3 className="text-lg font-bold text-slate-800 mb-1">{ticket.title}</h3>
+                                        <p className="text-slate-600 text-sm line-clamp-2">{ticket.description}</p>
                                     </div>
-                                    <h3 className="text-lg font-bold text-slate-800 mb-1">{ticket.title}</h3>
-                                    <p className="text-slate-600 text-sm line-clamp-2">{ticket.description}</p>
+                                    
+                                    <div className="flex flex-col items-center space-y-2">
+                                        <button 
+                                            onClick={(e) => handleVote(ticket, e)}
+                                            className={`flex flex-col items-center justify-center border w-12 h-12 rounded-xl transition-all group ${isLoggedIn ? (hasVoted ? 'bg-green-600 border-green-600 text-white' : 'bg-slate-50 hover:bg-green-50 border-slate-200 hover:border-green-200') : 'bg-slate-50 border-slate-100 opacity-70 cursor-not-allowed'}`}
+                                            title={hasVoted ? "Stimme zurückziehen" : "Dafür stimmen"}
+                                        >
+                                            <ThumbsUp size={18} className={`${isLoggedIn ? (hasVoted ? 'text-white' : 'text-slate-400 group-hover:text-green-600') : 'text-slate-300'} mb-0.5`} fill={hasVoted ? "currentColor" : "none"} />
+                                            <span className={`text-xs font-bold ${isLoggedIn ? (hasVoted ? 'text-white' : 'text-slate-600 group-hover:text-green-700') : 'text-slate-400'}`}>{ticket.votes}</span>
+                                        </button>
+
+                                        {isAdmin && (
+                                            <button 
+                                                onClick={(e) => handleDeleteTicket(ticket.id, e)}
+                                                className="flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-slate-200 hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-slate-300 transition-colors"
+                                                title="Ticket löschen"
+                                            >
+                                                <Trash2 size={14} />
+                                            </button>
+                                        )}
+                                    </div>
                                 </div>
                                 
-                                <div className="flex flex-col items-center space-y-2">
-                                    <button 
-                                        onClick={(e) => handleVote(ticket, e)}
-                                        className={`flex flex-col items-center justify-center border w-12 h-12 rounded-xl transition-all group ${isLoggedIn ? 'bg-slate-50 hover:bg-green-50 border-slate-200 hover:border-green-200' : 'bg-slate-50 border-slate-100 opacity-70'}`}
-                                    >
-                                        <ThumbsUp size={18} className={`${isLoggedIn ? 'text-slate-400 group-hover:text-green-600' : 'text-slate-300'} mb-0.5`} />
-                                        <span className={`text-xs font-bold ${isLoggedIn ? 'text-slate-600 group-hover:text-green-700' : 'text-slate-400'}`}>{ticket.votes}</span>
-                                    </button>
+                                <div className="mt-4 flex items-center justify-center text-slate-300">
+                                    {expandedTicketId === ticket.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                                </div>
+                            </div>
+
+                            {expandedTicketId === ticket.id && (
+                                <div className="bg-slate-50 border-t border-slate-100 p-5">
+                                    <p className="text-slate-700 text-sm mb-6 whitespace-pre-wrap">
+                                        {ticket.description}
+                                    </p>
 
                                     {isAdmin && (
-                                        <button 
-                                            onClick={(e) => handleDeleteTicket(ticket.id, e)}
-                                            className="flex items-center justify-center w-8 h-8 rounded-lg bg-white border border-slate-200 hover:bg-red-50 hover:border-red-200 hover:text-red-500 text-slate-300 transition-colors"
-                                            title="Ticket löschen"
-                                        >
-                                            <Trash2 size={14} />
-                                        </button>
+                                        <div className="mb-6 bg-red-50 border border-red-100 p-3 rounded-lg flex items-center space-x-3">
+                                            <span className="text-xs font-bold text-red-800 uppercase">Admin Status:</span>
+                                            <div className="flex space-x-2">
+                                                {(['OPEN', 'IN_PROGRESS', 'DONE'] as const).map(s => (
+                                                    <button
+                                                        key={s}
+                                                        onClick={() => handleStatusChange(ticket, s)}
+                                                        className={`px-3 py-1 rounded text-xs font-bold ${ticket.status === s ? 'bg-red-600 text-white' : 'bg-white text-slate-600 border'}`}
+                                                    >
+                                                        {s === 'DONE' ? 'Erledigt' : s === 'IN_PROGRESS' ? 'In Arbeit' : 'Offen'}
+                                                    </button>
+                                                ))}
+                                            </div>
+                                        </div>
                                     )}
-                                </div>
-                            </div>
-                            
-                            <div className="mt-4 flex items-center justify-center text-slate-300">
-                                {expandedTicketId === ticket.id ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
-                            </div>
-                        </div>
 
-                        {expandedTicketId === ticket.id && (
-                            <div className="bg-slate-50 border-t border-slate-100 p-5">
-                                <p className="text-slate-700 text-sm mb-6 whitespace-pre-wrap">
-                                    {ticket.description}
-                                </p>
-
-                                {isAdmin && (
-                                    <div className="mb-6 bg-red-50 border border-red-100 p-3 rounded-lg flex items-center space-x-3">
-                                        <span className="text-xs font-bold text-red-800 uppercase">Admin Status:</span>
-                                        <div className="flex space-x-2">
-                                            {(['OPEN', 'IN_PROGRESS', 'DONE'] as const).map(s => (
-                                                <button
-                                                    key={s}
-                                                    onClick={() => handleStatusChange(ticket, s)}
-                                                    className={`px-3 py-1 rounded text-xs font-bold ${ticket.status === s ? 'bg-red-600 text-white' : 'bg-white text-slate-600 border'}`}
-                                                >
-                                                    {s === 'DONE' ? 'Erledigt' : s === 'IN_PROGRESS' ? 'In Arbeit' : 'Offen'}
-                                                </button>
+                                    <div className="space-y-4">
+                                        <h4 className="font-bold text-slate-700 text-sm flex items-center">
+                                            <MessageCircle size={16} className="mr-2"/> Kommentare ({ticket.comments?.length || 0})
+                                        </h4>
+                                        
+                                        <div className="space-y-3 pl-4 border-l-2 border-slate-200">
+                                            {ticket.comments && ticket.comments.map(comment => (
+                                                <div key={comment.id} className="bg-white p-3 rounded-lg shadow-sm border border-slate-100">
+                                                    <div className="flex justify-between items-center mb-1">
+                                                        <span className="text-xs font-bold text-slate-700 flex items-center">
+                                                            <User size={12} className="mr-1"/> {comment.author}
+                                                        </span>
+                                                        <span className="text-[10px] text-slate-400">
+                                                            {new Date(comment.date).toLocaleDateString()}
+                                                        </span>
+                                                    </div>
+                                                    <p className="text-sm text-slate-600">{comment.text}</p>
+                                                </div>
                                             ))}
                                         </div>
-                                    </div>
-                                )}
 
-                                <div className="space-y-4">
-                                    <h4 className="font-bold text-slate-700 text-sm flex items-center">
-                                        <MessageCircle size={16} className="mr-2"/> Kommentare ({ticket.comments?.length || 0})
-                                    </h4>
-                                    
-                                    <div className="space-y-3 pl-4 border-l-2 border-slate-200">
-                                        {ticket.comments && ticket.comments.map(comment => (
-                                            <div key={comment.id} className="bg-white p-3 rounded-lg shadow-sm border border-slate-100">
-                                                <div className="flex justify-between items-center mb-1">
-                                                    <span className="text-xs font-bold text-slate-700 flex items-center">
-                                                        <User size={12} className="mr-1"/> {comment.author}
-                                                    </span>
-                                                    <span className="text-[10px] text-slate-400">
-                                                        {new Date(comment.date).toLocaleDateString()}
-                                                    </span>
-                                                </div>
-                                                <p className="text-sm text-slate-600">{comment.text}</p>
-                                            </div>
-                                        ))}
-                                    </div>
-
-                                    <div className="flex items-center space-x-2 pt-2">
-                                        <input 
-                                            type="text"
-                                            value={commentText}
-                                            onChange={(e) => setCommentText(e.target.value)}
-                                            placeholder={isLoggedIn ? "Kommentar schreiben..." : "Anmelden zum Kommentieren..."}
-                                            disabled={!isLoggedIn}
-                                            className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-agri-500 disabled:opacity-50"
-                                            onKeyDown={(e) => e.key === 'Enter' && handleSubmitComment(ticket.id)}
-                                        />
-                                        <button 
-                                            onClick={() => handleSubmitComment(ticket.id)}
-                                            disabled={!isLoggedIn}
-                                            className="bg-slate-800 text-white p-2 rounded-lg hover:bg-slate-700 disabled:opacity-50"
-                                        >
-                                            <Send size={18}/>
-                                        </button>
+                                        <div className="flex items-center space-x-2 pt-2">
+                                            <input 
+                                                type="text"
+                                                value={commentText}
+                                                onChange={(e) => setCommentText(e.target.value)}
+                                                placeholder={isLoggedIn ? "Kommentar schreiben..." : "Anmelden zum Kommentieren..."}
+                                                disabled={!isLoggedIn}
+                                                className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-agri-500 disabled:opacity-50"
+                                                onKeyDown={(e) => e.key === 'Enter' && handleSubmitComment(ticket.id)}
+                                            />
+                                            <button 
+                                                onClick={() => handleSubmitComment(ticket.id)}
+                                                disabled={!isLoggedIn}
+                                                className="bg-slate-800 text-white p-2 rounded-lg hover:bg-slate-700 disabled:opacity-50"
+                                            >
+                                                <Send size={18}/>
+                                            </button>
+                                        </div>
                                     </div>
                                 </div>
-                            </div>
-                        )}
-                    </div>
-                ))
+                            )}
+                        </div>
+                    );
+                })
             )}
         </div>
     </div>
   );
 };
-
-// Hilfskomponente Info (Lucide Icon Fallback falls nötig)
-const Info = ({ size, className }: { size: number, className: string }) => (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
-        <circle cx="12" cy="12" r="10" />
-        <line x1="12" y1="16" x2="12" y2="12" />
-        <line x1="12" y1="8" x2="12.01" y2="8" />
-    </svg>
-);
 

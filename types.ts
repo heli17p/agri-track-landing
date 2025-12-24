@@ -21,6 +21,7 @@ export interface FeedbackTicket {
   title: string;
   description: string;
   votes: number;
+  voterIds?: string[]; // NEU: Liste der UIDs die abgestimmt haben
   status: 'OPEN' | 'IN_PROGRESS' | 'DONE';
   date: string;
   author: string;
