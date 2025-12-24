@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
-import { X, Calendar, Save, Trash2, AlertTriangle, Truck, Hammer, MapPin, Layers, Database, CheckSquare, Square } from 'lucide-react';
+import { X, Calendar, Save, Trash2, AlertTriangle, Truck, Hammer, MapPin, Layers, Database, CheckSquare, Square, MessageSquare } from 'lucide-react';
 import { ActivityRecord, ActivityType, Field, FertilizerType, StorageLocation, TrackPoint, AppSettings, DEFAULT_SETTINGS } from '../types';
 import { dbService } from '../services/db';
 import { MapContainer, TileLayer, Polyline, Polygon, useMap } from 'react-leaflet';
@@ -155,8 +155,21 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
             )}
 
             <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 space-y-4">
-                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Datum</label><input type="date" value={dateStr} onChange={e => handleChange('date', new Date(e.target.value).toISOString())} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none font-bold text-slate-700"/></div>
-                <div className="grid grid-cols-2 gap-4"><div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Menge ({editedActivity.unit})</label><input type="number" value={editedActivity.amount || 0} onChange={e => handleChange('amount', parseFloat(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none font-black text-xl text-slate-800"/></div>{editedActivity.loadCount !== undefined && (<div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Fuhren</label><input type="number" value={editedActivity.loadCount} readOnly className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 font-bold"/></div>)}</div>
+                <div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Datum</label><input type="date" value={dateStr} onChange={e => handleChange('date', new Date(e.target.value).toISOString())} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none font-bold text-slate-700"/></div>
+                <div className="grid grid-cols-2 gap-4"><div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Menge ({editedActivity.unit})</label><input type="number" value={editedActivity.amount || 0} onChange={e => handleChange('amount', parseFloat(e.target.value))} className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl focus:ring-2 focus:ring-green-500 outline-none font-black text-xl text-slate-800"/></div>{editedActivity.loadCount !== undefined && (<div><label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Fuhren</label><input type="number" value={editedActivity.loadCount} readOnly className="w-full p-2.5 bg-slate-100 border border-slate-200 rounded-xl text-slate-500 font-bold"/></div>)}</div>
+            </div>
+
+            {/* NOTIZEN ABSCHNITT */}
+            <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200">
+                <h3 className="font-bold text-slate-700 mb-3 flex items-center text-sm">
+                    <MessageSquare size={16} className="mr-2 text-slate-400"/> Notizen / Anmerkungen
+                </h3>
+                <textarea 
+                    value={editedActivity.notes || ''} 
+                    onChange={e => handleChange('notes', e.target.value)}
+                    className="w-full p-3 bg-slate-50 border border-slate-200 rounded-xl text-sm text-slate-700 outline-none focus:ring-2 focus:ring-blue-500 min-h-[100px] resize-none"
+                    placeholder="Besonderheiten zu dieser Tätigkeit..."
+                />
             </div>
 
             {activity.storageDistribution && (
