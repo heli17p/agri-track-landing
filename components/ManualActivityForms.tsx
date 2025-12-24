@@ -27,6 +27,43 @@ const getFieldColor = (field: Field) => {
     return field.type === 'Acker' ? '#92400E' : '#15803D';
 };
 
+// Interne Komponente für die einheitliche Darstellung eines Feld-Eintrags in der Liste
+const FieldListEntry: React.FC<{ field: Field, isSelected: boolean, onClick: () => void, activeColorClass: string }> = ({ field, isSelected, onClick, activeColorClass }) => (
+    <div 
+        onClick={onClick} 
+        className={`p-3 flex items-start cursor-pointer transition-all border-b border-slate-100 last:border-0 ${isSelected ? activeColorClass : 'bg-white hover:bg-slate-50'}`}
+    >
+        <div className={`mr-3 mt-1 ${isSelected ? 'text-slate-900' : 'text-slate-300'}`}>
+            {isSelected ? <CheckSquare size={20}/> : <Square size={20}/>}
+        </div>
+        <div className="flex-1 min-w-0">
+            <div className="flex items-center mb-0.5">
+                <span 
+                    className="w-3 h-3 rounded-full mr-2 border border-black/10 shadow-sm shrink-0" 
+                    style={{ backgroundColor: getFieldColor(field) }}
+                />
+                <div className="font-bold text-sm text-slate-800 truncate">{field.name}</div>
+            </div>
+            
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+                <span className="text-[10px] font-black text-slate-500 uppercase bg-slate-100 px-1.5 py-0.5 rounded border border-slate-200 shrink-0">
+                    {field.areaHa.toFixed(2)} ha
+                </span>
+                {field.usage && (
+                    <span className="text-[10px] text-slate-400 font-medium truncate">
+                        {field.usage}
+                    </span>
+                )}
+                {field.codes && (
+                    <span className="text-[9px] font-mono text-blue-500 bg-blue-50 px-1 rounded flex items-center shrink-0">
+                        <Tag size={8} className="mr-1"/> {field.codes}
+                    </span>
+                )}
+            </div>
+        </div>
+    </div>
+);
+
 export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, storages = [], settings, onCancel, onSave, onNavigate }) => {
   const [selectedCategory, setSelectedCategory] = useState<string>('');
   const [categories, setCategories] = useState<EquipmentCategory[]>([]);
@@ -48,7 +85,6 @@ export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, stora
   }, []);
 
   const availableStorages = useMemo(() => {
-      // Wenn die Kategorie "Mist" im Namen hat, zeige Mistlager, sonst Gülle
       const isManureType = selectedCategory.toLowerCase().includes('mist') || selectedCategory.toLowerCase().includes('fest');
       return storages.filter(s => isManureType ? s.type === FertilizerType.MANURE : s.type === FertilizerType.SLURRY);
   }, [storages, selectedCategory]);
@@ -84,7 +120,7 @@ export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, stora
       date: finalIsoDate,
       type: ActivityType.FERTILIZATION,
       fertilizerType: isManure ? FertilizerType.MANURE : FertilizerType.SLURRY,
-      tillageType: selectedCategory, // Wir nutzen hier den Namen der Gruppe
+      tillageType: selectedCategory,
       fieldIds: Array.from(selectedFieldIds),
       amount: totalVolume,
       unit: unit === 't' ? 't' : 'm³',
@@ -137,21 +173,15 @@ export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, stora
             <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Datum</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border p-3 rounded-lg font-bold" /></div>
             <div className="space-y-2">
                 <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Felder wählen</label>
-                <div className="border rounded-xl max-h-48 overflow-y-auto divide-y bg-slate-50">
+                <div className="border rounded-xl max-h-64 overflow-y-auto bg-slate-50 shadow-inner">
                     {fields.map(f => (
-                      <div key={f.id} onClick={() => toggleField(f.id)} className={`p-3 flex items-center cursor-pointer transition-colors ${selectedFieldIds.has(f.id) ? 'bg-amber-50' : 'bg-white'}`}>
-                        <div className={`mr-3 ${selectedFieldIds.has(f.id) ? 'text-amber-600' : 'text-slate-300'}`}>{selectedFieldIds.has(f.id) ? <CheckSquare size={20}/> : <Square size={20}/>}</div>
-                        <div className="flex-1">
-                          <div className="flex items-center">
-                            <span 
-                                className="w-3 h-3 rounded-full mr-2 border border-black/10 shadow-sm shrink-0" 
-                                style={{ backgroundColor: getFieldColor(f) }}
-                            />
-                            <div className="font-bold text-sm text-slate-700 truncate">{f.name}</div>
-                          </div>
-                          <div className="text-[10px] text-slate-400 uppercase font-bold pl-5">{f.areaHa.toFixed(2)} ha • {f.usage}</div>
-                        </div>
-                      </div>
+                      <FieldListEntry 
+                        key={f.id} 
+                        field={f} 
+                        isSelected={selectedFieldIds.has(f.id)} 
+                        onClick={() => toggleField(f.id)} 
+                        activeColorClass="bg-amber-50"
+                      />
                     ))}
                 </div>
             </div>
@@ -204,20 +234,15 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
             <div className="p-4 space-y-4 pb-20">
                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Erntegut / Typ</label><select value={selectedType} onChange={e => setSelectedType(e.target.value)} className="w-full p-3 border rounded-lg font-bold bg-white">{categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
                 <div className="flex space-x-2"><div className="flex-1"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Menge (Ballen/Stk)</label><input type="number" value={amount || ''} onChange={e => setAmount(parseFloat(e.target.value))} className="w-full border p-3 rounded-lg font-bold" /></div><div className="flex-1"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Datum</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border p-3 rounded-lg font-bold" /></div></div>
-                <div className="border rounded-xl max-h-60 overflow-y-auto divide-y bg-slate-50">
+                <div className="border rounded-xl max-h-80 overflow-y-auto bg-slate-50 shadow-inner">
                   {fields.map(f => (
-                    <div key={f.id} onClick={() => { const n = new Set(selectedFieldIds); if(n.has(f.id)) n.delete(f.id); else n.add(f.id); setSelectedFieldIds(n); }} className={`p-3 flex items-center cursor-pointer ${selectedFieldIds.has(f.id) ? 'bg-lime-50' : 'bg-white'}`}>
-                      <div className={`mr-3 ${selectedFieldIds.has(f.id) ? 'text-lime-600' : 'text-slate-300'}`}>{selectedFieldIds.has(f.id) ? <CheckSquare size={20}/> : <Square size={20}/>}</div>
-                      <div className="flex-1">
-                        <div className="flex items-center">
-                          <span 
-                              className="w-3 h-3 rounded-full mr-2 border border-black/10 shadow-sm shrink-0" 
-                              style={{ backgroundColor: getFieldColor(f) }}
-                          />
-                          <div className="font-bold text-sm text-slate-700 truncate">{f.name}</div>
-                        </div>
-                      </div>
-                    </div>
+                    <FieldListEntry 
+                        key={f.id} 
+                        field={f} 
+                        isSelected={selectedFieldIds.has(f.id)} 
+                        onClick={() => { const n = new Set(selectedFieldIds); if(n.has(f.id)) n.delete(f.id); else n.add(f.id); setSelectedFieldIds(n); }} 
+                        activeColorClass="bg-lime-50"
+                    />
                   ))}
                 </div>
                 <button onClick={handleSave} disabled={amount <= 0 || selectedFieldIds.size === 0} className="w-full bg-green-600 text-white py-4 rounded-xl font-black shadow-lg uppercase tracking-widest">Speichern</button>
@@ -255,20 +280,15 @@ export const TillageForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
             <div className="p-4 space-y-4 pb-20">
                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tätigkeit / Typ</label><select value={tillageType} onChange={e => setTillageType(e.target.value)} className="w-full border p-3 rounded-lg font-bold bg-white">{categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Datum</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border p-3 rounded-lg font-bold" /></div>
-                <div className="border rounded-xl max-h-60 overflow-y-auto divide-y bg-slate-50">
+                <div className="border rounded-xl max-h-80 overflow-y-auto bg-slate-50 shadow-inner">
                   {fields.map(f => (
-                    <div key={f.id} onClick={() => { const n = new Set(selectedFieldIds); if(n.has(f.id)) n.delete(f.id); else n.add(f.id); setSelectedFieldIds(n); }} className={`p-3 flex items-center cursor-pointer ${selectedFieldIds.has(f.id) ? 'bg-blue-50' : 'bg-white'}`}>
-                      <div className={`mr-3 ${selectedFieldIds.has(f.id) ? 'text-blue-600' : 'text-slate-300'}`}>{selectedFieldIds.has(f.id) ? <CheckSquare size={20}/> : <Square size={20}/>}</div>
-                      <div className="flex-1">
-                        <div className="flex items-center">
-                          <span 
-                              className="w-3 h-3 rounded-full mr-2 border border-black/10 shadow-sm shrink-0" 
-                              style={{ backgroundColor: getFieldColor(f) }}
-                          />
-                          <div className="font-bold text-sm text-slate-700 truncate">{f.name}</div>
-                        </div>
-                      </div>
-                    </div>
+                    <FieldListEntry 
+                        key={f.id} 
+                        field={f} 
+                        isSelected={selectedFieldIds.has(f.id)} 
+                        onClick={() => { const n = new Set(selectedFieldIds); if(n.has(f.id)) n.delete(f.id); else n.add(f.id); setSelectedFieldIds(n); }} 
+                        activeColorClass="bg-blue-50"
+                    />
                   ))}
                 </div>
                 <button onClick={handleSave} disabled={selectedFieldIds.size === 0 || !tillageType} className="w-full bg-green-600 text-white py-4 rounded-xl font-black shadow-lg uppercase tracking-widest">Speichern</button>
