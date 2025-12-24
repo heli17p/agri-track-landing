@@ -6,12 +6,77 @@ import { VersionHistory } from './components/VersionHistory';
 import { AgriTrackApp } from './components/AgriTrackApp';
 import { AppShowcase } from './components/AppShowcase';
 import { AuthPage } from './pages/AuthPage';
-import { Tab } from './types';
-import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight, LogOut, CloudOff, Database, Mail, UserPlus } from 'lucide-react';
+import { Tab, FeedbackTicket } from './types';
+import { LayoutDashboard, MessageSquarePlus, History, Sprout, Check, Shield, Zap, Smartphone, Lock, User, X, ArrowRight, LogOut, CloudOff, Database, Mail, UserPlus, ThumbsUp, MessageCircle, ArrowUpRight } from 'lucide-react';
 import { authService } from './services/auth';
 import { dbService } from './services/db';
 import { syncData } from './services/sync';
 import { AdminFarmManager } from './components/AdminFarmManager';
+
+// Kleine Vorschau-Komponente für die Landingpage
+const CommunityTeaser: React.FC<{ onNavigate: () => void }> = ({ onNavigate }) => {
+  const [topTickets, setTopTickets] = useState<FeedbackTicket[]>([]);
+
+  useEffect(() => {
+    const load = async () => {
+      const tickets = await dbService.getFeedback();
+      setTopTickets(tickets.sort((a, b) => b.votes - a.votes).slice(0, 3));
+    };
+    load();
+  }, []);
+
+  return (
+    <section className="bg-slate-50 py-24 border-t border-slate-200">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="lg:flex lg:items-center lg:justify-between mb-12">
+          <div className="max-w-2xl">
+            <h2 className="text-3xl font-extrabold text-gray-900 sm:text-4xl">
+              Community-gesteuerte Entwicklung
+            </h2>
+            <p className="mt-4 text-lg text-gray-500">
+              Du entscheidest, was als nächstes kommt. Stimme für neue Funktionen ab oder melde Fehler direkt im Kummerkasten.
+            </p>
+          </div>
+          <div className="mt-8 lg:mt-0">
+            <button 
+              onClick={onNavigate}
+              className="inline-flex items-center px-6 py-3 border border-transparent text-base font-bold rounded-xl text-white bg-agri-600 hover:bg-agri-700 shadow-lg shadow-agri-900/20 transition-all"
+            >
+              Zum Kummerkasten
+              <ArrowUpRight className="ml-2 w-5 h-5" />
+            </button>
+          </div>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          {topTickets.length > 0 ? topTickets.map(ticket => (
+            <div key={ticket.id} className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col h-full">
+              <div className="flex justify-between items-start mb-4">
+                <span className={`text-[10px] font-black px-2 py-0.5 rounded-full uppercase tracking-wider ${ticket.status === 'DONE' ? 'bg-green-100 text-green-700' : 'bg-blue-100 text-blue-700'}`}>
+                  {ticket.status === 'DONE' ? 'Erledigt' : 'In Arbeit'}
+                </span>
+                <div className="flex items-center text-slate-400">
+                  <ThumbsUp size={14} className="mr-1" />
+                  <span className="text-xs font-bold">{ticket.votes}</span>
+                </div>
+              </div>
+              <h4 className="font-bold text-slate-800 mb-2 line-clamp-1">{ticket.title}</h4>
+              <p className="text-sm text-slate-500 line-clamp-2 mb-6 flex-1">{ticket.description}</p>
+              <div className="flex items-center text-[10px] font-bold text-slate-400 uppercase tracking-widest pt-4 border-t border-slate-50">
+                <MessageCircle size={12} className="mr-1.5" />
+                {ticket.comments?.length || 0} Kommentare
+              </div>
+            </div>
+          )) : (
+            <div className="col-span-3 text-center py-12 text-slate-400 italic">
+              Lade Community-Wünsche...
+            </div>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+};
 
 const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<Tab>(Tab.HOME);
@@ -95,7 +160,11 @@ const App: React.FC = () => {
                     <div className="hidden md:flex space-x-8 items-center mr-8">
                     <button onClick={() => setActiveTab(Tab.HOME)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.HOME ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}><LayoutDashboard className="w-4 h-4 mr-2" /> Übersicht</button>
                     <button onClick={() => setActiveTab(Tab.APP)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.APP ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}><Smartphone className="w-4 h-4 mr-2" /> Web App</button>
-                    <button onClick={() => setActiveTab(Tab.FEEDBACK)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.FEEDBACK ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}><MessageSquarePlus className="w-4 h-4 mr-2" /> Kummerkasten</button>
+                    <button onClick={() => setActiveTab(Tab.FEEDBACK)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium relative group ${activeTab === Tab.FEEDBACK ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}>
+                      <MessageSquarePlus className="w-4 h-4 mr-2" /> 
+                      Kummerkasten
+                      <span className="absolute -top-1 -right-1 w-2 h-2 bg-agri-500 rounded-full animate-ping opacity-75"></span>
+                    </button>
                     </div>
                     <div className="border-l border-gray-200 pl-4 flex items-center space-x-2">
                         {isAuthenticated || isGuest ? (
@@ -122,6 +191,7 @@ const App: React.FC = () => {
               onNavigateToFeedback={() => setActiveTab(Tab.FEEDBACK)}
             />
             <AppShowcase />
+            <CommunityTeaser onNavigate={() => setActiveTab(Tab.FEEDBACK)} />
             <footer className="bg-white border-t border-gray-200 mt-auto shrink-0 py-8 text-center text-gray-500 text-sm">
                 &copy; {new Date().getFullYear()} AgriTrack Austria. Open Source & Forever Live.
             </footer>

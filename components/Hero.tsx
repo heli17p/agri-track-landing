@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Cloud, ShieldCheck, Tractor, X, Smartphone, WifiOff, Lock, PlayCircle, MessageSquarePlus } from 'lucide-react';
+import { Cloud, ShieldCheck, Tractor, X, Smartphone, WifiOff, Lock, PlayCircle, MessageSquarePlus, Sparkles } from 'lucide-react';
 import { dbService } from '../services/db';
 
 interface HeroProps {
@@ -68,27 +68,33 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp, onNavigateToFeedback })
           <div className="flex flex-col sm:flex-row gap-4">
             <button 
               onClick={onLaunchApp}
-              className="bg-agri-500 hover:bg-agri-700 text-white font-bold py-4 px-8 rounded-lg flex items-center justify-center transition-all shadow-lg shadow-agri-900/50"
+              className="bg-agri-500 hover:bg-agri-700 text-white font-bold py-4 px-8 rounded-xl flex items-center justify-center transition-all shadow-lg shadow-agri-900/50 active:scale-95"
             >
               <PlayCircle className="mr-2 w-6 h-6" />
               App Jetzt Starten
             </button>
             <button 
               onClick={() => setShowSyncModal(true)}
-              className="bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 text-white font-bold py-4 px-8 rounded-lg flex items-center justify-center transition-all"
+              className="bg-white/10 hover:bg-white/20 backdrop-blur-sm border border-white/20 text-white font-bold py-4 px-8 rounded-xl flex items-center justify-center transition-all"
             >
               <Cloud className="mr-2 w-5 h-5" />
               Wie funktioniert der Speicher?
             </button>
           </div>
 
-          <button 
-            onClick={onNavigateToFeedback}
-            className="mt-6 flex items-center text-sm font-semibold text-agri-400 hover:text-agri-300 transition-colors group"
-          >
-            <MessageSquarePlus className="mr-2 w-5 h-5 group-hover:scale-110 transition-transform" />
-            Einen Wunsch äußern oder Fehler melden
-          </button>
+          <div className="mt-8 flex items-center space-x-4">
+            <button 
+              onClick={onNavigateToFeedback}
+              className="flex items-center text-sm font-bold bg-white/5 hover:bg-white/10 px-4 py-2 rounded-lg text-agri-400 hover:text-agri-300 transition-all group border border-white/10"
+            >
+              <MessageSquarePlus className="mr-2 w-5 h-5 group-hover:scale-110 transition-transform" />
+              Wunsch äußern oder Fehler melden
+            </button>
+            <div className="hidden sm:flex items-center text-[10px] font-black uppercase text-slate-500 tracking-[0.2em]">
+              <Sparkles size={14} className="mr-2 text-amber-500" />
+              Community driven
+            </div>
+          </div>
 
           <div className="mt-12 flex flex-col sm:flex-row gap-6 sm:gap-12 text-sm text-gray-400">
             <div className="flex items-center">
