@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useMemo } from 'react';
 import { dbService } from '../services/db';
 import { ActivityRecord, FarmProfile, ActivityType, HarvestType, FertilizerType, TillageType, AppSettings, DEFAULT_SETTINGS, StorageLocation } from '../types';
-import { Download, Cloud, RefreshCw, List, ChevronRight, Truck, Wheat, Hammer, Filter, ArrowUp, ArrowDown, Calendar, CheckCircle, Droplets, Layers, AlertTriangle, Calculator, Sprout, ShoppingBag } from 'lucide-react';
+import { Download, Cloud, RefreshCw, List, ChevronRight, Truck, Wheat, Hammer, Filter, ArrowUp, ArrowDown, Calendar, CheckCircle, Droplets, Layers, AlertTriangle, Calculator, Sprout, ShoppingBag, MessageSquare } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { syncData } from '../services/sync';
@@ -621,7 +621,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
                     filteredActivities.map((act, index) => {
                         const style = getActivityStyle(act);
                         const involvedFields = fields.filter(f => act.fieldIds.includes(f.id));
-                        const totalArea = involvedFields.reduce((sum, f) => sum + f.areaHa, 0);
+                        const totalAreaValue = involvedFields.reduce((sum, f) => sum + f.areaHa, 0);
 
                         // Date Header Logic
                         const currentDateStr = new Date(act.date).toDateString();
@@ -649,7 +649,6 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
                                             <style.Icon size={16} className={style.textClass} />
                                             <span className={`font-bold text-sm ${style.textClass}`}>{style.label}</span>
                                         </div>
-                                        {/* Date on card optional if we have headers, but keep for detail */}
                                         <span className="text-xs text-slate-500 font-medium">
                                             {new Date(act.date).toLocaleTimeString('de-AT', {hour: '2-digit', minute:'2-digit'})}
                                         </span>
@@ -659,8 +658,8 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
                                     <div className="space-y-1 mb-2 pl-6 border-l border-black/5">
                                         {involvedFields.length > 0 ? involvedFields.slice(0, 3).map(f => {
                                             let detailText = `${f.areaHa.toFixed(2)} ha`;
-                                            if (act.type === ActivityType.HARVEST && act.amount && totalArea > 0) {
-                                                const share = (f.areaHa / totalArea) * act.amount;
+                                            if (act.type === ActivityType.HARVEST && act.amount && totalAreaValue > 0) {
+                                                const share = (f.areaHa / totalAreaValue) * act.amount;
                                                 detailText = `${share.toFixed(1)} Stk`;
                                             }
 
@@ -690,6 +689,16 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
                                             <div className="text-xs text-slate-400 italic pl-1">+ {involvedFields.length - 3} weitere</div>
                                         )}
                                     </div>
+
+                                    {/* NOTIZEN PREVIEW (NEU) */}
+                                    {act.notes && act.notes.trim() !== "" && (
+                                        <div className="mt-2 mb-2 pl-6">
+                                            <div className="flex items-start text-[10px] text-slate-500 italic bg-white/40 p-1.5 rounded-lg border border-black/5">
+                                                <MessageSquare size={10} className="mr-1.5 mt-0.5 shrink-0 text-slate-400"/>
+                                                <span className="line-clamp-2">{act.notes}</span>
+                                            </div>
+                                        </div>
+                                    )}
 
                                     <div className="border-t border-slate-200/50 pt-2 flex justify-end items-center">
                                         <span className="text-xs text-slate-500 mr-2 uppercase font-bold">Gesamt</span>
@@ -734,3 +743,4 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
     </div>
   );
 };
+
