@@ -232,7 +232,11 @@ export const useTracking = (
 
     if (activityTypeRef.current === ActivityType.FERTILIZATION) {
       unit = 'm³';
-      const loadSize = sub === 'Gülle' ? s.slurryLoadSize : s.manureLoadSize;
+      // NEU: Priorität auf Gerätegröße, dann Fallback auf Globale Einstellungen
+      const loadSize = (equipmentRef.current && equipmentRef.current.capacity) 
+        ? equipmentRef.current.capacity 
+        : (sub === 'Gülle' ? s.slurryLoadSize : s.manureLoadSize);
+      
       const totalLoads = Object.values(loadCounts).reduce((a, b) => a + b, 0);
       totalAmt = Math.round(totalLoads * loadSize); 
       
@@ -299,7 +303,9 @@ export const useTracking = (
 
     const storageDist: Record<string, number> = {};
     if (activityTypeRef.current === ActivityType.FERTILIZATION) {
-      const loadSize = sub === 'Gülle' ? s.slurryLoadSize : s.manureLoadSize;
+      const loadSize = (equipmentRef.current && equipmentRef.current.capacity) 
+        ? equipmentRef.current.capacity 
+        : (sub === 'Gülle' ? s.slurryLoadSize : s.manureLoadSize);
       Object.entries(loadCounts).forEach(([sId, count]) => storageDist[sId] = Math.round(count * loadSize));
     }
 
@@ -319,8 +325,8 @@ export const useTracking = (
       detailedFieldSources: Object.keys(detailedFieldSources).length > 0 ? detailedFieldSources : undefined, 
       fertilizerType: activityTypeRef.current === ActivityType.FERTILIZATION ? (sub === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE) : undefined, 
       tillageType: activityTypeRef.current === ActivityType.TILLAGE ? sub as any : undefined,
-      equipmentId: equipmentRef.current?.id, // NEU
-      equipmentName: equipmentRef.current?.name // NEU
+      equipmentId: equipmentRef.current?.id,
+      equipmentName: equipmentRef.current?.name
     };
 
     if (record.detailedFieldSources) {

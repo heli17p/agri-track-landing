@@ -81,6 +81,8 @@ export interface Equipment {
   name: string;
   type: string; // Referenz auf EquipmentCategory.name
   width: number;
+  capacity?: number; // NEU: Spezifische Kapazität (z.B. Fassgröße)
+  capacityUnit?: 'm³' | 't' | 'Stk'; // NEU: Einheit der Kapazität
 }
 
 export interface GeoPoint {

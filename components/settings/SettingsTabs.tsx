@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2, X, Share2, Key, Users, UserMinus, ShieldAlert, FileOutput, FileInput } from 'lucide-react';
+import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2, X, Share2, Key, Users, UserMinus, ShieldAlert, FileOutput, FileInput, Box } from 'lucide-react';
 import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, EquipmentCategory, ActivityType } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
 import { dbService, generateId } from '../../services/db';
@@ -110,7 +110,7 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
   const [showAdd, setShowAdd] = useState(false);
   const [showCatManager, setShowCatManager] = useState(false);
   const [categories, setCategories] = useState<EquipmentCategory[]>([]);
-  const [newEquip, setNewEquip] = useState<Equipment>({ id: '', name: '', type: '', width: 6 });
+  const [newEquip, setNewEquip] = useState<Equipment>({ id: '', name: '', type: '', width: 6, capacity: undefined, capacityUnit: 'm³' });
   const [editingId, setEditingId] = useState<string | null>(null);
   
   // Kategorie Management
@@ -138,7 +138,7 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
   const resetForm = () => {
     setShowAdd(false);
     setEditingId(null);
-    setNewEquip({ id: '', name: '', type: categories[0]?.name || '', width: 6 });
+    setNewEquip({ id: '', name: '', type: categories[0]?.name || '', width: 6, capacity: undefined, capacityUnit: 'm³' });
   };
 
   const handleEdit = (e: Equipment) => {
@@ -185,6 +185,9 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
       if (type === ActivityType.HARVEST) return <Wheat size={10} className="mr-1"/>;
       return <Sprout size={10} className="mr-1"/>;
   };
+
+  const selectedCategory = categories.find(c => c.name === newEquip.type);
+  const isFertilizationType = selectedCategory?.parentType === ActivityType.FERTILIZATION;
 
   return (
     <div className="space-y-4 max-w-lg mx-auto pb-10">
@@ -309,6 +312,35 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
                                 <input type="number" step="0.1" value={newEquip.width} onChange={e => setNewEquip({...newEquip, width: parseFloat(e.target.value) || 0})} className="w-full p-2.5 bg-white border border-slate-200 rounded-xl font-bold" />
                             </div>
                         </div>
+
+                        {/* DYNAMISCHES VOLUMEN FELD FÜR DÜNGUNG */}
+                        {isFertilizationType && (
+                            <div className="p-4 bg-amber-50 rounded-xl border border-amber-200 animate-in slide-in-from-left-2">
+                                <label className="flex items-center text-xs font-bold text-amber-800 mb-2">
+                                    <Box size={14} className="mr-1.5"/> Ladekapazität (Volumen)
+                                </label>
+                                <div className="flex space-x-2">
+                                    <input 
+                                        type="number" 
+                                        step="0.5" 
+                                        value={newEquip.capacity || ''} 
+                                        onChange={e => setNewEquip({...newEquip, capacity: parseFloat(e.target.value) || undefined})} 
+                                        className="flex-1 p-2.5 bg-white border border-amber-200 rounded-lg font-bold text-amber-900 outline-none focus:ring-2 focus:ring-amber-500" 
+                                        placeholder="z.B. 15.0"
+                                    />
+                                    <select 
+                                        value={newEquip.capacityUnit} 
+                                        onChange={e => setNewEquip({...newEquip, capacityUnit: e.target.value as any})}
+                                        className="w-20 p-2.5 bg-white border border-amber-200 rounded-lg font-bold text-xs"
+                                    >
+                                        <option value="m³">m³</option>
+                                        <option value="t">t</option>
+                                    </select>
+                                </div>
+                                <p className="text-[9px] text-amber-600 mt-2 italic font-medium leading-tight">Falls leer, wird der Standardwert aus den Optionen genutzt.</p>
+                            </div>
+                        )}
+
                         <div className="flex space-x-3 pt-2">
                             <button onClick={resetForm} className="flex-1 py-3 text-slate-500 font-bold text-sm">Abbrechen</button>
                             <button onClick={handleSave} className="flex-1 py-3 bg-blue-600 text-white rounded-xl font-bold shadow-lg shadow-blue-100">
@@ -331,6 +363,13 @@ export const EquipmentTab: React.FC<{ equipment: Equipment[], onUpdate: () => vo
                                     <div className="font-black text-slate-700 text-sm">{e.name}</div>
                                     <div className="text-[10px] font-bold text-slate-400 uppercase flex items-center mt-0.5">
                                         {e.type} <span className="mx-1.5">•</span> <Ruler size={10} className="mr-0.5"/> {e.width}m
+                                        {e.capacity && (
+                                            <>
+                                                <span className="mx-1.5">•</span> 
+                                                <Box size={10} className="mr-0.5 text-amber-600"/> 
+                                                <span className="text-amber-700">{e.capacity} {e.capacityUnit}</span>
+                                            </>
+                                        )}
                                     </div>
                                 </div>
                             </div>
