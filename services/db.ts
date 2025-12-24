@@ -154,18 +154,8 @@ export const dbService = {
     },
 
     saveEquipmentCategory: async (category: EquipmentCategory) => {
-        let cats = loadLocalData('tillage_categories' as any);
-        const idx = cats.findIndex((c: any) => c.id === category.id);
-        if (idx >= 0) {
-            cats[idx] = category;
-        } else {
-            cats.push(category);
-        }
-        localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cats));
-        
-        if (isCloudConfigured()) {
-            try { await db.collection("tillage_categories").doc(category.id).set(category); } catch(e) {}
-        }
+        // Nutzt jetzt den zentralen Cloud-Helper inkl. Farm-ID Zuordnung
+        await saveData('tillage_categories' as any, category);
         notifyDbChange();
     },
 
@@ -173,6 +163,7 @@ export const dbService = {
         let cats = loadLocalData('tillage_categories' as any);
         cats = cats.filter((c: any) => c.id !== id);
         localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cats));
+        
         if (isCloudConfigured()) {
             try { await db.collection("tillage_categories").doc(id).delete(); } catch(e) {}
         }
