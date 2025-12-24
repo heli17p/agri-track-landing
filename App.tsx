@@ -17,7 +17,7 @@ import { AdminFarmManager } from './components/AdminFarmManager';
 const ADMIN_EMAILS = [
   'admin@agritrack.at', 
   'office@agritrack.at',
-  'deine-email@beispiel.at' // Ersetzen Sie dies durch Ihre E-Mail
+  'helmut.preiser@gmx.at' // Ersetzen Sie dies durch Ihre E-Mail
 ];
 
 // Kleine Vorschau-Komponente für die Landingpage
