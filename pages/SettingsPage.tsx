@@ -191,6 +191,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
             loadConflicts={() => dbService.findFarmConflicts(conflictSearchId).then(setConflicts as any)} deleteConflict={id => dbService.deleteSettingsDoc(id).then(loadAll)}
             handleForceDeleteFarm={() => dbService.forceDeleteSettings(conflictSearchId).then(loadAll)} handlePingTest={() => dbService.testCloudConnection().then(r => alert(r.message))}
             handleHardReset={() => confirm("Vollständiger Reset?") && dbService.hardReset()} isUploading={isUploading} uploadProgress={uploadProgress}
+            currentFarmId={settings.farmId}
         />
 
         {editingStorage && (

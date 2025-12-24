@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { X, Terminal, User, Search, Trash2, AlertTriangle, Database, Layers, TrendingUp, MapPin, Droplets, RefreshCw, Box, CheckCircle2, Tag } from 'lucide-react';
+import { X, Terminal, User, Search, Trash2, AlertTriangle, Database, Layers, TrendingUp, MapPin, Droplets, RefreshCw, Box, CheckCircle2, Tag, Fingerprint, Info } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import { StorageLocation, FertilizerType, FarmProfile, EquipmentCategory, ActivityType } from '../../types';
@@ -237,6 +237,7 @@ interface DiagnoseProps {
     handleHardReset: () => void;
     isUploading: boolean;
     uploadProgress: { status: string, percent: number };
+    currentFarmId?: string; // NEU
 }
 
 export const DiagnosticModal: React.FC<DiagnoseProps> = (props) => {
@@ -338,18 +339,65 @@ export const DiagnosticModal: React.FC<DiagnoseProps> = (props) => {
 
                 {props.activeDiagTab === 'conflicts' && (
                     <div className="space-y-4">
-                        <div className="bg-white p-3 rounded border flex items-center space-x-2">
-                            <input type="text" value={props.conflictSearchId} onChange={(e) => props.setConflictSearchId(e.target.value)} placeholder="Farm ID..." className="flex-1 p-2 border rounded font-bold"/>
-                            <button onClick={() => props.loadConflicts()} className="p-2 bg-blue-50 text-blue-600 rounded border border-blue-200"><Search size={16}/></button>
+                        <div className="bg-blue-900/10 border border-blue-200 p-3 rounded-xl flex items-start">
+                            <Info className="text-blue-600 mr-2 shrink-0" size={14} />
+                            <p className="text-[10px] text-blue-800 leading-tight">Admins können hier jede Farm ID abfragen. Normale Nutzer sehen nur eigene Ergebnisse.</p>
                         </div>
-                        {props.conflicts.map((c, i) => (
-                            <div key={i} className="bg-white p-3 rounded border border-slate-200 shadow-sm flex justify-between">
-                                <div><div className="font-bold">{c.email}</div><div className="text-[10px]">{c.updatedAt}</div></div>
-                                <button onClick={() => props.deleteConflict(c.docId)} className="text-red-600"><Trash2 size={16}/></button>
+
+                        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Nach ID suchen</label>
+                            <div className="flex items-center space-x-2">
+                                <input 
+                                    type="text" 
+                                    value={props.conflictSearchId} 
+                                    onChange={(e) => props.setConflictSearchId(e.target.value)} 
+                                    placeholder="Farm ID..." 
+                                    className="flex-1 p-3 border rounded-xl font-bold bg-slate-50 outline-none focus:ring-2 focus:ring-blue-500"
+                                />
+                                <button 
+                                    onClick={() => props.loadConflicts()} 
+                                    className="p-3 bg-blue-600 text-white rounded-xl shadow-lg active:scale-95 transition-all"
+                                >
+                                    <Search size={20}/>
+                                </button>
                             </div>
-                        ))}
+                            
+                            {props.currentFarmId && (
+                                <button 
+                                    onClick={() => { props.setConflictSearchId(props.currentFarmId!); props.loadConflicts(); }}
+                                    className="text-[10px] font-black text-blue-600 uppercase flex items-center hover:underline"
+                                >
+                                    <Fingerprint size={12} className="mr-1"/> Eigene ID nutzen ({props.currentFarmId})
+                                </button>
+                            )}
+                        </div>
+
+                        <div className="space-y-2">
+                            {props.conflicts.map((c, i) => (
+                                <div key={i} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm flex justify-between items-center animate-in slide-in-from-bottom-2">
+                                    <div className="overflow-hidden">
+                                        <div className="font-bold text-slate-800 text-xs truncate flex items-center">
+                                            <User size={12} className="mr-1 text-slate-400"/> {c.email}
+                                        </div>
+                                        <div className="text-[9px] text-slate-400 font-bold uppercase tracking-tighter mt-0.5">Update: {c.updatedAt}</div>
+                                    </div>
+                                    <button 
+                                        onClick={() => props.deleteConflict(c.docId)} 
+                                        className="p-2 text-red-500 hover:bg-red-50 rounded-lg transition-colors"
+                                        title="Account-Verbindung löschen"
+                                    >
+                                        <Trash2 size={16}/>
+                                    </button>
+                                </div>
+                            ))}
+                        </div>
+
                         {props.conflictSearchId && props.conflicts.length === 0 && !props.conflictsLoading && (
-                            <button onClick={props.handleForceDeleteFarm} className="w-full bg-red-600 text-white py-2 rounded text-xs font-bold">Blind-Löschung ID '{props.conflictSearchId}'</button>
+                            <div className="text-center py-8">
+                                <AlertTriangle className="mx-auto text-slate-300 mb-2" size={32}/>
+                                <p className="text-slate-400 text-[10px] px-8 leading-tight">Keine Konflikte für ID '{props.conflictSearchId}' gefunden oder Zugriff verweigert.</p>
+                                <button onClick={props.handleForceDeleteFarm} className="mt-4 px-4 py-2 bg-red-50 text-red-600 border border-red-100 rounded-lg text-[9px] font-black uppercase tracking-widest hover:bg-red-600 hover:text-white transition-all">Blind-Löschung versuchen</button>
+                            </div>
                         )}
                     </div>
                 )}
