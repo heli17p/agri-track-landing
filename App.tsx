@@ -13,11 +13,11 @@ import { dbService } from './services/db';
 import { syncData } from './services/sync';
 import { AdminFarmManager } from './components/AdminFarmManager';
 
-// Liste der berechtigten Admin-E-Mails
+// Liste der berechtigten Admin-E-Mails (immer klein schreiben hier)
 const ADMIN_EMAILS = [
   'admin@agritrack.at', 
   'office@agritrack.at',
-  'helmut.preiser@gmx.at' // Ersetzen Sie dies durch Ihre E-Mail
+  'helmut.preiser@gmx.at'
 ];
 
 // Kleine Vorschau-Komponente für die Landingpage
@@ -107,9 +107,13 @@ const App: React.FC = () => {
               localStorage.removeItem('agritrack_guest_mode');
               setCurrentUserEmail(user.email);
               
-              // ADMIN CHECK: Prüfen ob E-Mail in der Admin-Liste ist
-              if (user.email && ADMIN_EMAILS.includes(user.email)) {
+              // VERBESSERTE ADMIN PRÜFUNG: Case-Insensitive
+              const email = user.email?.toLowerCase() || '';
+              const adminList = ADMIN_EMAILS.map(e => e.toLowerCase());
+              
+              if (email && adminList.includes(email)) {
                   setIsAdmin(true);
+                  console.log("Admin-Status erkannt für:", email);
               } else {
                   setIsAdmin(false);
               }
@@ -175,23 +179,23 @@ const App: React.FC = () => {
                     <button onClick={() => setActiveTab(Tab.HOME)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.HOME ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}><LayoutDashboard className="w-4 h-4 mr-2" /> Übersicht</button>
                     <button onClick={() => setActiveTab(Tab.APP)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.APP ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}><Smartphone className="w-4 h-4 mr-2" /> Web App</button>
                     <button onClick={() => setActiveTab(Tab.FEEDBACK)} className={`inline-flex items-center px-1 pt-1 border-b-2 text-sm font-medium ${activeTab === Tab.FEEDBACK ? 'border-agri-500 text-gray-900' : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'}`}><MessageSquarePlus className="w-4 h-4 mr-2" /> Kummerkasten</button>
-                    
-                    {/* ADMIN TAB: Nur sichtbar wenn isAdmin true ist */}
-                    {isAdmin && (
-                      <button 
-                        onClick={() => setActiveTab(Tab.ADMIN)} 
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-xs font-black uppercase tracking-widest transition-all ${activeTab === Tab.ADMIN ? 'bg-red-600 text-white shadow-lg' : 'bg-red-50 text-red-600 hover:bg-red-100'}`}
-                      >
-                        <ShieldCheck className="w-3.5 h-3.5 mr-1.5" /> 
-                        Admin
-                      </button>
-                    )}
                     </div>
 
-                    <div className="border-l border-gray-200 pl-4 flex items-center space-x-2">
+                    <div className="border-l border-gray-200 pl-4 flex items-center space-x-3">
+                        {/* ADMIN BUTTON AUCH AUF MOBILE ZEIGEN WENN ADMIN */}
+                        {isAdmin && (
+                          <button 
+                            onClick={() => setActiveTab(Tab.ADMIN)} 
+                            className={`inline-flex items-center px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest transition-all ${activeTab === Tab.ADMIN ? 'bg-red-600 text-white shadow-lg' : 'bg-red-50 text-red-600 hover:bg-red-100 border border-red-200'}`}
+                          >
+                            <ShieldCheck className="w-3.5 h-3.5 mr-1" /> 
+                            Admin
+                          </button>
+                        )}
+
                         {isAuthenticated || isGuest ? (
-                            <button onClick={handleUserLogout} className="flex items-center text-sm font-medium px-3 py-1.5 bg-slate-100 text-slate-600 rounded-lg hover:text-red-600 transition-colors">
-                                <User size={16} className="mr-2"/>
+                            <button onClick={handleUserLogout} className={`flex items-center text-sm font-medium px-3 py-1.5 rounded-lg transition-colors ${isAdmin ? 'bg-red-50 text-red-700' : 'bg-slate-100 text-slate-600'} hover:bg-red-100`}>
+                                {isAdmin ? <ShieldCheck size={16} className="mr-2"/> : <User size={16} className="mr-2"/>}
                                 <span className="max-w-[100px] truncate hidden sm:block">{isAuthenticated ? (currentUserEmail || 'User') : 'Gast'}</span>
                                 <LogOut size={14} className="ml-2"/>
                             </button>
