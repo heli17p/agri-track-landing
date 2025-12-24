@@ -113,7 +113,7 @@ export interface Field {
 export interface StorageLocation {
   id: string;
   name: string;
-  type: FertilizerType;
+  type: FertilizerType | string; // Erlaubt jetzt auch dynamische Strings
   capacity: number;
   currentLevel: number;
   dailyGrowth: number;
@@ -137,7 +137,7 @@ export interface ActivityRecord {
   amount?: number;
   unit?: string;
   loadCount?: number;
-  fertilizerType?: FertilizerType;
+  fertilizerType?: FertilizerType | string;
   tillageType?: string; 
   equipmentId?: string;
   equipmentName?: string;

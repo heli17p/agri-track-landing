@@ -41,7 +41,8 @@ const getStorageColor = (storageId: string | undefined, allStorages: StorageLoca
     : MANURE_PALETTE[safeIdx % MANURE_PALETTE.length];
 };
 
-const createStorageIcon = (color: string, type: FertilizerType) => {
+// Fix: Updated parameter type to 'FertilizerType | string' to match StorageLocation.type and fix Error on line 152
+const createStorageIcon = (color: string, type: FertilizerType | string) => {
     const path = type === FertilizerType.SLURRY 
         ? '<path d="M12 22a7 7 0 0 0 7-7c0-2-2-3-2-3l-5-8-5 8s-2 1-2 3a7 7 0 0 0 7 7z" stroke="white" stroke-width="2.5"/>'
         : '<path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" stroke="white" stroke-width="2.5"/>';
@@ -149,6 +150,7 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
           return (
               <React.Fragment key={s.id}>
                 <Circle center={[s.geo.lat, s.geo.lng]} radius={storageRadius} pathOptions={{ color: color, fillOpacity: 0.1, weight: 1, dashArray: '5, 5' }} />
+                {/* Fix: Calling createStorageIcon with color and s.type which is now allowed by updated signature */}
                 <Marker position={[s.geo.lat, s.geo.lng]} icon={createStorageIcon(color, s.type)}>
                     <Popup><div className="font-bold">{s.name}</div><div className="text-xs">{s.currentLevel.toFixed(0)} / {s.capacity} m³</div></Popup>
                 </Marker>

@@ -1,10 +1,10 @@
 
 import React, { useState, useEffect } from 'react';
-/* Added Droplets to imports */
-import { X, Terminal, User, Search, Trash2, AlertTriangle, Database, Layers, TrendingUp, MapPin, Droplets, RefreshCw, Box, CheckCircle2 } from 'lucide-react';
+import { X, Terminal, User, Search, Trash2, AlertTriangle, Database, Layers, TrendingUp, MapPin, Droplets, RefreshCw, Box, CheckCircle2, Tag } from 'lucide-react';
 import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-leaflet';
 import L from 'leaflet';
-import { StorageLocation, FertilizerType, FarmProfile } from '../../types';
+import { StorageLocation, FertilizerType, FarmProfile, EquipmentCategory, ActivityType } from '../../types';
+import { dbService } from '../../services/db';
 
 // Icons für den Map-Picker innerhalb des Modals
 const createCustomIcon = (color: string, svgPath: string) => {
@@ -60,6 +60,21 @@ interface StorageEditProps {
 
 export const StorageEditModal: React.FC<StorageEditProps> = ({ storage, setStorage, onSave, onDelete, onClose }) => {
     const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
+    const [fertCategories, setFertCategories] = useState<EquipmentCategory[]>([]);
+
+    useEffect(() => {
+        const load = async () => {
+            const cats = await dbService.getEquipmentCategories();
+            setFertCategories(cats.filter(c => c.parentType === ActivityType.FERTILIZATION));
+        };
+        load();
+    }, []);
+
+    // Hilfsfunktion zur Bestimmung des Icons (Flüssig vs Fest)
+    const isSolid = (typeName: string) => {
+        const lower = typeName.toLowerCase();
+        return lower.includes('mist') || lower.includes('fest') || lower.includes('kompost');
+    };
 
     return (
         <div className="fixed inset-0 z-[2000] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -89,20 +104,29 @@ export const StorageEditModal: React.FC<StorageEditProps> = ({ storage, setStora
                         </div>
 
                         <div>
-                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1">Lager-Inhalt (Typ)</label>
-                            <div className="flex space-x-2">
-                                <button 
-                                    onClick={() => setStorage({...storage, type: FertilizerType.SLURRY})}
-                                    className={`flex-1 py-3 rounded-2xl border-2 font-bold flex items-center justify-center transition-all ${storage.type === FertilizerType.SLURRY ? 'bg-amber-50 border-amber-600 text-amber-900 shadow-sm' : 'bg-white border-slate-100 text-slate-400 grayscale'}`}
-                                >
-                                    <Droplets size={18} className="mr-2"/> Gülle
-                                </button>
-                                <button 
-                                    onClick={() => setStorage({...storage, type: FertilizerType.MANURE})}
-                                    className={`flex-1 py-3 rounded-2xl border-2 font-bold flex items-center justify-center transition-all ${storage.type === FertilizerType.MANURE ? 'bg-orange-50 border-orange-600 text-orange-900 shadow-sm' : 'bg-white border-slate-100 text-slate-400 grayscale'}`}
-                                >
-                                    <Layers size={18} className="mr-2"/> Mist
-                                </button>
+                            <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1.5 ml-1 flex items-center">
+                                <Tag size={10} className="mr-1"/> Lager-Inhalt (Düngerart)
+                            </label>
+                            <div className="grid grid-cols-2 gap-2">
+                                {fertCategories.map(cat => {
+                                    const solid = isSolid(cat.name);
+                                    const active = storage.type === cat.name;
+                                    return (
+                                        <button 
+                                            key={cat.id}
+                                            onClick={() => setStorage({...storage, type: cat.name})}
+                                            className={`py-3 px-2 rounded-2xl border-2 font-bold flex items-center justify-center transition-all text-xs ${active 
+                                                ? (solid ? 'bg-orange-50 border-orange-600 text-orange-900 shadow-sm' : 'bg-amber-50 border-amber-600 text-amber-900 shadow-sm') 
+                                                : 'bg-white border-slate-100 text-slate-400 grayscale'}`}
+                                        >
+                                            {solid ? <Layers size={14} className="mr-1.5"/> : <Droplets size={14} className="mr-1.5"/>}
+                                            {cat.name}
+                                        </button>
+                                    );
+                                })}
+                                {fertCategories.length === 0 && (
+                                    <div className="col-span-2 text-center py-2 text-[10px] text-slate-400 italic">Keine Dünger-Kategorien definiert.</div>
+                                )}
                             </div>
                         </div>
                     </div>
@@ -153,11 +177,10 @@ export const StorageEditModal: React.FC<StorageEditProps> = ({ storage, setStora
                                     position={storage.geo} 
                                     mapStyle={mapStyle}
                                     onPick={(lat: any, lng: any) => setStorage({...storage, geo: { lat, lng }})} 
-                                    icon={storage.type === FertilizerType.SLURRY ? slurryIcon : manureIcon}
+                                    icon={isSolid(storage.type) ? manureIcon : slurryIcon}
                                 />
                             </MapContainer>
                             
-                            {/* Satellite Toggle Button */}
                             <button 
                                 onClick={(e) => { e.preventDefault(); setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard'); }}
                                 className="absolute top-2 right-2 z-[400] bg-white/90 p-2 rounded-lg shadow-sm border border-slate-200 text-slate-700 hover:text-green-600 transition-colors"
@@ -302,7 +325,6 @@ export const DiagnosticModal: React.FC<DiagnoseProps> = (props) => {
                                     </div>
                                 ))}
                                 <div className="mt-4 p-3 bg-slate-800 rounded-xl text-[9px] text-slate-400 font-mono italic">
-                                    {/* Fix: cast reduce result to number for rendering as ReactNode to satisfy TypeScript */}
                                     Zusammenfassung: {(Object.values(props.inspectorData || {}) as any[]).reduce((a: number, b: any) => a + (Array.isArray(b) ? b.length : 0), 0) as number} Dokumente am Server gefunden.
                                 </div>
                             </div>
