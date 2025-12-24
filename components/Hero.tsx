@@ -44,16 +44,17 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp, onNavigateToFeedback })
 
   return (
     <div className="relative bg-soil-900 text-white overflow-hidden">
-      {/* Österreichische Landschaft als Hintergrundbild (Alpen/Grünland) */}
+      {/* Hintergrundbild: Fokus auf Grünland- und Feldwirtschaft (Strukturierte Agrarlandschaft Österreichs) */}
       <div 
-        className="absolute inset-0 opacity-20 bg-cover bg-center bg-no-repeat transition-opacity duration-1000" 
+        className="absolute inset-0 opacity-25 bg-cover bg-center bg-no-repeat transition-opacity duration-1000" 
         style={{ 
-            backgroundImage: "url('https://images.unsplash.com/photo-1527004013197-933c4bb611b3?auto=format&fit=crop&q=80&w=1920')",
-            backgroundAttachment: 'fixed' // Parallax-Effekt
+            backgroundImage: "url('https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&q=80&w=1920')",
+            backgroundAttachment: 'fixed' 
         }} 
       />
       
-      {/* Verlauf für bessere Lesbarkeit unten */}
+      {/* Verlauf für bessere Lesbarkeit und Fokus auf den Text */}
+      <div className="absolute inset-0 bg-gradient-to-r from-soil-900 via-soil-900/60 to-transparent md:block hidden" />
       <div className="absolute inset-0 bg-gradient-to-b from-soil-900/40 via-transparent to-soil-900" />
       
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32">
