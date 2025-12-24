@@ -49,7 +49,7 @@ export const dbService = {
         }
     },
 
-    // --- System Admins (NEU) ---
+    // --- System Admins ---
     getCloudAdmins: async (): Promise<string[]> => {
         if (!db) return [];
         try {
@@ -318,8 +318,9 @@ export const dbService = {
     },
 
     saveSettings: async (settings: AppSettings) => {
+        // IMMER E-Mail mitsenden wenn eingeloggt
         const currentUser = auth?.currentUser;
-        if (currentUser && !settings.ownerEmail && settings.farmId) {
+        if (currentUser) {
              settings.ownerEmail = currentUser.email || 'Unbekannt';
         }
         await saveStorageSettings(settings);
@@ -695,7 +696,8 @@ export const dbService = {
                 const snap = await db.collection("settings").where("farmId", "==", id).get();
                 snap.docs.forEach(d => {
                     const data = d.data();
-                    allDocs.push({ docId: d.id, farmIdStored: data.farmId, farmIdType: typeof data.farmId, email: data.userId || data.ownerEmail, hasPin: !!data.farmPin, updatedAt: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'N/A' });
+                    // FIX: ownerEmail bevorzugen
+                    allDocs.push({ docId: d.id, farmIdStored: data.farmId, farmIdType: typeof data.farmId, email: data.ownerEmail || data.userId || d.id, hasPin: !!data.farmPin, updatedAt: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'N/A' });
                 });
             } catch (e) { console.warn(`Zugriff auf Settings verweigert.`); }
         }
@@ -733,7 +735,8 @@ export const dbService = {
         const snap = await db.collection("settings").get();
         return snap.docs.map(d => {
             const data = d.data();
-            return { docId: d.id, farmId: data.farmId, farmIdType: typeof data.farmId, ownerEmail: data.userId || data.ownerEmail, hasPin: !!data.farmPin, updatedAt: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'N/A' };
+            // FIX: ownerEmail bevorzugen gegenüber userId
+            return { docId: d.id, farmId: data.farmId, farmIdType: typeof data.farmId, ownerEmail: data.ownerEmail || data.userId || d.id, hasPin: !!data.farmPin, updatedAt: data.updatedAt ? new Date(data.updatedAt.seconds * 1000).toLocaleString() : 'N/A' };
         });
     }
 };

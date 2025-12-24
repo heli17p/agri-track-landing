@@ -91,7 +91,6 @@ export const AdminFarmManager: React.FC = () => {
         setError(null);
         setSearchMode(true);
         try {
-            // Wir nutzen die Conflict-Suche (findFarmConflicts), da sie gezielt auf dem Server sucht
             const results = await dbService.findFarmConflicts(searchTerm.trim());
             const mapped = results.map((r: any) => ({
                 docId: r.docId,
@@ -111,7 +110,13 @@ export const AdminFarmManager: React.FC = () => {
     };
 
     const handleDelete = async (docId: string, farmId: string) => {
-        if (!confirm(`WARNUNG: Eintrag für Farm '${farmId || 'Ohne ID'}' löschen?`)) return;
+        const isLocal = !farmId;
+        const msg = isLocal 
+            ? "Dieser User hat noch keinen Hof betreten. Das Löschen entfernt lediglich diesen 'leeren' Zugang. Fortfahren?"
+            : `WARNUNG: Eintrag für Hof '${farmId}' wirklich löschen? Der Nutzer verliert den Zugang zu diesem Hof.`;
+            
+        if (!confirm(msg)) return;
+        
         try {
             await dbService.deleteSettingsDoc(docId);
             searchMode ? handleServerSearch() : loadAllFarms();
@@ -120,7 +125,6 @@ export const AdminFarmManager: React.FC = () => {
         }
     };
 
-    // Client-seitiges Filtern für die schnelle Ansicht
     const displayedFarms = farms.filter(f => {
         const term = searchTerm.toLowerCase();
         return (
@@ -136,7 +140,7 @@ export const AdminFarmManager: React.FC = () => {
                     <h2 className="text-2xl font-bold text-white flex items-center">
                         <ShieldCheck className="mr-2 text-green-500" /> System Verwaltung
                     </h2>
-                    <p className="text-slate-400 text-xs mt-1">Hier werden alle aktiven Cloud-Betriebe gelistet.</p>
+                    <p className="text-slate-400 text-xs mt-1">Überblick über alle registrierten Cloud-Datensätze.</p>
                 </div>
                 
                 <div className="flex bg-slate-800 p-1 rounded-xl">
@@ -159,20 +163,21 @@ export const AdminFarmManager: React.FC = () => {
                 <>
                     <div className="mb-4 bg-blue-900/20 border border-blue-500/30 p-4 rounded-xl flex items-start animate-in fade-in slide-in-from-top-2">
                         <Info className="text-blue-400 mr-3 shrink-0" size={18} />
-                        <p className="text-blue-100 text-[11px] leading-relaxed">
-                            <span className="font-bold">Hinweis zu UID-Anzeigen:</span> Betriebe, die vor dem E-Mail-Update angelegt wurden, zeigen momentan nur eine lange ID (UID). 
-                            Sobald sich dieser Nutzer das nächste Mal in der App anmeldet oder synchronisiert, wird die E-Mail automatisch nachgetragen.
-                        </p>
+                        <div>
+                           <p className="text-blue-100 text-[11px] leading-relaxed">
+                               <span className="font-bold">Hinweis:</span> Einträge mit <span className="italic text-slate-400">(Lokal)</span> zeigen Nutzer, die zwar registriert sind, aber noch keinen Hof erstellt oder betreten haben. Diese können bei Bedarf gelöscht werden.
+                           </p>
+                        </div>
                     </div>
 
                     <div className="mb-6 bg-slate-800 p-4 rounded-xl border border-slate-700">
-                        <label className="block text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2 ml-1">Hof oder E-Mail suchen</label>
+                        <label className="block text-slate-400 text-[10px] font-black uppercase tracking-widest mb-2 ml-1">Suchen</label>
                         <div className="flex gap-2">
                             <div className="relative flex-1">
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
                                 <input 
                                     type="text" 
-                                    placeholder="Farm ID oder E-Mail Adresse..."
+                                    placeholder="Suche ID oder E-Mail..."
                                     value={searchTerm}
                                     onChange={(e) => setSearchTerm(e.target.value)}
                                     className="w-full bg-slate-900 border border-slate-600 text-white pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 transition-all"
@@ -186,11 +191,6 @@ export const AdminFarmManager: React.FC = () => {
                                 Server-Suche
                             </button>
                         </div>
-                        {searchMode && (
-                            <button onClick={loadAllFarms} className="mt-3 text-[10px] text-blue-400 font-bold hover:underline flex items-center">
-                                <X size={12} className="mr-1"/> Filter zurücksetzen (Alle anzeigen)
-                            </button>
-                        )}
                     </div>
 
                     {error && (
@@ -203,8 +203,8 @@ export const AdminFarmManager: React.FC = () => {
                         <table className="w-full text-left border-collapse">
                             <thead className="bg-slate-900/80 backdrop-blur text-slate-400 text-[10px] font-black uppercase tracking-widest sticky top-0 z-10">
                                 <tr>
-                                    <th className="p-4 border-b border-slate-700">Farm ID</th>
-                                    <th className="p-4 border-b border-slate-700">E-Mail / Besitzer</th>
+                                    <th className="p-4 border-b border-slate-700">Hof / Farm ID</th>
+                                    <th className="p-4 border-b border-slate-700">Besitzer (E-Mail / UID)</th>
                                     <th className="p-4 border-b border-slate-700">Letztes Update</th>
                                     <th className="p-4 border-b border-slate-700 text-right">Aktion</th>
                                 </tr>
@@ -219,13 +219,14 @@ export const AdminFarmManager: React.FC = () => {
                                 ) : (
                                     displayedFarms.map((farm) => {
                                         const isEmail = farm.ownerEmail && farm.ownerEmail.includes('@');
+                                        const isLocal = !farm.farmId;
                                         return (
                                             <tr key={farm.docId} className="hover:bg-slate-700/50 transition-colors group">
                                                 <td className="p-4">
                                                     <div className="flex items-center">
-                                                        <div className={`w-2 h-2 rounded-full mr-3 shadow-[0_0_8px_rgba(34,197,94,0.4)] ${farm.farmId ? 'bg-green-500' : 'bg-slate-600'}`}></div>
+                                                        <div className={`w-2 h-2 rounded-full mr-3 shadow-[0_0_8px_rgba(34,197,94,0.4)] ${!isLocal ? 'bg-green-500' : 'bg-amber-500'}`}></div>
                                                         <span className="font-mono font-bold text-white text-lg tracking-wider">
-                                                            {farm.farmId || <span className="text-slate-600 italic text-sm">(Lokal)</span>}
+                                                            {farm.farmId || <span className="text-amber-500/60 italic text-xs uppercase tracking-normal flex items-center"><AlertTriangle size={10} className="mr-1"/> Kein Hof</span>}
                                                         </span>
                                                     </div>
                                                 </td>
@@ -257,7 +258,7 @@ export const AdminFarmManager: React.FC = () => {
                                                         <button 
                                                             onClick={() => handleDelete(farm.docId, farm.farmId)} 
                                                             className="p-2 bg-red-900/20 text-red-400 hover:bg-red-600 hover:text-white rounded-lg transition-all"
-                                                            title="Eintrag entfernen"
+                                                            title={isLocal ? "Leeren Zugang löschen" : "Hof-Zugang entziehen"}
                                                         >
                                                             <Trash2 size={16} />
                                                         </button>
@@ -269,9 +270,6 @@ export const AdminFarmManager: React.FC = () => {
                                 )}
                             </tbody>
                         </table>
-                    </div>
-                    <div className="mt-4 text-[10px] text-slate-500 font-bold uppercase tracking-widest px-1">
-                        Gesamt: {displayedFarms.length} Betriebe in der Liste
                     </div>
                 </>
             )}

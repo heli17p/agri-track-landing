@@ -26,10 +26,12 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
   const loadSettings = async () => {
       setIsLoadingSettings(true);
       try {
-          // SICHERHEITS-CHECK: Falls eingeloggt, prüfen ob Betriebsleiter mich gesperrt hat
+          // SICHERHEITS-CHECK & AUTO-HEILUNG
           if (isCloudConfigured()) {
-              const userId = auth!.currentUser!.uid;
+              const user = auth!.currentUser!;
+              const userId = user.uid;
               const doc = await db.collection("settings").doc(userId).get();
+              
               if (!doc.exists) {
                   // Wenn Doc weg, aber lokale FarmID da -> Wir wurden gekickt!
                   const local = await dbService.getSettings();
@@ -39,6 +41,14 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
                       setSettings(DEFAULT_SETTINGS);
                       setIsLoadingSettings(false);
                       return;
+                  }
+              } else {
+                  // AUTO-HEILUNG: Falls E-Mail in Cloud fehlt, jetzt nachziehen
+                  const cloudData = doc.data();
+                  if (!cloudData?.ownerEmail && user.email) {
+                      console.log("[Heilung] E-Mail fehlte in Cloud. Wird nachgetragen...");
+                      const currentLocal = await dbService.getSettings();
+                      await dbService.saveSettings({ ...currentLocal, ownerEmail: user.email });
                   }
               }
           }
