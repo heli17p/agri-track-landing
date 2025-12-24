@@ -13,8 +13,8 @@ import { dbService } from './services/db';
 import { syncData } from './services/sync';
 import { AdminFarmManager } from './components/AdminFarmManager';
 
-// Liste der berechtigten Admin-E-Mails (immer klein schreiben hier)
-const ADMIN_EMAILS = [
+// Liste der festen Super-Admins (Hardcoded Fallback)
+const CORE_ADMINS = [
   'admin@agritrack.at', 
   'office@agritrack.at',
   'helmut.preiser@gmx.at'
@@ -99,7 +99,7 @@ const App: React.FC = () => {
       const guestPref = localStorage.getItem('agritrack_guest_mode');
       if (guestPref === 'true') setIsGuest(true);
 
-      const unsubscribe = authService.onAuthStateChanged((user) => {
+      const unsubscribe = authService.onAuthStateChanged(async (user) => {
           if (user) {
               setIsAuthenticated(true);
               setIsEmailVerified(user.emailVerified);
@@ -107,11 +107,17 @@ const App: React.FC = () => {
               localStorage.removeItem('agritrack_guest_mode');
               setCurrentUserEmail(user.email);
               
-              // VERBESSERTE ADMIN PRÜFUNG: Case-Insensitive
+              // VERBESSERTE ADMIN PRÜFUNG: Case-Insensitive + Cloud-Abfrage
               const email = user.email?.toLowerCase() || '';
-              const adminList = ADMIN_EMAILS.map(e => e.toLowerCase());
               
-              if (email && adminList.includes(email)) {
+              // 1. Check Hardcoded Admins
+              const isCoreAdmin = CORE_ADMINS.map(e => e.toLowerCase()).includes(email);
+              
+              // 2. Check Cloud Admins
+              const cloudAdmins = await dbService.getCloudAdmins();
+              const isCloudAdmin = cloudAdmins.map(e => e.toLowerCase()).includes(email);
+              
+              if (isCoreAdmin || isCloudAdmin) {
                   setIsAdmin(true);
                   console.log("Admin-Status erkannt für:", email);
               } else {

@@ -1,7 +1,8 @@
+
 import React, { useState, useEffect } from 'react';
 import { dbService } from '../services/db';
-import { authService } from '../services/auth'; // Import Auth
-import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon, Terminal, LogIn, Eraser, ExternalLink } from 'lucide-react';
+import { authService } from '../services/auth';
+import { Trash2, RefreshCw, Search, AlertTriangle, ShieldCheck, User, AlertOctagon, Terminal, LogIn, Eraser, ExternalLink, ShieldAlert, UserPlus, UserMinus, Mail } from 'lucide-react';
 
 const getErrorMessage = (e: any): string => {
     const msg = e?.message || String(e);
@@ -10,17 +11,17 @@ const getErrorMessage = (e: any): string => {
     }
     if (msg.includes("offline")) return "Offline. Bitte Internetverbindung prüfen.";
     if (msg.includes("deadline")) return "Zeitüberschreitung. Verbindung zu langsam.";
-    
-    // Catch the specific SDK error regarding cache/server mismatch
     if (msg.includes("Failed to get documents from server") || msg.includes("documents may exist in the local cache")) {
         return "Zugriff verweigert: Der Server blockiert die Anfrage. (Der Hof gehört einem anderen User).";
     }
-    
     return msg;
 };
 
 export const AdminFarmManager: React.FC = () => {
+    const [activeSubTab, setActiveSubTab] = useState<'FARMS' | 'ADMINS'>('FARMS');
     const [farms, setFarms] = useState<any[]>([]);
+    const [cloudAdmins, setCloudAdmins] = useState<string[]>([]);
+    const [registeredUsers, setRegisteredUsers] = useState<string[]>([]);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [searchTerm, setSearchTerm] = useState('');
@@ -29,10 +30,41 @@ export const AdminFarmManager: React.FC = () => {
     const [showConsoleLink, setShowConsoleLink] = useState(false);
 
     useEffect(() => { 
-        // Track auth state to show user status
         const unsub = authService.onAuthStateChanged((u) => setCurrentUser(u));
+        loadAllFarms();
+        loadAdmins();
         return () => unsub();
     }, []);
+
+    const loadAdmins = async () => {
+        setLoading(true);
+        const admins = await dbService.getCloudAdmins();
+        const users = await dbService.getAllRegisteredEmails();
+        setCloudAdmins(admins);
+        setRegisteredUsers(users);
+        setLoading(false);
+    };
+
+    const toggleAdminStatus = async (email: string) => {
+        const lowerEmail = email.toLowerCase().trim();
+        let newAdmins: string[];
+        if (cloudAdmins.includes(lowerEmail)) {
+            if (lowerEmail === 'helmut.preiser@gmx.at') {
+                alert("Super-Admin kann nicht entfernt werden.");
+                return;
+            }
+            newAdmins = cloudAdmins.filter(e => e !== lowerEmail);
+        } else {
+            newAdmins = [...cloudAdmins, lowerEmail];
+        }
+        
+        try {
+            await dbService.saveCloudAdmins(newAdmins);
+            setCloudAdmins(newAdmins);
+        } catch (e) {
+            alert("Fehler beim Speichern der Admin-Rechte.");
+        }
+    };
 
     const loadAllFarms = async () => {
         setLoading(true);
@@ -43,7 +75,6 @@ export const AdminFarmManager: React.FC = () => {
             const list = await dbService.adminGetAllFarms();
             setFarms(list);
         } catch (e: any) {
-            console.error("Admin Load Error:", e);
             setError(getErrorMessage(e));
             setFarms([]);
         } finally {
@@ -62,10 +93,7 @@ export const AdminFarmManager: React.FC = () => {
         setShowConsoleLink(false);
         setSearchMode(true);
         try {
-            // Use findFarmConflicts which performs a query by ID (allowed by rules usually)
             const results = await dbService.findFarmConflicts(searchTerm.trim());
-            
-            // Map conflict result format to admin table format
             const mapped = results.map((r: any) => ({
                 docId: r.docId,
                 farmId: r.farmIdStored,
@@ -74,7 +102,6 @@ export const AdminFarmManager: React.FC = () => {
                 hasPin: r.hasPin,
                 updatedAt: r.updatedAt
             }));
-            
             setFarms(mapped);
             if (mapped.length === 0) setError(`Keine sichtbaren Einträge für ID '${searchTerm}'.`);
         } catch (e: any) {
@@ -85,45 +112,12 @@ export const AdminFarmManager: React.FC = () => {
     };
 
     const handleDelete = async (docId: string, farmId: string) => {
-        if (!confirm(`WARNUNG: Möchten Sie den Einstellungs-Eintrag für Farm '${farmId || 'Ohne ID'}' (Doc: ${docId}) wirklich löschen?`)) return;
-        
+        if (!confirm(`WARNUNG: Eintrag für Farm '${farmId || 'Ohne ID'}' löschen?`)) return;
         try {
             await dbService.deleteSettingsDoc(docId);
-            // Refresh based on current mode
-            if (searchMode) {
-                handleServerSearch();
-            } else {
-                loadAllFarms();
-            }
+            searchMode ? handleServerSearch() : loadAllFarms();
         } catch (e: any) {
             alert(`Fehler: ${getErrorMessage(e)}`);
-        }
-    };
-
-    const handleForceDelete = async () => {
-        if (!searchTerm) return;
-        if (!confirm(`NOTFALL: Möchten Sie BLIND versuchen, alle Einträge mit Farm-ID '${searchTerm}' zu löschen? Nutzen Sie dies nur, wenn der Hof blockiert ist.`)) return;
-
-        setLoading(true);
-        setShowConsoleLink(false);
-        try {
-            const result = await dbService.forceDeleteSettings(searchTerm);
-            
-            if (result.count > 0) {
-                alert(`Erfolg: ${result.count} Einträge gelöscht.`);
-            } else if (result.permissionErrors > 0) {
-                // Trigger Console Link
-                setShowConsoleLink(true);
-            } else {
-                // If nothing found but we know it exists, it's hidden by rules
-                setShowConsoleLink(true);
-            }
-            
-            handleServerSearch();
-        } catch (e: any) {
-            alert(`Kritischer Fehler: ${getErrorMessage(e)}`);
-        } finally {
-            setLoading(false);
         }
     };
 
@@ -132,206 +126,128 @@ export const AdminFarmManager: React.FC = () => {
             <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
                 <div>
                     <h2 className="text-2xl font-bold text-white flex items-center">
-                        <ShieldCheck className="mr-2 text-green-500" /> Hof Manager
+                        <ShieldCheck className="mr-2 text-green-500" /> System Verwaltung
                     </h2>
-                    <p className="text-slate-400 text-sm mt-1">
-                        Verwaltung der Hof-Einstellungen in der Cloud.
-                    </p>
                 </div>
                 
-                {/* Auth Status Banner */}
-                <div className={`px-4 py-2 rounded-lg text-xs font-bold flex items-center ${currentUser ? 'bg-green-900/30 text-green-400 border border-green-800' : 'bg-red-900/30 text-red-400 border border-red-800'}`}>
-                    {currentUser ? (
-                        <>
-                            <User size={14} className="mr-2"/>
-                            Angemeldet: {currentUser.email}
-                        </>
-                    ) : (
-                        <>
-                            <LogIn size={14} className="mr-2"/>
-                            Nicht eingeloggt (Nur lokale Ansicht)
-                        </>
-                    )}
-                </div>
-            </div>
-
-            <div className="mb-4">
-                 <div className="flex space-x-2 w-full md:w-auto">
+                <div className="flex bg-slate-800 p-1 rounded-xl">
                     <button 
-                        onClick={loadAllFarms} 
-                        disabled={loading}
-                        className="bg-slate-700 hover:bg-slate-600 text-white px-4 py-2 rounded-lg font-bold flex items-center transition-colors text-sm"
+                        onClick={() => setActiveSubTab('FARMS')}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeSubTab === 'FARMS' ? 'bg-slate-700 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
                     >
-                        <RefreshCw className={`mr-2 h-4 w-4 ${loading && !searchMode ? 'animate-spin' : ''}`} />
-                        Alle Laden (Admin)
+                        Hof Manager
+                    </button>
+                    <button 
+                        onClick={() => setActiveSubTab('ADMINS')}
+                        className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${activeSubTab === 'ADMINS' ? 'bg-slate-700 text-white shadow' : 'text-slate-500 hover:text-slate-300'}`}
+                    >
+                        Admin-Rechte
                     </button>
                 </div>
             </div>
 
-            {/* Search Bar - SERVER SIDE */}
-            <div className="mb-6 bg-slate-800 p-4 rounded-xl border border-slate-700">
-                <label className="block text-slate-400 text-xs font-bold uppercase mb-2">Gezielte Suche (Server-Query)</label>
-                <div className="flex gap-2">
-                    <div className="relative flex-1">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
-                        <input 
-                            type="text" 
-                            placeholder="Farm ID eingeben (z.B. 2421798)..."
-                            value={searchTerm}
-                            onChange={(e) => setSearchTerm(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleServerSearch()}
-                            className="w-full bg-slate-900 border border-slate-600 text-white pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 font-mono"
-                        />
+            {activeSubTab === 'FARMS' && (
+                <>
+                    <div className="mb-6 bg-slate-800 p-4 rounded-xl border border-slate-700">
+                        <label className="block text-slate-400 text-xs font-bold uppercase mb-2">Gezielte Suche (Server-Query)</label>
+                        <div className="flex gap-2">
+                            <div className="relative flex-1">
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" size={18} />
+                                <input 
+                                    type="text" 
+                                    placeholder="Farm ID..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full bg-slate-900 border border-slate-600 text-white pl-10 pr-4 py-3 rounded-lg focus:outline-none"
+                                />
+                            </div>
+                            <button onClick={handleServerSearch} className="bg-blue-600 text-white px-6 py-2 rounded-lg font-bold">Suchen</button>
+                        </div>
                     </div>
-                    <button 
-                        onClick={handleServerSearch}
-                        disabled={loading}
-                        className="bg-blue-600 hover:bg-blue-700 text-white px-6 py-2 rounded-lg font-bold flex items-center shadow-lg transition-colors"
-                    >
-                        {loading && searchMode ? <RefreshCw className="animate-spin mr-2 h-4 w-4"/> : <Search className="mr-2 h-4 w-4"/>}
-                        Suchen
-                    </button>
-                </div>
-                <p className="text-[10px] text-slate-500 mt-2 flex items-center">
-                    <Terminal size={10} className="mr-1"/>
-                    Tipp: Wenn ein Hof blockiert ist, suchen Sie hier nach der ID.
-                </p>
-            </div>
 
-            {/* Error Banner */}
-            {error && !showConsoleLink && (
-                <div className={`border p-4 rounded-xl mb-4 flex items-start ${error.includes("Keine sichtbaren") ? 'bg-slate-800 border-slate-600 text-slate-300' : 'bg-red-900/30 border-red-500/50 text-red-200'}`}>
-                    {error.includes("Keine sichtbaren") ? <Search className="shrink-0 mr-3 mt-0.5"/> : <AlertOctagon className="shrink-0 mr-3 mt-0.5" />}
-                    <div>
-                        <h4 className="font-bold">{error.includes("Keine sichtbaren") ? "Suche ergebnislos" : "Meldung"}</h4>
-                        <p className="text-sm">{error}</p>
-                    </div>
-                </div>
-            )}
-
-            {/* DIRECT LINK TO FIREBASE CONSOLE (Visible on Permission Error) */}
-            {showConsoleLink && (
-                <div className="bg-amber-900/20 border border-amber-600/50 p-4 rounded-xl mb-6 animate-in slide-in-from-top-2">
-                    <h4 className="text-amber-500 font-bold mb-2 flex items-center">
-                        <AlertTriangle size={18} className="mr-2"/> Zugriff verweigert (Sicherheitsregeln)
-                    </h4>
-                    <p className="text-slate-300 text-sm mb-4">
-                        Der Hof existiert, gehört aber einem anderen Nutzerkonto (oder "Gast"). 
-                        Die App darf diese Daten aus Sicherheitsgründen nicht löschen.
-                        <br/><br/>
-                        <strong>Lösung:</strong> Sie müssen den Eintrag "Settings" mit der ID <code>{searchTerm}</code> manuell in der Datenbank-Konsole löschen.
-                    </p>
-                    <a 
-                        href="https://console.firebase.google.com/project/agritrack-austria/firestore/data/~2Fsettings" 
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="bg-amber-600 hover:bg-amber-700 text-white px-6 py-3 rounded-lg font-bold w-full md:w-auto shadow-lg flex items-center justify-center transition-colors"
-                    >
-                        <ExternalLink size={18} className="mr-2"/>
-                        Firebase Console öffnen (Settings)
-                    </a>
-                </div>
-            )}
-
-            {/* EMERGENCY DELETE BUTTON (Visible when search finds nothing but term exists) */}
-            {farms.length === 0 && searchTerm && !loading && !showConsoleLink && (
-                <div className="bg-red-900/20 border border-red-800 p-4 rounded-xl mb-6 animate-in slide-in-from-top-2">
-                    <h4 className="text-red-400 font-bold mb-2 flex items-center">
-                        <AlertTriangle size={18} className="mr-2"/> Notfall: Geister-Eintrag löschen?
-                    </h4>
-                    <p className="text-slate-400 text-sm mb-4">
-                        Wenn die App sagt "Hof existiert bereits", Sie ihn hier aber nicht sehen, ist es ein "Geister-Eintrag" (evtl. anderer User ohne Leserechte).
-                        <br/>
-                        Sie können versuchen, ihn <strong>blind zu löschen</strong>.
-                    </p>
-                    <button 
-                        onClick={handleForceDelete}
-                        className="bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-lg font-bold w-full md:w-auto shadow-lg flex items-center justify-center"
-                    >
-                        <Trash2 size={18} className="mr-2"/>
-                        Blind-Löschung für ID '{searchTerm}' erzwingen
-                    </button>
-                </div>
-            )}
-
-            {/* List */}
-            <div className="flex-1 overflow-y-auto bg-slate-800 rounded-xl border border-slate-700 relative">
-                <table className="w-full text-left border-collapse">
-                    <thead className="bg-slate-900 text-slate-400 text-xs uppercase sticky top-0 z-10 shadow-md">
-                        <tr>
-                            <th className="p-4 border-b border-slate-700 w-[120px]">Farm ID</th>
-                            <th className="p-4 border-b border-slate-700 w-[100px]">Typ</th>
-                            <th className="p-4 border-b border-slate-700">Besitzer / Email</th>
-                            <th className="p-4 border-b border-slate-700 w-[80px]">PIN?</th>
-                            <th className="p-4 border-b border-slate-700 hidden md:table-cell">User UID (Doc ID)</th>
-                            <th className="p-4 border-b border-slate-700 text-right">Aktion</th>
-                        </tr>
-                    </thead>
-                    <tbody className="text-sm text-slate-300 divide-y divide-slate-700">
-                        {farms.length === 0 ? (
-                            <tr>
-                                <td colSpan={6} className="p-12 text-center text-slate-500">
-                                    {loading 
-                                        ? <div className="flex items-center justify-center"><RefreshCw className="animate-spin mr-2"/> Lade Daten...</div> 
-                                        : 'Liste leer.'}
-                                </td>
-                            </tr>
-                        ) : (
-                            farms.map((farm) => {
-                                const isMe = currentUser && currentUser.uid === farm.docId;
-                                return (
-                                    <tr key={farm.docId} className={`hover:bg-slate-700/50 transition-colors group ${isMe ? 'bg-blue-900/10' : ''}`}>
-                                        <td className="p-4 font-bold text-white font-mono bg-slate-800/30">
-                                            {farm.farmId ? farm.farmId : <span className="text-slate-500 italic font-normal">(Leer)</span>}
-                                        </td>
-                                        <td className="p-4">
-                                            <span className={`px-2 py-1 rounded text-[10px] font-bold uppercase border ${farm.farmIdType === 'string' ? 'bg-blue-900/30 text-blue-300 border-blue-800' : 'bg-orange-900/30 text-orange-300 border-orange-800'}`}>
-                                                {farm.farmIdType === 'string' ? 'TEXT' : 'ZAHL'}
-                                            </span>
-                                        </td>
-                                        <td className="p-4">
-                                            <div className="flex items-center">
-                                                <User size={14} className="mr-2 text-slate-500"/>
-                                                <span className={farm.ownerEmail === 'Unbekannt' ? 'text-red-400 italic' : 'text-green-400 font-medium'}>
-                                                    {farm.ownerEmail}
-                                                </span>
-                                            </div>
-                                        </td>
-                                        <td className="p-4">
-                                            {farm.hasPin ? (
-                                                <span className="text-green-500 font-bold flex items-center"><ShieldCheck size={14} className="mr-1"/> JA</span>
-                                            ) : (
-                                                <span className="text-red-500 font-bold opacity-50 text-xs">NEIN</span>
-                                            )}
-                                        </td>
-                                        <td className="p-4 font-mono text-[10px] text-slate-500 select-all hidden md:table-cell">
-                                            {farm.docId}
-                                            {isMe && (
-                                                <span className="ml-2 bg-blue-600 text-white px-1.5 py-0.5 rounded text-[9px] font-bold">DU</span>
-                                            )}
-                                        </td>
+                    <div className="flex-1 overflow-y-auto bg-slate-800 rounded-xl border border-slate-700">
+                        <table className="w-full text-left">
+                            <thead className="bg-slate-900 text-slate-400 text-xs uppercase sticky top-0">
+                                <tr>
+                                    <th className="p-4">Farm ID</th>
+                                    <th className="p-4">Besitzer</th>
+                                    <th className="p-4 text-right">Aktion</th>
+                                </tr>
+                            </thead>
+                            <tbody className="text-sm text-slate-300 divide-y divide-slate-700">
+                                {farms.map((farm) => (
+                                    <tr key={farm.docId} className="hover:bg-slate-700/50">
+                                        <td className="p-4 font-bold text-white">{farm.farmId || '(Leer)'}</td>
+                                        <td className="p-4">{farm.ownerEmail}</td>
                                         <td className="p-4 text-right">
-                                            <div className="flex justify-end space-x-2">
-                                                <button 
-                                                    onClick={() => handleDelete(farm.docId, farm.farmId)}
-                                                    className="bg-red-900/20 hover:bg-red-600 text-red-400 hover:text-white p-2 rounded-lg transition-colors border border-red-900/50 hover:border-red-500 shadow-sm"
-                                                    title="Eintrag löschen"
-                                                >
-                                                    <Trash2 size={16} />
-                                                </button>
-                                            </div>
+                                            <button onClick={() => handleDelete(farm.docId, farm.farmId)} className="text-red-400 p-2 hover:bg-red-900/30 rounded-lg"><Trash2 size={16} /></button>
                                         </td>
                                     </tr>
-                                );
-                            })
-                        )}
-                    </tbody>
-                </table>
-            </div>
-            <div className="mt-4 text-xs text-slate-500 text-center flex justify-between items-center">
-               <span>Modus: {searchMode ? 'Suchergebnisse' : 'Gesamtliste'}</span>
-               <span>{farms.length} Einträge angezeigt</span>
-            </div>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                </>
+            )}
+
+            {activeSubTab === 'ADMINS' && (
+                <div className="flex-1 flex flex-col space-y-6 overflow-hidden">
+                    <div className="bg-amber-900/20 border border-amber-600/30 p-4 rounded-xl flex items-start">
+                        <ShieldAlert className="text-amber-500 mr-3 shrink-0" />
+                        <div>
+                            <h4 className="text-amber-500 font-bold text-sm">Vorsicht bei Admin-Rechten</h4>
+                            <p className="text-slate-400 text-xs">Admins können alle Daten im Kummerkasten löschen und Hof-Einstellungen manipulieren. Helmut.preiser@gmx.at ist als Super-Admin geschützt.</p>
+                        </div>
+                    </div>
+
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6 flex-1 overflow-hidden">
+                        {/* Aktive Admins */}
+                        <div className="bg-slate-800 rounded-xl border border-slate-700 flex flex-col overflow-hidden">
+                            <div className="p-4 bg-slate-900 border-b border-slate-700 flex justify-between items-center">
+                                <h3 className="text-white font-bold text-sm flex items-center"><ShieldCheck size={16} className="mr-2 text-green-500"/> Aktive System-Admins</h3>
+                                <span className="text-[10px] font-black text-slate-500">{cloudAdmins.length + 1}</span>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                                <div className="p-3 bg-slate-700/50 rounded-lg border border-slate-600 flex justify-between items-center">
+                                    <div className="flex items-center"><Mail size={14} className="mr-2 text-blue-400"/><span className="text-white font-bold text-xs">helmut.preiser@gmx.at</span></div>
+                                    <span className="text-[8px] font-black uppercase text-blue-400 bg-blue-900/30 px-1.5 py-0.5 rounded">Super</span>
+                                </div>
+                                {cloudAdmins.filter(e => e !== 'helmut.preiser@gmx.at').map(email => (
+                                    <div key={email} className="p-3 bg-slate-700/50 rounded-lg border border-slate-600 flex justify-between items-center animate-in fade-in">
+                                        <div className="flex items-center text-xs text-white font-medium"><Mail size={14} className="mr-2 text-slate-400"/>{email}</div>
+                                        <button onClick={() => toggleAdminStatus(email)} className="text-red-400 hover:text-red-300 p-1"><UserMinus size={16}/></button>
+                                    </div>
+                                ))}
+                            </div>
+                        </div>
+
+                        {/* Alle Nutzer */}
+                        <div className="bg-slate-800 rounded-xl border border-slate-700 flex flex-col overflow-hidden">
+                            <div className="p-4 bg-slate-900 border-b border-slate-700">
+                                <h3 className="text-white font-bold text-sm flex items-center"><User size={16} className="mr-2 text-blue-500"/> Registrierte Nutzer</h3>
+                            </div>
+                            <div className="flex-1 overflow-y-auto p-4 space-y-2">
+                                {registeredUsers.map(email => {
+                                    const isA = cloudAdmins.includes(email.toLowerCase()) || email.toLowerCase() === 'helmut.preiser@gmx.at';
+                                    return (
+                                        <div key={email} className="p-3 bg-slate-900/50 rounded-lg flex justify-between items-center hover:bg-slate-700/30 transition-colors">
+                                            <span className="text-xs text-slate-300 truncate mr-2">{email}</span>
+                                            {!isA ? (
+                                                <button onClick={() => toggleAdminStatus(email)} className="bg-green-600/20 hover:bg-green-600 text-green-500 hover:text-white px-2 py-1 rounded text-[10px] font-bold transition-all flex items-center shadow-sm">
+                                                    <UserPlus size={12} className="mr-1"/> BEFÖRDERN
+                                                </button>
+                                            ) : (
+                                                <span className="text-[10px] font-black text-slate-600 uppercase">Admin</span>
+                                            )}
+                                        </div>
+                                    );
+                                })}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 };
+

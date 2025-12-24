@@ -49,6 +49,49 @@ export const dbService = {
         }
     },
 
+    // --- System Admins (NEU) ---
+    getCloudAdmins: async (): Promise<string[]> => {
+        if (!db) return [];
+        try {
+            const doc = await db.collection("system").doc("admins").get();
+            if (doc.exists) {
+                return doc.data()?.emails || [];
+            }
+        } catch (e) {
+            console.error("Fehler beim Laden der Cloud-Admins", e);
+        }
+        return [];
+    },
+
+    saveCloudAdmins: async (emails: string[]) => {
+        if (!db) return;
+        try {
+            await db.collection("system").doc("admins").set({
+                emails: emails.map(e => e.toLowerCase().trim()),
+                updatedAt: firebase.firestore.Timestamp.now()
+            });
+        } catch (e) {
+            console.error("Fehler beim Speichern der Cloud-Admins", e);
+            throw e;
+        }
+    },
+
+    // Hilfsmethode: Alle registrierten E-Mails finden (via Settings-Proxy)
+    getAllRegisteredEmails: async (): Promise<string[]> => {
+        if (!db) return [];
+        try {
+            const snap = await db.collection("settings").get();
+            const emails = new Set<string>();
+            snap.docs.forEach(d => {
+                const data = d.data();
+                if (data.ownerEmail) emails.add(data.ownerEmail.toLowerCase().trim());
+            });
+            return Array.from(emails);
+        } catch (e) {
+            return [];
+        }
+    },
+
     // --- Activities ---
     getActivities: async (): Promise<ActivityRecord[]> => {
         const local = loadLocalData('activity');
@@ -285,7 +328,6 @@ export const dbService = {
 
     // --- Feedback ---
     getFeedback: async (): Promise<FeedbackTicket[]> => {
-        // GEÄNDERT: Zugriff auf db ohne isCloudConfigured, damit auch Gäste lesen können
         if (!db) return [];
         try {
             const snapshot = await db.collection("feedback").get();
