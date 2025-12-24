@@ -44,7 +44,17 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp, onNavigateToFeedback })
 
   return (
     <div className="relative bg-soil-900 text-white overflow-hidden">
-      <div className="absolute inset-0 opacity-10 bg-[url('https://picsum.photos/1920/1080')] bg-cover bg-center" />
+      {/* Österreichische Landschaft als Hintergrundbild (Alpen/Grünland) */}
+      <div 
+        className="absolute inset-0 opacity-20 bg-cover bg-center bg-no-repeat transition-opacity duration-1000" 
+        style={{ 
+            backgroundImage: "url('https://images.unsplash.com/photo-1527004013197-933c4bb611b3?auto=format&fit=crop&q=80&w=1920')",
+            backgroundAttachment: 'fixed' // Parallax-Effekt
+        }} 
+      />
+      
+      {/* Verlauf für bessere Lesbarkeit unten */}
+      <div className="absolute inset-0 bg-gradient-to-b from-soil-900/40 via-transparent to-soil-900" />
       
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-24 md:py-32">
         <div className="lg:w-2/3">
@@ -94,7 +104,7 @@ export const Hero: React.FC<HeroProps> = ({ onLaunchApp, onNavigateToFeedback })
             </div>
           </div>
 
-          <div className="mt-12 flex flex-col sm:flex-row gap-6 sm:gap-12">
+          <div className="mt-12 flex flex-col sm:flex-row gap-6 sm:gap-12 border-t border-white/10 pt-8">
             <div className="flex items-center">
               <div className="w-2.5 h-2.5 bg-green-500 rounded-full mr-3 animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
               <div className="flex flex-col">
