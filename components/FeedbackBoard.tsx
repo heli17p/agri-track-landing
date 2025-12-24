@@ -1,7 +1,9 @@
+
 import React, { useState, useEffect } from 'react';
-import { MessageSquarePlus, ThumbsUp, CheckCircle2, Circle, Clock, MessageCircle, Send, User, ChevronDown, ChevronUp, Trash2 } from 'lucide-react';
+import { MessageSquarePlus, ThumbsUp, CheckCircle2, Circle, Clock, MessageCircle, Send, User, ChevronDown, ChevronUp, Trash2, Lock } from 'lucide-react';
 import { FeedbackTicket, FeedbackComment } from '../types';
 import { dbService, generateId } from '../services/db';
+import { authService } from '../services/auth';
 
 interface Props {
     isAdmin?: boolean;
@@ -11,6 +13,7 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
   const [tickets, setTickets] = useState<FeedbackTicket[]>([]);
   const [isAdding, setIsAdding] = useState(false);
   const [expandedTicketId, setExpandedTicketId] = useState<string | null>(null);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
   
   // New Ticket State
   const [newTitle, setNewTitle] = useState('');
@@ -22,16 +25,23 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
 
   useEffect(() => {
     loadTickets();
+    const unsub = authService.onAuthStateChanged((user) => {
+        setIsLoggedIn(!!user);
+    });
+    return () => unsub();
   }, []);
 
   const loadTickets = async () => {
       const t = await dbService.getFeedback();
-      // Sort by date desc
       setTickets(t.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()));
   };
 
   const handleVote = async (ticket: FeedbackTicket, e: React.MouseEvent) => {
       e.stopPropagation();
+      if (!isLoggedIn) {
+          alert("Bitte melde dich an, um abzustimmen.");
+          return;
+      }
       const updated = { ...ticket, votes: ticket.votes + 1 };
       await dbService.saveFeedback(updated);
       loadTickets();
@@ -67,8 +77,6 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
 
       await dbService.saveFeedback(ticket);
       
-      // WhatsApp Logic REMOVED per request
-
       setNewTitle('');
       setNewDesc('');
       setIsAdding(false);
@@ -76,6 +84,10 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
   };
 
   const handleSubmitComment = async (ticketId: string) => {
+      if (!isLoggedIn) {
+          alert("Bitte melde dich an, um einen Kommentar zu schreiben.");
+          return;
+      }
       if (!commentText.trim()) return;
       
       const ticket = tickets.find(t => t.id === ticketId);
@@ -118,16 +130,30 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
                 </p>
             </div>
             <button 
-                onClick={() => setIsAdding(!isAdding)}
-                className="bg-agri-600 hover:bg-agri-700 text-white px-6 py-3 rounded-xl font-bold flex items-center shadow-lg transition-all"
+                onClick={() => {
+                    if(!isLoggedIn) {
+                        alert("Um Wünsche zu äußern, musst du angemeldet sein.");
+                    } else {
+                        setIsAdding(!isAdding);
+                    }
+                }}
+                className={`px-6 py-3 rounded-xl font-bold flex items-center shadow-lg transition-all ${isLoggedIn ? 'bg-agri-600 hover:bg-agri-700 text-white' : 'bg-slate-200 text-slate-500 cursor-not-allowed'}`}
             >
-                <MessageSquarePlus className="mr-2" size={20}/>
+                {isLoggedIn ? <MessageSquarePlus className="mr-2" size={20}/> : <Lock className="mr-2" size={18}/>}
                 Wunsch äußern
             </button>
         </div>
 
+        {/* Guest Hint */}
+        {!isLoggedIn && (
+            <div className="bg-blue-50 border border-blue-200 p-4 rounded-xl flex items-center text-blue-800 text-sm font-medium">
+                <Info size={18} className="mr-3 shrink-0" />
+                Du bist als Gast unterwegs. Du kannst alle Wünsche lesen, aber zum Abstimmen oder Erstellen ist eine Anmeldung erforderlich.
+            </div>
+        )}
+
         {/* Add New Form */}
-        {isAdding && (
+        {isAdding && isLoggedIn && (
             <div className="bg-white p-6 rounded-2xl shadow-md border-2 border-agri-100 animate-in slide-in-from-top-4">
                 <h3 className="font-bold text-lg text-slate-800 mb-4">Neuen Wunsch einreichen</h3>
                 <div className="space-y-4">
@@ -179,15 +205,14 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
         )}
 
         {/* List of Tickets */}
-        <div className="space-y-4">
+        <div className="space-y-4 pb-20">
             {tickets.length === 0 ? (
                 <div className="text-center py-12 bg-slate-50 rounded-xl border border-dashed border-slate-200">
-                    <p className="text-slate-400 font-medium">Noch keine Wünsche vorhanden. Sei der Erste!</p>
+                    <p className="text-slate-400 font-medium">Lade Community-Wünsche aus der Cloud...</p>
                 </div>
             ) : (
                 tickets.map(ticket => (
                     <div key={ticket.id} className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden transition-all hover:shadow-md">
-                        {/* Ticket Card Header (Clickable for expand) */}
                         <div 
                             className="p-5 cursor-pointer"
                             onClick={() => setExpandedTicketId(expandedTicketId === ticket.id ? null : ticket.id)}
@@ -207,10 +232,10 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
                                 <div className="flex flex-col items-center space-y-2">
                                     <button 
                                         onClick={(e) => handleVote(ticket, e)}
-                                        className="flex flex-col items-center justify-center bg-slate-50 hover:bg-green-50 border border-slate-200 hover:border-green-200 w-12 h-12 rounded-xl transition-all group"
+                                        className={`flex flex-col items-center justify-center border w-12 h-12 rounded-xl transition-all group ${isLoggedIn ? 'bg-slate-50 hover:bg-green-50 border-slate-200 hover:border-green-200' : 'bg-slate-50 border-slate-100 opacity-70'}`}
                                     >
-                                        <ThumbsUp size={18} className="text-slate-400 group-hover:text-green-600 mb-0.5" />
-                                        <span className="text-xs font-bold text-slate-600 group-hover:text-green-700">{ticket.votes}</span>
+                                        <ThumbsUp size={18} className={`${isLoggedIn ? 'text-slate-400 group-hover:text-green-600' : 'text-slate-300'} mb-0.5`} />
+                                        <span className={`text-xs font-bold ${isLoggedIn ? 'text-slate-600 group-hover:text-green-700' : 'text-slate-400'}`}>{ticket.votes}</span>
                                     </button>
 
                                     {isAdmin && (
@@ -230,14 +255,12 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
                             </div>
                         </div>
 
-                        {/* Expanded Content (Details & Comments) */}
                         {expandedTicketId === ticket.id && (
                             <div className="bg-slate-50 border-t border-slate-100 p-5">
                                 <p className="text-slate-700 text-sm mb-6 whitespace-pre-wrap">
                                     {ticket.description}
                                 </p>
 
-                                {/* Admin Status Control */}
                                 {isAdmin && (
                                     <div className="mb-6 bg-red-50 border border-red-100 p-3 rounded-lg flex items-center space-x-3">
                                         <span className="text-xs font-bold text-red-800 uppercase">Admin Status:</span>
@@ -255,7 +278,6 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
                                     </div>
                                 )}
 
-                                {/* Comments Section */}
                                 <div className="space-y-4">
                                     <h4 className="font-bold text-slate-700 text-sm flex items-center">
                                         <MessageCircle size={16} className="mr-2"/> Kommentare ({ticket.comments?.length || 0})
@@ -277,19 +299,20 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
                                         ))}
                                     </div>
 
-                                    {/* Add Comment */}
                                     <div className="flex items-center space-x-2 pt-2">
                                         <input 
                                             type="text"
                                             value={commentText}
                                             onChange={(e) => setCommentText(e.target.value)}
-                                            placeholder="Kommentar schreiben..."
-                                            className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-agri-500"
+                                            placeholder={isLoggedIn ? "Kommentar schreiben..." : "Anmelden zum Kommentieren..."}
+                                            disabled={!isLoggedIn}
+                                            className="flex-1 bg-white border border-slate-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-agri-500 disabled:opacity-50"
                                             onKeyDown={(e) => e.key === 'Enter' && handleSubmitComment(ticket.id)}
                                         />
                                         <button 
                                             onClick={() => handleSubmitComment(ticket.id)}
-                                            className="bg-slate-800 text-white p-2 rounded-lg hover:bg-slate-700"
+                                            disabled={!isLoggedIn}
+                                            className="bg-slate-800 text-white p-2 rounded-lg hover:bg-slate-700 disabled:opacity-50"
                                         >
                                             <Send size={18}/>
                                         </button>
@@ -304,3 +327,13 @@ export const FeedbackBoard: React.FC<Props> = ({ isAdmin = false }) => {
     </div>
   );
 };
+
+// Hilfskomponente Info (Lucide Icon Fallback falls nötig)
+const Info = ({ size, className }: { size: number, className: string }) => (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className={className}>
+        <circle cx="12" cy="12" r="10" />
+        <line x1="12" y1="16" x2="12" y2="12" />
+        <line x1="12" y1="8" x2="12.01" y2="8" />
+    </svg>
+);
+

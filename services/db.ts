@@ -41,9 +41,6 @@ export const dbService = {
     getGlobalUserCount: async (): Promise<number> => {
         if (!db) return 0;
         try {
-            // Wir zählen die Dokumente in der settings Kollektion (1 pro User/Betrieb)
-            // Hinweis: In Produktionsumgebungen mit Millionen Usern wäre ein Counter-Dokument besser.
-            // Für AgriTrack Austria ist dieser direkte Query aktuell am genauesten.
             const snapshot = await db.collection("settings").get();
             return snapshot.size;
         } catch (e) {
@@ -155,7 +152,6 @@ export const dbService = {
     getEquipmentCategories: async (): Promise<EquipmentCategory[]> => {
         let cats = loadLocalData('tillage_categories' as any);
         if (!cats || cats.length === 0) {
-            // Vordefinierte Gruppen für AgriTrack Austria
             cats = [
                 { id: 'cat_slurry', name: 'Gülle', parentType: ActivityType.FERTILIZATION },
                 { id: 'cat_manure', name: 'Mist', parentType: ActivityType.FERTILIZATION },
@@ -169,7 +165,6 @@ export const dbService = {
     },
 
     saveEquipmentCategory: async (category: EquipmentCategory) => {
-        // Nutzt jetzt den zentralen Cloud-Helper inkl. Farm-ID Zuordnung
         await saveData('tillage_categories' as any, category);
         notifyDbChange();
     },
@@ -290,7 +285,8 @@ export const dbService = {
 
     // --- Feedback ---
     getFeedback: async (): Promise<FeedbackTicket[]> => {
-        if (!isCloudConfigured()) return [];
+        // GEÄNDERT: Zugriff auf db ohne isCloudConfigured, damit auch Gäste lesen können
+        if (!db) return [];
         try {
             const snapshot = await db.collection("feedback").get();
             return snapshot.docs.map(d => d.data() as FeedbackTicket);
