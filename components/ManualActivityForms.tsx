@@ -216,7 +216,18 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
     }, []);
 
     const handleSave = () => {
+        const selectedFields = fields.filter(f => selectedFieldIds.has(f.id));
+        const totalArea = selectedFields.reduce((sum, f) => sum + f.areaHa, 0);
         const finalIsoDate = getSmartDateISO(date);
+        
+        // Verteilung berechnen (Stückanteil pro Fläche)
+        const fieldDist: Record<string, number> = {};
+        if (totalArea > 0) {
+            selectedFields.forEach(f => {
+                fieldDist[f.id] = Math.round((f.areaHa / totalArea) * amount * 10) / 10;
+            });
+        }
+
         const record: ActivityRecord = {
             id: Math.random().toString(36).substr(2, 9),
             date: finalIsoDate,
@@ -225,6 +236,7 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
             fieldIds: Array.from(selectedFieldIds),
             amount: amount,
             unit: 'Stk',
+            fieldDistribution: fieldDist,
             notes: notes || `${selectedType}`,
             year: new Date(finalIsoDate).getFullYear()
         };
@@ -281,6 +293,13 @@ export const TillageForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
         const selectedFields = fields.filter(f => selectedFieldIds.has(f.id));
         const totalArea = selectedFields.reduce((sum, f) => sum + f.areaHa, 0);
         const finalIsoDate = getSmartDateISO(date);
+        
+        // Verteilung für Bodenbearbeitung ist einfach die Fläche pro Schlag
+        const fieldDist: Record<string, number> = {};
+        selectedFields.forEach(f => {
+            fieldDist[f.id] = f.areaHa;
+        });
+
         onSave({ 
             id: Math.random().toString(36).substr(2, 9), 
             date: finalIsoDate, 
@@ -289,6 +308,7 @@ export const TillageForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
             fieldIds: Array.from(selectedFieldIds), 
             amount: parseFloat(totalArea.toFixed(2)), 
             unit: 'ha', 
+            fieldDistribution: fieldDist,
             notes: notes,
             year: new Date(finalIsoDate).getFullYear() 
         }, [`Art: ${tillageType}`, `Fläche: ${totalArea.toFixed(2)} ha`]);
