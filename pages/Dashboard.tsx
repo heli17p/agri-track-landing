@@ -118,7 +118,6 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
                   stats.strawCount += act.amount || 0;
               } else if (type.includes(HarvestType.SILAGE) || notes.includes(HarvestType.SILAGE) || type === "") {
                   // Nur als Silage zählen, wenn explizit Silage gewählt oder Typ leer (Fallback für Altdaten)
-                  // Hackgut etc. wird hier nicht mehr fälschlich gezählt
                   stats.silageCount += act.amount || 0;
               }
           }
@@ -174,6 +173,12 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
     if(yearStats.silageCount > 0) { doc.text(`- Silageballen: ${yearStats.silageCount} Stk`, 14, yPos); yPos += 5; }
     if(yearStats.hayCount > 0) { doc.text(`- Heuballen: ${yearStats.hayCount} Stk`, 14, yPos); yPos += 5; }
     if(yearStats.strawCount > 0) { doc.text(`- Strohballen: ${yearStats.strawCount} Stk`, 14, yPos); yPos += 5; }
+    
+    // Tillage Stats in PDF
+    if(yearStats.harrowHa > 0) { doc.text(`- Wiesenegge gesamt: ${yearStats.harrowHa.toFixed(2)} ha`, 14, yPos); yPos += 5; }
+    if(yearStats.mulchHa > 0) { doc.text(`- Schlegeln gesamt: ${yearStats.mulchHa.toFixed(2)} ha`, 14, yPos); yPos += 5; }
+    if(yearStats.weederHa > 0) { doc.text(`- Striegel gesamt: ${yearStats.weederHa.toFixed(2)} ha`, 14, yPos); yPos += 5; }
+    if(yearStats.reseedHa > 0) { doc.text(`- Nachsaat gesamt: ${yearStats.reseedHa.toFixed(2)} ha`, 14, yPos); yPos += 5; }
 
     // Table
     if (filterType !== 'All') {
@@ -391,9 +396,11 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
                 <div className="bg-white p-4 rounded-xl shadow-sm"><div className="text-slate-500 text-xs uppercase font-bold">Einträge ({filterYear})</div><div className="text-2xl font-bold text-blue-600">{filteredActivities.length}</div></div>
            </div>
 
-           {(yearStats.slurryVol > 0 || yearStats.manureVol > 0 || yearStats.silageCount > 0 || yearStats.hayCount > 0 || yearStats.strawCount > 0 || yearStats.harrowHa > 0) && (
+           {(yearStats.slurryVol > 0 || yearStats.manureVol > 0 || yearStats.silageCount > 0 || yearStats.hayCount > 0 || yearStats.strawCount > 0 || yearStats.harrowHa > 0 || yearStats.mulchHa > 0 || yearStats.weederHa > 0 || yearStats.reseedHa > 0) && (
                <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-4">
-                   <h3 className="font-bold text-lg text-slate-800 flex items-center"><Calculator className="mr-2 text-slate-50" size={20}/> Jahresstatistik {filterYear}</h3>
+                   <h3 className="font-bold text-lg text-slate-800 flex items-center"><Calculator className="mr-2 text-slate-500" size={20}/> Jahresstatistik {filterYear}</h3>
+                   
+                   {/* DÜNGUNG */}
                    {(yearStats.slurryVol > 0 || yearStats.manureVol > 0) && (
                        <div className="space-y-3">
                            <div className="text-xs font-bold text-slate-400 uppercase border-b border-slate-100 pb-1">Wirtschaftsdünger</div>
@@ -415,6 +422,8 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
                            </div>
                        </div>
                    )}
+
+                   {/* ERNTE */}
                    {(yearStats.silageCount > 0 || yearStats.hayCount > 0 || yearStats.strawCount > 0) && (
                        <div className="space-y-3 pt-2">
                            <div className="text-xs font-bold text-slate-400 uppercase border-b border-slate-100 pb-1">Ernteertrag</div>
@@ -435,6 +444,39 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
                                    <div className="bg-yellow-100 p-3 rounded-lg border border-yellow-200">
                                        <div className="flex items-center text-yellow-900 text-xs font-bold mb-1"><ShoppingBag size={12} className="mr-1"/> Stroh</div>
                                        <div className="text-lg font-bold text-yellow-900">{yearStats.strawCount} <span className="text-xs">Ballen</span></div>
+                                   </div>
+                               )}
+                           </div>
+                       </div>
+                   )}
+
+                   {/* BODENBEARBEITUNG */}
+                   {(yearStats.harrowHa > 0 || yearStats.mulchHa > 0 || yearStats.weederHa > 0 || yearStats.reseedHa > 0) && (
+                       <div className="space-y-3 pt-2">
+                           <div className="text-xs font-bold text-slate-400 uppercase border-b border-slate-100 pb-1">Bodenbearbeitung</div>
+                           <div className="grid grid-cols-2 gap-3">
+                               {yearStats.harrowHa > 0 && (
+                                   <div className="bg-blue-50 p-3 rounded-lg border border-blue-100">
+                                       <div className="flex items-center text-blue-800 text-xs font-bold mb-1"><Hammer size={12} className="mr-1"/> Egge</div>
+                                       <div className="text-lg font-bold text-blue-900">{yearStats.harrowHa.toFixed(1)} <span className="text-xs">ha</span></div>
+                                   </div>
+                               )}
+                               {yearStats.mulchHa > 0 && (
+                                   <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-100">
+                                       <div className="flex items-center text-indigo-800 text-xs font-bold mb-1"><Hammer size={12} className="mr-1"/> Mulchen</div>
+                                       <div className="text-lg font-bold text-indigo-900">{yearStats.mulchHa.toFixed(1)} <span className="text-xs">ha</span></div>
+                                   </div>
+                               )}
+                               {yearStats.weederHa > 0 && (
+                                   <div className="bg-sky-50 p-3 rounded-lg border border-sky-100">
+                                       <div className="flex items-center text-sky-800 text-xs font-bold mb-1"><Hammer size={12} className="mr-1"/> Striegel</div>
+                                       <div className="text-lg font-bold text-sky-900">{yearStats.weederHa.toFixed(1)} <span className="text-xs">ha</span></div>
+                                   </div>
+                               )}
+                               {yearStats.reseedHa > 0 && (
+                                   <div className="bg-teal-50 p-3 rounded-lg border border-teal-100">
+                                       <div className="flex items-center text-teal-800 text-xs font-bold mb-1"><Sprout size={12} className="mr-1"/> Nachsaat</div>
+                                       <div className="text-lg font-bold text-teal-900">{yearStats.reseedHa.toFixed(1)} <span className="text-xs">ha</span></div>
                                    </div>
                                )}
                            </div>
