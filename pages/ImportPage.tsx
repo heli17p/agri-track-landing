@@ -1,6 +1,6 @@
 
 import React, { useState, useEffect } from 'react';
-import { Upload, FileUp, AlertTriangle, ChevronLeft, Loader2, CheckCircle, RefreshCw, CopyPlus, CheckSquare, Square, AlertCircle } from 'lucide-react';
+import { Upload, FileUp, AlertTriangle, ChevronLeft, Loader2, CheckCircle, RefreshCw, CopyPlus, CheckSquare, Square, AlertCircle, Table, Eye } from 'lucide-react';
 import { Field, GeoPoint } from '../types';
 import { dbService, generateId } from '../services/db';
 
@@ -240,6 +240,11 @@ export const ImportPage = ({ onBack }: { onBack?: () => void }) => {
       if (onBack) onBack();
   };
 
+  // Helper to determine if a column is currently mapped to something
+  const getMappingForColumn = (columnName: string) => {
+    return Object.entries(columnMap).find(([_, mappedName]) => mappedName === columnName);
+  };
+
   return (
     <div className="p-4 bg-white h-full overflow-y-auto">
         <div className="flex items-center mb-4 sticky top-0 bg-white z-10 py-2 border-b border-slate-100">
@@ -277,21 +282,27 @@ export const ImportPage = ({ onBack }: { onBack?: () => void }) => {
 
         {step === 2 && (
             <div className="space-y-6 pb-20">
-                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100 shadow-sm">
                     <h3 className="font-semibold mb-3 text-blue-900 flex items-center">
                         <span className="bg-blue-200 text-blue-800 w-6 h-6 rounded-full flex items-center justify-center text-xs mr-2">1</span>
                         Spaltenzuordnung
                     </h3>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-                        {['name', 'area', 'type', 'usage', 'codes'].map((fieldKey) => (
-                             <div key={fieldKey}>
-                                <label className="block text-slate-600 mb-1 font-medium capitalize">
-                                    {fieldKey === 'name' ? 'Feld Name' : fieldKey === 'area' ? 'Fläche (ha)' : fieldKey === 'type' ? 'Feldart' : fieldKey === 'usage' ? 'Nutzung' : 'Codes'}
+                        {[
+                            { key: 'name', label: 'Feld Name' },
+                            { key: 'area', label: 'Fläche (ha)' },
+                            { key: 'type', label: 'Feldart' },
+                            { key: 'usage', label: 'Nutzung' },
+                            { key: 'codes', label: 'Codes' }
+                        ].map((field) => (
+                             <div key={field.key}>
+                                <label className="block text-slate-600 mb-1 font-bold">
+                                    {field.label}
                                 </label>
                                 <select 
-                                    className="w-full border border-blue-200 p-2 rounded bg-white" 
-                                    value={(columnMap as any)[fieldKey]} 
-                                    onChange={e => setColumnMap({...columnMap, [fieldKey]: e.target.value})}
+                                    className="w-full border border-blue-200 p-2 rounded-lg bg-white outline-none focus:ring-2 focus:ring-blue-500 transition-all font-medium" 
+                                    value={(columnMap as any)[field.key]} 
+                                    onChange={e => setColumnMap({...columnMap, [field.key]: e.target.value})}
                                 >
                                     <option value="">-- Nicht importieren --</option>
                                     {rawData.length > 0 && Object.keys(rawData[0]).filter(k => k !== 'geometry').map(k => (
@@ -303,7 +314,62 @@ export const ImportPage = ({ onBack }: { onBack?: () => void }) => {
                     </div>
                 </div>
 
-                <div className="bg-amber-50 p-4 rounded-lg border border-amber-100">
+                {/* NEU: DATEN-VORSCHAU TABELLE */}
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden shadow-sm">
+                    <div className="bg-slate-50 p-3 border-b border-slate-200 flex justify-between items-center">
+                        <h3 className="text-xs font-black uppercase text-slate-500 tracking-widest flex items-center">
+                            <Table size={14} className="mr-2"/> Vorschau der Dateiinhalte (Top 5)
+                        </h3>
+                        <div className="text-[10px] bg-blue-100 text-blue-700 px-2 py-0.5 rounded font-bold uppercase">
+                            Rohdaten
+                        </div>
+                    </div>
+                    
+                    <div className="overflow-x-auto max-w-full">
+                        <table className="min-w-full text-left border-collapse">
+                            <thead>
+                                <tr className="bg-slate-50 border-b border-slate-200">
+                                    {rawData.length > 0 && Object.keys(rawData[0]).filter(k => k !== 'geometry').map(key => {
+                                        const mapping = getMappingForColumn(key);
+                                        return (
+                                            <th key={key} className={`p-2 text-[10px] font-black uppercase whitespace-nowrap border-r border-slate-100 last:border-0 ${mapping ? 'bg-blue-100/50 text-blue-800' : 'text-slate-400'}`}>
+                                                <div className="flex flex-col">
+                                                    {mapping && (
+                                                        <span className="text-[8px] bg-blue-600 text-white px-1 py-0.5 rounded mb-1 w-fit">
+                                                            → {mapping[0] === 'name' ? 'FELD NAME' : mapping[0] === 'area' ? 'FLÄCHE' : mapping[0] === 'type' ? 'ART' : mapping[0] === 'usage' ? 'NUTZUNG' : 'CODES'}
+                                                        </span>
+                                                    )}
+                                                    {key}
+                                                </div>
+                                            </th>
+                                        );
+                                    })}
+                                </tr>
+                            </thead>
+                            <tbody className="divide-y divide-slate-100">
+                                {rawData.slice(0, 5).map((row, idx) => (
+                                    <tr key={idx} className="hover:bg-slate-50/50 transition-colors">
+                                        {Object.keys(row).filter(k => k !== 'geometry').map(key => {
+                                            const mapping = getMappingForColumn(key);
+                                            return (
+                                                <td key={key} className={`p-2 text-xs font-medium truncate max-w-[120px] border-r border-slate-100 last:border-0 ${mapping ? 'bg-blue-50/30 font-bold text-slate-800' : 'text-slate-500'}`}>
+                                                    {row[key]}
+                                                </td>
+                                            );
+                                        })}
+                                    </tr>
+                                ))}
+                            </tbody>
+                        </table>
+                    </div>
+                    {rawData.length > 5 && (
+                        <div className="p-2 text-center text-[10px] text-slate-400 italic bg-slate-50/50 border-t border-slate-100">
+                            + {rawData.length - 5} weitere Zeilen in der Datei vorhanden...
+                        </div>
+                    )}
+                </div>
+
+                <div className="bg-amber-50 p-4 rounded-lg border border-amber-100 shadow-sm">
                     <h3 className="font-semibold mb-2 text-amber-900 flex items-center">
                         <span className="bg-amber-200 text-amber-800 w-6 h-6 rounded-full flex items-center justify-center text-xs mr-2">2</span>
                         Geometrie Korrektur
@@ -311,16 +377,17 @@ export const ImportPage = ({ onBack }: { onBack?: () => void }) => {
                     <div className="flex space-x-4">
                         <div>
                             <label className="block text-xs font-bold text-amber-800">Nord/Süd (m)</label>
-                            <input type="number" value={offset.n} onChange={e => setOffset({...offset, n: parseInt(e.target.value) || 0})} className="border border-amber-200 p-2 w-24 rounded" />
+                            <input type="number" value={offset.n} onChange={e => setOffset({...offset, n: parseInt(e.target.value) || 0})} className="border border-amber-200 p-2 w-24 rounded-lg font-bold outline-none" />
                         </div>
                         <div>
                             <label className="block text-xs font-bold text-amber-800">Ost/West (m)</label>
-                            <input type="number" value={offset.e} onChange={e => setOffset({...offset, e: parseInt(e.target.value) || 0})} className="border border-amber-200 p-2 w-24 rounded" />
+                            <input type="number" value={offset.e} onChange={e => setOffset({...offset, e: parseInt(e.target.value) || 0})} className="border border-amber-200 p-2 w-24 rounded-lg font-bold outline-none" />
                         </div>
                     </div>
+                    <p className="mt-2 text-[10px] text-amber-600 font-medium italic">Standard-Verschiebung für eAMA Shapefiles bereits voreingestellt.</p>
                 </div>
 
-                <button onClick={analyzeAndPrepare} disabled={isLoading} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center shadow-lg hover:bg-blue-700">
+                <button onClick={analyzeAndPrepare} disabled={isLoading} className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold flex items-center justify-center shadow-lg hover:bg-blue-700 active:scale-[0.98] transition-all">
                    {isLoading ? <Loader2 className="animate-spin mr-2"/> : <FileUp className="mr-2" size={20}/>} 
                    Vorschau & Auswahl
                 </button>
@@ -393,7 +460,7 @@ export const ImportPage = ({ onBack }: { onBack?: () => void }) => {
                                     {cand.codes && (
                                         <>
                                           <span className="w-1 h-1 bg-slate-300 rounded-full"></span>
-                                          <span className="text-blue-500 truncate max-w-[100px]">{cand.codes}</span>
+                                          <span className="text-blue-500 truncate max-w-[150px]">{cand.codes}</span>
                                         </>
                                     )}
                                 </div>
@@ -439,3 +506,4 @@ export const ImportPage = ({ onBack }: { onBack?: () => void }) => {
     </div>
   );
 };
+
