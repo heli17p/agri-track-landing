@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, CheckSquare, Square, Truck, Wheat, Hammer, FileText, ArrowRight, Database, Tag, Droplets, Layers, MessageSquare, ShoppingCart } from 'lucide-react';
+import { ChevronLeft, CheckSquare, Square, Truck, Wheat, Hammer, FileText, ArrowRight, Database, Tag, Droplets, Layers, MessageSquare, ShoppingCart, ListChecks } from 'lucide-react';
 import { Field, AppSettings, ActivityRecord, ActivityType, FertilizerType, StorageLocation, EquipmentCategory } from '../types';
 import { dbService } from '../services/db';
 
@@ -101,6 +101,14 @@ export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, stora
     setSelectedFieldIds(next);
   };
 
+  const toggleAllFields = () => {
+    if (selectedFieldIds.size === fields.length) {
+      setSelectedFieldIds(new Set());
+    } else {
+      setSelectedFieldIds(new Set(fields.map(f => f.id)));
+    }
+  };
+
   const handleSave = () => {
     const isManure = selectedCategory.toLowerCase().includes('mist') || selectedCategory.toLowerCase().includes('fest');
     const loadSize = settings ? (isManure ? settings.manureLoadSize : settings.slurryLoadSize) : 10;
@@ -132,6 +140,8 @@ export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, stora
     };
     onSave(record, [`Menge: ${totalVolume} ${record.unit}`, `Typ: ${selectedCategory}`]);
   };
+
+  const allSelected = selectedFieldIds.size === fields.length && fields.length > 0;
 
   return (
     <div className="flex-1 overflow-y-auto bg-white flex flex-col h-full">
@@ -172,7 +182,16 @@ export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, stora
             </div>
             <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Datum</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border p-3 rounded-lg font-bold" /></div>
             <div className="space-y-2">
-                <label className="block text-xs font-bold text-slate-500 uppercase mb-1">Felder wählen</label>
+                <div className="flex justify-between items-center px-1">
+                    <label className="block text-xs font-bold text-slate-500 uppercase">Felder wählen</label>
+                    <button 
+                        onClick={toggleAllFields}
+                        className="text-[10px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors flex items-center"
+                    >
+                        <ListChecks size={14} className="mr-1"/>
+                        {allSelected ? 'Auswahl aufheben' : 'Alle auswählen'}
+                    </button>
+                </div>
                 <div className="border rounded-xl max-h-64 overflow-y-auto bg-slate-50 shadow-inner">
                     {fields.map(f => (
                       <FieldListEntry 
@@ -216,6 +235,15 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
         load();
     }, []);
 
+    const toggleAllFields = () => {
+        if (isZukauf) return;
+        if (selectedFieldIds.size === fields.length) {
+            setSelectedFieldIds(new Set());
+        } else {
+            setSelectedFieldIds(new Set(fields.map(f => f.id)));
+        }
+    };
+
     const handleSave = () => {
         const selectedFields = isZukauf ? [] : fields.filter(f => selectedFieldIds.has(f.id));
         const totalArea = selectedFields.reduce((sum, f) => sum + f.areaHa, 0);
@@ -244,6 +272,8 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
         onSave(record, [`Menge: ${amount} Stk`, `Art: ${selectedType}`, isZukauf ? 'Typ: Zukauf' : '']);
     };
 
+    const allSelected = selectedFieldIds.size === fields.length && fields.length > 0;
+
     return (
         <div className="flex-1 overflow-y-auto bg-white flex flex-col h-full">
             <div className="bg-yellow-500 p-4 text-white shrink-0"><button onClick={onCancel} className="flex items-center text-white/80 mb-2 text-sm font-bold"><ChevronLeft className="mr-1" size={16}/> Zurück</button><h2 className="text-xl font-bold flex items-center"><Wheat className="mr-2" size={24} /> Ernte erfassen</h2></div>
@@ -270,10 +300,19 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
                 <div className="flex space-x-2"><div className="flex-1"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Menge (Ballen/Stk)</label><input type="number" value={amount || ''} onChange={e => setAmount(parseFloat(e.target.value))} className="w-full border p-3 rounded-lg font-bold" /></div><div className="flex-1"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Datum</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border p-3 rounded-lg font-bold" /></div></div>
                 
                 <div className="space-y-2">
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center px-1">
                         <label className="block text-xs font-bold text-slate-500 uppercase">
                             {isZukauf ? 'Felder (Deaktiviert bei Zukauf)' : 'Felder wählen'}
                         </label>
+                        {!isZukauf && (
+                            <button 
+                                onClick={toggleAllFields}
+                                className="text-[10px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors flex items-center"
+                            >
+                                <ListChecks size={14} className="mr-1"/>
+                                {allSelected ? 'Auswahl aufheben' : 'Alle auswählen'}
+                            </button>
+                        )}
                     </div>
                     <div className="border rounded-xl max-h-64 overflow-y-auto bg-slate-50 shadow-inner">
                         {fields.map(f => (
@@ -324,6 +363,14 @@ export const TillageForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
         load();
     }, []);
 
+    const toggleAllFields = () => {
+        if (selectedFieldIds.size === fields.length) {
+            setSelectedFieldIds(new Set());
+        } else {
+            setSelectedFieldIds(new Set(fields.map(f => f.id)));
+        }
+    };
+
     const handleSave = () => {
         const selectedFields = fields.filter(f => selectedFieldIds.has(f.id));
         const totalArea = selectedFields.reduce((sum, f) => sum + f.areaHa, 0);
@@ -349,23 +396,39 @@ export const TillageForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
         }, [`Art: ${tillageType}`, `Fläche: ${totalArea.toFixed(2)} ha`]);
     };
 
+    const allSelected = selectedFieldIds.size === fields.length && fields.length > 0;
+
     return (
         <div className="flex-1 overflow-y-auto bg-white flex flex-col h-full">
             <div className="bg-blue-600 p-4 text-white shrink-0"><button onClick={onCancel} className="flex items-center text-white/80 mb-2 text-sm font-bold"><ChevronLeft className="mr-1" size={16}/> Zurück</button><h2 className="text-xl font-bold flex items-center"><Hammer className="mr-2" size={24} /> Bodenbearbeitung</h2></div>
             <div className="p-4 space-y-4 pb-20 overflow-y-auto">
                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Tätigkeit / Typ</label><select value={tillageType} onChange={e => setTillageType(e.target.value)} className="w-full border p-3 rounded-lg font-bold bg-white">{categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Datum</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border p-3 rounded-lg font-bold" /></div>
-                <div className="border rounded-xl max-h-64 overflow-y-auto bg-slate-50 shadow-inner">
-                  {fields.map(f => (
-                    <FieldListEntry 
-                        key={f.id} 
-                        field={f} 
-                        isSelected={selectedFieldIds.has(f.id)} 
-                        onClick={() => { const n = new Set(selectedFieldIds); if(n.has(f.id)) n.delete(f.id); else n.add(f.id); setSelectedFieldIds(n); }} 
-                        activeColorClass="bg-blue-50"
-                    />
-                  ))}
+                
+                <div className="space-y-2">
+                    <div className="flex justify-between items-center px-1">
+                        <label className="block text-xs font-bold text-slate-500 uppercase">Felder wählen</label>
+                        <button 
+                            onClick={toggleAllFields}
+                            className="text-[10px] font-black uppercase text-blue-600 hover:text-blue-800 transition-colors flex items-center"
+                        >
+                            <ListChecks size={14} className="mr-1"/>
+                            {allSelected ? 'Auswahl aufheben' : 'Alle auswählen'}
+                        </button>
+                    </div>
+                    <div className="border rounded-xl max-h-64 overflow-y-auto bg-slate-50 shadow-inner">
+                      {fields.map(f => (
+                        <FieldListEntry 
+                            key={f.id} 
+                            field={f} 
+                            isSelected={selectedFieldIds.has(f.id)} 
+                            onClick={() => { const n = new Set(selectedFieldIds); if(n.has(f.id)) n.delete(f.id); else n.add(f.id); setSelectedFieldIds(n); }} 
+                            activeColorClass="bg-blue-50"
+                        />
+                      ))}
+                    </div>
                 </div>
+
                 <div>
                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center">
                         <MessageSquare size={14} className="mr-1"/> Anmerkungen
