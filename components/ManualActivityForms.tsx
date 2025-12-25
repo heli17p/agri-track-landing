@@ -1,6 +1,6 @@
 
 import { useState, useEffect, useMemo } from 'react';
-import { ChevronLeft, CheckSquare, Square, Truck, Wheat, Hammer, FileText, ArrowRight, Database, Tag, Droplets, Layers, MessageSquare } from 'lucide-react';
+import { ChevronLeft, CheckSquare, Square, Truck, Wheat, Hammer, FileText, ArrowRight, Database, Tag, Droplets, Layers, MessageSquare, ShoppingCart } from 'lucide-react';
 import { Field, AppSettings, ActivityRecord, ActivityType, FertilizerType, StorageLocation, EquipmentCategory } from '../types';
 import { dbService } from '../services/db';
 
@@ -28,13 +28,13 @@ const getFieldColor = (field: Field) => {
 };
 
 // Interne Komponente für die einheitliche Darstellung eines Feld-Eintrags in der Liste
-const FieldListEntry: React.FC<{ field: Field, isSelected: boolean, onClick: () => void, activeColorClass: string }> = ({ field, isSelected, onClick, activeColorClass }) => (
+const FieldListEntry: React.FC<{ field: Field, isSelected: boolean, onClick: () => void, activeColorClass: string, disabled?: boolean }> = ({ field, isSelected, onClick, activeColorClass, disabled }) => (
     <div 
-        onClick={onClick} 
-        className={`p-3 flex items-start cursor-pointer transition-all border-b border-slate-100 last:border-0 ${isSelected ? activeColorClass : 'bg-white hover:bg-slate-50'}`}
+        onClick={disabled ? undefined : onClick} 
+        className={`p-3 flex items-start transition-all border-b border-slate-100 last:border-0 ${disabled ? 'opacity-30 cursor-not-allowed grayscale' : 'cursor-pointer'} ${isSelected && !disabled ? activeColorClass : 'bg-white hover:bg-slate-50'}`}
     >
-        <div className={`mr-3 mt-1 ${isSelected ? 'text-slate-900' : 'text-slate-300'}`}>
-            {isSelected ? <CheckSquare size={20}/> : <Square size={20}/>}
+        <div className={`mr-3 mt-1 ${isSelected && !disabled ? 'text-slate-900' : 'text-slate-300'}`}>
+            {isSelected && !disabled ? <CheckSquare size={20}/> : <Square size={20}/>}
         </div>
         <div className="flex-1 min-w-0">
             <div className="flex items-center mb-0.5">
@@ -204,6 +204,7 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
     const [date, setDate] = useState<string>(new Date().toISOString().substring(0, 10));
     const [selectedFieldIds, setSelectedFieldIds] = useState<Set<string>>(new Set());
     const [notes, setNotes] = useState('');
+    const [isZukauf, setIsZukauf] = useState(false); // NEU: Zukauf Modus
 
     useEffect(() => {
         const load = async () => {
@@ -216,13 +217,13 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
     }, []);
 
     const handleSave = () => {
-        const selectedFields = fields.filter(f => selectedFieldIds.has(f.id));
+        const selectedFields = isZukauf ? [] : fields.filter(f => selectedFieldIds.has(f.id));
         const totalArea = selectedFields.reduce((sum, f) => sum + f.areaHa, 0);
         const finalIsoDate = getSmartDateISO(date);
         
         // Verteilung berechnen (Stückanteil pro Fläche)
         const fieldDist: Record<string, number> = {};
-        if (totalArea > 0) {
+        if (!isZukauf && totalArea > 0) {
             selectedFields.forEach(f => {
                 fieldDist[f.id] = Math.round((f.areaHa / totalArea) * amount * 10) / 10;
             });
@@ -233,40 +234,74 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
             date: finalIsoDate,
             type: ActivityType.HARVEST,
             tillageType: selectedType,
-            fieldIds: Array.from(selectedFieldIds),
+            fieldIds: isZukauf ? [] : Array.from(selectedFieldIds),
             amount: amount,
             unit: 'Stk',
             fieldDistribution: fieldDist,
-            notes: notes || `${selectedType}`,
+            notes: isZukauf ? `Zukauf: ${notes || selectedType}` : (notes || `${selectedType}`),
             year: new Date(finalIsoDate).getFullYear()
         };
-        onSave(record, [`Menge: ${amount} Stk`, `Art: ${selectedType}`]);
+        onSave(record, [`Menge: ${amount} Stk`, `Art: ${selectedType}`, isZukauf ? 'Typ: Zukauf' : '']);
     };
 
     return (
         <div className="flex-1 overflow-y-auto bg-white flex flex-col h-full">
             <div className="bg-yellow-500 p-4 text-white shrink-0"><button onClick={onCancel} className="flex items-center text-white/80 mb-2 text-sm font-bold"><ChevronLeft className="mr-1" size={16}/> Zurück</button><h2 className="text-xl font-bold flex items-center"><Wheat className="mr-2" size={24} /> Ernte erfassen</h2></div>
             <div className="p-4 space-y-4 pb-20 overflow-y-auto">
+                
+                {/* ZUKAUF OPTION */}
+                <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 flex justify-between items-center">
+                    <div className="flex items-center">
+                        <ShoppingCart className="text-blue-600 mr-3" size={20}/>
+                        <div>
+                            <div className="font-bold text-sm text-slate-800">Zukauf / Import</div>
+                            <div className="text-[10px] text-slate-500 font-medium">Keine Zuordnung zu Feldstücken nötig</div>
+                        </div>
+                    </div>
+                    <button 
+                        onClick={() => setIsZukauf(!isZukauf)}
+                        className={`w-12 h-6 rounded-full transition-colors relative ${isZukauf ? 'bg-blue-600' : 'bg-slate-300'}`}
+                    >
+                        <div className={`absolute top-1 w-4 h-4 bg-white rounded-full transition-all ${isZukauf ? 'left-7' : 'left-1'}`} />
+                    </button>
+                </div>
+
                 <div><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Erntegut / Typ</label><select value={selectedType} onChange={e => setSelectedType(e.target.value)} className="w-full p-3 border rounded-lg font-bold bg-white">{categories.map(c => <option key={c.id} value={c.name}>{c.name}</option>)}</select></div>
                 <div className="flex space-x-2"><div className="flex-1"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Menge (Ballen/Stk)</label><input type="number" value={amount || ''} onChange={e => setAmount(parseFloat(e.target.value))} className="w-full border p-3 rounded-lg font-bold" /></div><div className="flex-1"><label className="block text-xs font-bold text-slate-500 uppercase mb-1">Datum</label><input type="date" value={date} onChange={e => setDate(e.target.value)} className="w-full border p-3 rounded-lg font-bold" /></div></div>
-                <div className="border rounded-xl max-h-64 overflow-y-auto bg-slate-50 shadow-inner">
-                  {fields.map(f => (
-                    <FieldListEntry 
-                        key={f.id} 
-                        field={f} 
-                        isSelected={selectedFieldIds.has(f.id)} 
-                        onClick={() => { const n = new Set(selectedFieldIds); if(n.has(f.id)) n.delete(f.id); else n.add(f.id); setSelectedFieldIds(n); }} 
-                        activeColorClass="bg-lime-50"
-                    />
-                  ))}
+                
+                <div className="space-y-2">
+                    <div className="flex justify-between items-center">
+                        <label className="block text-xs font-bold text-slate-500 uppercase">
+                            {isZukauf ? 'Felder (Deaktiviert bei Zukauf)' : 'Felder wählen'}
+                        </label>
+                    </div>
+                    <div className="border rounded-xl max-h-64 overflow-y-auto bg-slate-50 shadow-inner">
+                        {fields.map(f => (
+                            <FieldListEntry 
+                                key={f.id} 
+                                field={f} 
+                                isSelected={selectedFieldIds.has(f.id)} 
+                                disabled={isZukauf}
+                                onClick={() => { const n = new Set(selectedFieldIds); if(n.has(f.id)) n.delete(f.id); else n.add(f.id); setSelectedFieldIds(n); }} 
+                                activeColorClass="bg-lime-50"
+                            />
+                        ))}
+                    </div>
                 </div>
+
                 <div>
                      <label className="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center">
                         <MessageSquare size={14} className="mr-1"/> Anmerkungen
                      </label>
                      <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full border p-3 rounded-lg text-sm bg-white" rows={2} placeholder="Notizen zur Erntequalität etc..."/>
                 </div>
-                <button onClick={handleSave} disabled={amount <= 0 || selectedFieldIds.size === 0} className="w-full bg-green-600 text-white py-4 rounded-xl font-black shadow-lg uppercase tracking-widest">Speichern</button>
+                <button 
+                    onClick={handleSave} 
+                    disabled={amount <= 0 || (!isZukauf && selectedFieldIds.size === 0)} 
+                    className="w-full bg-green-600 text-white py-4 rounded-xl font-black shadow-lg uppercase tracking-widest disabled:opacity-50"
+                >
+                    Speichern
+                </button>
             </div>
         </div>
     );
