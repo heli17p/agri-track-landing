@@ -18,6 +18,14 @@ export interface CustomFirebaseConfig {
 }
 
 export const STORAGE_KEY_CUSTOM_FIREBASE = 'agritrack_custom_firebase_config';
+export const STORAGE_KEY_SETTINGS = 'agritrack_settings_full'; // Unified key
+export const STORAGE_KEY_ACTIVITIES = 'agritrack_activities';
+export const STORAGE_KEY_TRIPS = 'agritrack_trips';
+export const STORAGE_KEY_FIELDS = 'agritrack_fields';
+export const STORAGE_KEY_STORAGE = 'agritrack_storage';
+export const STORAGE_KEY_PROFILE = 'agritrack_profile';
+export const STORAGE_KEY_EQUIPMENT = 'agritrack_equipment';
+export const STORAGE_KEY_CATEGORIES = 'agritrack_tillage_categories';
 
 /* 
   --- AGRICLOUD STANDARD / FALLBACK KONFIGURATION ---
@@ -255,10 +263,21 @@ export const saveCustomFirebaseConfig = async (config: CustomFirebaseConfig & { 
   if (targetFarmId) {
     settings.farmId = targetFarmId;
   }
-  if (config.farmPin) {
+  if (config.farmPin !== undefined) {
     settings.farmPin = config.farmPin;
   }
   localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+
+  if (isCloudConfigured() && auth?.currentUser) {
+    try {
+      await db.collection("settings").doc(auth.currentUser.uid).set({
+        ...settings,
+        userId: auth.currentUser.uid,
+        ownerEmail: auth.currentUser.email || '',
+        updatedAt: firebase.firestore.Timestamp.now()
+      });
+    } catch (e) {}
+  }
 
   if (db) {
     try {
@@ -346,16 +365,6 @@ export const decodeFarmShareUrl = (token: string): (CustomFirebaseConfig & { far
   }
   return null;
 };
-
-// --- LOCAL STORAGE KEYS ---
-const STORAGE_KEY_SETTINGS = 'agritrack_settings_full'; // Unified key
-const STORAGE_KEY_ACTIVITIES = 'agritrack_activities';
-const STORAGE_KEY_TRIPS = 'agritrack_trips';
-const STORAGE_KEY_FIELDS = 'agritrack_fields';
-const STORAGE_KEY_STORAGE = 'agritrack_storage';
-const STORAGE_KEY_PROFILE = 'agritrack_profile';
-const STORAGE_KEY_EQUIPMENT = 'agritrack_equipment';
-const STORAGE_KEY_CATEGORIES = 'agritrack_tillage_categories'; // NEU
 
 // --- HARD RESET ---
 export const hardReset = async () => {

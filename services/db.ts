@@ -378,10 +378,13 @@ export const dbService = {
             const userId = auth.currentUser!.uid;
             const mySettingsDoc = await db.collection("settings").doc(userId).get();
             if (!mySettingsDoc.exists && currentLocalSettings.farmId) {
-                const resetSettings = { ...DEFAULT_SETTINGS };
-                localStorage.setItem('agritrack_settings_full', JSON.stringify(resetSettings));
-                window.location.reload();
-                return { success: false, message: 'Hof-Zuordnung entfernt.' };
+                // Neuer bzw. beigetretener Benutzer: Speichere Hof-Einstellungen in der Cloud
+                await db.collection("settings").doc(userId).set({
+                    ...currentLocalSettings,
+                    userId: userId,
+                    ownerEmail: auth.currentUser?.email || '',
+                    updatedAt: firebase.firestore.Timestamp.now()
+                });
             }
         } catch(e) { console.error("Identity check failed", e); }
 
@@ -759,4 +762,3 @@ export const dbService = {
         });
     }
 };
-

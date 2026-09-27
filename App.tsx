@@ -13,7 +13,7 @@ import { dbService } from './services/db';
 import { syncData } from './services/sync';
 import { AdminFarmManager } from './components/AdminFarmManager';
 import { JoinFarmCloudModal } from './components/JoinFarmCloudModal';
-import { decodeFarmShareUrl, CustomFirebaseConfig, getCustomFirebaseConfig } from './services/storage';
+import { decodeFarmShareUrl, CustomFirebaseConfig, getCustomFirebaseConfig, loadSettings } from './services/storage';
 
 // Liste der festen Super-Admins (Hardcoded Fallback)
 const CORE_ADMINS = [
@@ -96,7 +96,7 @@ const App: React.FC = () => {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
-  const [pendingCloudInvite, setPendingCloudInvite] = useState<(CustomFirebaseConfig & { farmPin?: string }) | null>(null);
+  const [pendingCloudInvite, setPendingCloudInvite] = useState<(CustomFirebaseConfig & { farmPin?: string; farmId?: string }) | null>(null);
 
   useEffect(() => {
       try {
@@ -105,10 +105,16 @@ const App: React.FC = () => {
           if (cloudParam) {
               const decoded = decodeFarmShareUrl(cloudParam);
               if (decoded) {
-                  // Prüfe, ob genau diese Betriebs-Cloud bereits aktiv ist
+                  // Prüfe, ob genau dieses Cloud-Projekt UND Farm-ID/PIN bereits aktiv sind
                   const currentCustom = getCustomFirebaseConfig();
-                  if (currentCustom && currentCustom.projectId === decoded.projectId && currentCustom.apiKey === decoded.apiKey) {
-                      // Bereits verbunden: URL sofort säubern, kein störendes Popup mehr
+                  const currentSettings = loadSettings();
+                  const sameProject = currentCustom && currentCustom.projectId === decoded.projectId && currentCustom.apiKey === decoded.apiKey;
+                  const targetFarmId = decoded.farmId || decoded.projectId;
+                  const sameFarmId = currentSettings.farmId === targetFarmId;
+                  const samePin = !decoded.farmPin || currentSettings.farmPin === decoded.farmPin;
+
+                  if (sameProject && sameFarmId && samePin) {
+                      // Bereits vollständig so eingerichtet: URL sofort säubern
                       window.history.replaceState({}, '', window.location.pathname);
                   } else {
                       setPendingCloudInvite(decoded);

@@ -1,13 +1,15 @@
 
 import React, { useState } from 'react';
-import { UserPlus, Plus, ShieldCheck, Key, ArrowRight, Loader2, LogOut, Tractor } from 'lucide-react';
+import { UserPlus, Plus, ShieldCheck, Key, ArrowRight, Loader2, LogOut, Tractor, CheckCircle2 } from 'lucide-react';
 import { dbService } from '../services/db';
 import { authService } from '../services/auth';
+import { loadSettings } from '../services/storage';
 
 export const WelcomeGate: React.FC<{ onSetupComplete: () => void }> = ({ onSetupComplete }) => {
-    const [mode, setMode] = useState<'CHOOSE' | 'JOIN' | 'CREATE'>('CHOOSE');
-    const [farmId, setFarmId] = useState('');
-    const [pin, setPin] = useState('');
+    const initialSettings = loadSettings();
+    const [mode, setMode] = useState<'CHOOSE' | 'JOIN' | 'CREATE'>(initialSettings.farmId ? 'JOIN' : 'CHOOSE');
+    const [farmId, setFarmId] = useState(initialSettings.farmId || '');
+    const [pin, setPin] = useState(initialSettings.farmPin || '');
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
 
@@ -112,11 +114,22 @@ export const WelcomeGate: React.FC<{ onSetupComplete: () => void }> = ({ onSetup
                             />
                         </div>
                         {error && <p className="text-red-500 text-xs font-bold bg-red-50 p-2 rounded-lg">{error}</p>}
+                        {initialSettings.farmId && (
+                            <div className="bg-blue-50 border border-blue-200 p-2.5 rounded-xl text-left text-xs text-blue-900">
+                                <span className="font-bold flex items-center text-blue-700">
+                                    <CheckCircle2 size={13} className="mr-1 text-blue-600" /> Aus QR-Code übernommen:
+                                </span>
+                                <div className="mt-1 flex justify-between font-mono font-bold text-[11px]">
+                                    <span>Farm: {initialSettings.farmId}</span>
+                                    <span>PIN: {initialSettings.farmPin || 'Keine'}</span>
+                                </div>
+                            </div>
+                        )}
                         <div className="flex space-x-2 pt-2">
                             <button onClick={() => setMode('CHOOSE')} className="flex-1 py-4 text-slate-400 font-bold">Zurück</button>
                             <button 
                                 onClick={handleJoin} 
-                                disabled={loading || !farmId || !pin} 
+                                disabled={loading || !farmId} 
                                 className="flex-[2] bg-blue-600 text-white py-4 rounded-xl font-black shadow-lg shadow-blue-200 flex items-center justify-center disabled:opacity-50"
                             >
                                 {loading ? <Loader2 className="animate-spin" /> : 'BEITRETEN'}
@@ -153,4 +166,3 @@ export const WelcomeGate: React.FC<{ onSetupComplete: () => void }> = ({ onSetup
         </div>
     );
 };
-
