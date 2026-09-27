@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, QrCode, Copy, Check, Share2, Sparkles, ShieldCheck, Database, Smartphone } from 'lucide-react';
-import QRCode from 'qrcode';
+import { X, QrCode, Copy, Check, Share2, Smartphone } from 'lucide-react';
 import { CustomFirebaseConfig, generateFarmShareUrl } from '../../services/storage';
+import { drawQrToCanvas } from '../../utils/qrGenerator';
 
 interface Props {
   show: boolean;
@@ -13,32 +13,27 @@ interface Props {
 export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [copiedLink, setCopiedLink] = useState(false);
-  const [copiedText, setCopiedText] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
+  const [qrRenderFailed, setQrRenderFailed] = useState(false);
 
   useEffect(() => {
     if (show && config) {
       const url = generateFarmShareUrl(config, farmPin);
       setShareUrl(url);
+      setQrRenderFailed(false);
 
-      // Render QR-Code
+      // Render QR-Code using zero-dependency pure TypeScript generator
       setTimeout(() => {
         if (canvasRef.current) {
-          QRCode.toCanvas(
-            canvasRef.current,
-            url,
-            {
-              width: 240,
-              margin: 2,
-              color: {
-                dark: '#0f172a',
-                light: '#ffffff'
-              }
-            },
-            (err) => {
-              if (err) console.error('QR code render error:', err);
-            }
-          );
+          const success = drawQrToCanvas(canvasRef.current, url, {
+            size: 240,
+            margin: 2,
+            darkColor: '#0f172a',
+            lightColor: '#ffffff'
+          });
+          if (!success) {
+            setQrRenderFailed(true);
+          }
         }
       }, 50);
     }
@@ -67,6 +62,9 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
     }
   };
 
+  // Safe fallback image URL in case canvas is blocked in certain embedded webviews
+  const fallbackQrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=240x240&data=${encodeURIComponent(shareUrl)}`;
+
   return (
     <div className="fixed inset-0 z-[2600] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-sm animate-in fade-in">
       <div className="bg-white rounded-3xl shadow-2xl w-full max-w-md overflow-hidden flex flex-col border border-slate-200">
@@ -94,8 +92,16 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
         <div className="p-6 overflow-y-auto space-y-5 text-center">
           
           <div className="flex flex-col items-center justify-center">
-            <div className="p-3 bg-white border-2 border-slate-200 rounded-2xl shadow-inner inline-block">
-              <canvas ref={canvasRef} className="rounded-lg max-w-full" />
+            <div className="p-3 bg-white border-2 border-slate-200 rounded-2xl shadow-inner inline-block min-w-[240px] min-h-[240px] flex items-center justify-center">
+              {!qrRenderFailed ? (
+                <canvas ref={canvasRef} className="rounded-lg max-w-full" />
+              ) : (
+                <img 
+                  src={fallbackQrUrl} 
+                  alt="Betriebs-QR-Code" 
+                  className="w-[240px] h-[240px] rounded-lg object-contain"
+                />
+              )}
             </div>
             <div className="mt-3 flex items-center justify-center space-x-2 text-xs font-bold text-slate-500">
               <Smartphone size={14} className="text-slate-400" />
