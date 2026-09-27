@@ -7,8 +7,8 @@ import { MapPage } from '../pages/MapPage';
 import { FieldsPage } from '../pages/FieldsPage';
 import { SettingsPage } from '../pages/SettingsPage';
 import { WelcomeGate } from './WelcomeGate';
-import { ShieldCheck, CloudOff, RefreshCw } from 'lucide-react';
-import { isCloudConfigured, auth, db } from '../services/storage';
+import { ShieldCheck, CloudOff, RefreshCw, Database } from 'lucide-react';
+import { isCloudConfigured, auth, db, isCustomCloudActive } from '../services/storage';
 import { dbService } from '../services/db';
 import { AppSettings, DEFAULT_SETTINGS } from '../types';
 
@@ -84,9 +84,9 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
       setCurrentView('MAP');
   };
 
-  const [settingsTab, setSettingsTab] = useState<'profile' | 'storage' | 'general' | 'sync' | 'equipment'>('profile');
+  const [settingsTab, setSettingsTab] = useState<'profile' | 'storage' | 'general' | 'sync' | 'equipment' | 'cloud'>('profile');
 
-  const openSettingsTab = (tab: 'profile' | 'storage' | 'general' | 'sync' | 'equipment') => {
+  const openSettingsTab = (tab: 'profile' | 'storage' | 'general' | 'sync' | 'equipment' | 'cloud') => {
       setSettingsTab(tab);
       setCurrentView('SETTINGS');
   };
@@ -141,11 +141,20 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
             <h2 className="font-extrabold text-slate-800 tracking-tight">AgriTrack Austria</h2>
             <div className="flex items-center">
                 <button 
-                    onClick={() => openSettingsTab('sync')}
-                    className={`text-[10px] font-bold px-2 py-1 rounded-full flex items-center transition-colors hover:opacity-80 ${isLive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500'}`}
-                    title="Hof Verbindung & Erweiterungen"
+                    onClick={() => openSettingsTab('cloud')}
+                    className={`text-[10px] font-bold px-2.5 py-1 rounded-full flex items-center transition-colors hover:opacity-80 ${
+                        isCustomCloudActive()
+                            ? 'bg-emerald-100 text-emerald-800 border border-emerald-300 shadow-sm'
+                            : (isLive ? 'bg-green-100 text-green-700' : 'bg-slate-100 text-slate-500')
+                    }`}
+                    title="Betriebs-Cloud & Datenbank-Einstellungen"
                 >
-                {isLive ? (
+                {isCustomCloudActive() ? (
+                    <>
+                        <Database className="w-3 h-3 mr-1 text-emerald-600" />
+                        BETRIEBS-CLOUD
+                    </>
+                ) : isLive ? (
                     <>
                         <ShieldCheck className="w-3 h-3 mr-1" />
                         AGRICLOUD
@@ -191,4 +200,3 @@ export const AgriTrackApp: React.FC<Props> = ({ onFullScreenToggle }) => {
     </div>
   );
 };
-

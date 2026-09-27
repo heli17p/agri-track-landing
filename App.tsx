@@ -12,6 +12,8 @@ import { authService } from './services/auth';
 import { dbService } from './services/db';
 import { syncData } from './services/sync';
 import { AdminFarmManager } from './components/AdminFarmManager';
+import { JoinFarmCloudModal } from './components/JoinFarmCloudModal';
+import { decodeFarmShareUrl, CustomFirebaseConfig } from './services/storage';
 
 // Liste der festen Super-Admins (Hardcoded Fallback)
 const CORE_ADMINS = [
@@ -94,6 +96,22 @@ const App: React.FC = () => {
   const [isLoadingAuth, setIsLoadingAuth] = useState(true);
   const [currentUserEmail, setCurrentUserEmail] = useState<string | null>(null);
   const [isFullScreen, setIsFullScreen] = useState(false);
+  const [pendingCloudInvite, setPendingCloudInvite] = useState<(CustomFirebaseConfig & { farmPin?: string }) | null>(null);
+
+  useEffect(() => {
+      try {
+          const params = new URLSearchParams(window.location.search);
+          const cloudParam = params.get('custom_cloud');
+          if (cloudParam) {
+              const decoded = decodeFarmShareUrl(cloudParam);
+              if (decoded) {
+                  setPendingCloudInvite(decoded);
+              }
+          }
+      } catch (e) {
+          console.error("Fehler beim Verarbeiten des Einladungslinks:", e);
+      }
+  }, []);
 
   useEffect(() => {
       const guestPref = localStorage.getItem('agritrack_guest_mode');
@@ -254,9 +272,18 @@ const App: React.FC = () => {
           </div>
         )}
       </main>
+
+      {pendingCloudInvite && (
+        <JoinFarmCloudModal
+          invite={pendingCloudInvite}
+          onClose={() => {
+            setPendingCloudInvite(null);
+            window.history.replaceState({}, '', window.location.pathname);
+          }}
+        />
+      )}
     </div>
   );
 };
 
 export default App;
-

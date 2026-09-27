@@ -4,6 +4,7 @@ import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, C
 import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, EquipmentCategory, ActivityType } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
 import { dbService, generateId } from '../../services/db';
+import { isCustomCloudActive, getActiveFirebaseConfig } from '../../services/storage';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -534,16 +535,30 @@ export const SyncTab: React.FC<{ authState: any, settings: AppSettings, cloudSta
         <div className="space-y-6 max-w-lg mx-auto pb-10">
             
             {/* AGRICLOUD / FIREBASE INFO CARD */}
-            <div className="bg-gradient-to-br from-green-600 to-green-800 text-white p-6 rounded-2xl shadow-xl overflow-hidden relative">
+            <div className={`p-6 rounded-2xl shadow-xl overflow-hidden relative text-white ${
+                isCustomCloudActive() 
+                    ? 'bg-gradient-to-br from-emerald-700 via-teal-800 to-slate-900' 
+                    : 'bg-gradient-to-br from-green-600 to-green-800'
+            }`}>
                 <div className="absolute top-0 right-0 p-4 opacity-10"><Cloud size={80}/></div>
                 <div className="relative z-10">
-                    <div className="flex items-center space-x-2 mb-2 text-green-200 font-bold uppercase text-[10px] tracking-[0.2em]"><ShieldCheck size={14}/> <span>Echtzeit-Sicherung</span></div>
-                    <h3 className="text-xl font-black mb-2 italic">AgriCloud <span className="text-green-300">Live</span></h3>
-                    <p className="text-green-50 text-xs leading-relaxed mb-4">Deine Daten werden sicher in der <span className="white font-bold underline">AgriCloud (Firebase)</span> verschlüsselt gespeichert und automatisch über alle deine Geräte synchronisiert.</p>
-                    <div className="flex items-center space-x-3">
+                    <div className="flex items-center space-x-2 mb-2 text-green-200 font-bold uppercase text-[10px] tracking-[0.2em]">
+                        <ShieldCheck size={14}/> 
+                        <span>{isCustomCloudActive() ? 'Eigene Betriebs-Cloud' : 'Echtzeit-Sicherung'}</span>
+                    </div>
+                    <h3 className="text-xl font-black mb-2 italic">
+                        {isCustomCloudActive() ? 'Private Betriebs-DB' : 'AgriCloud'} <span className="text-green-300">Live</span>
+                    </h3>
+                    <p className="text-green-50 text-xs leading-relaxed mb-4">
+                        {isCustomCloudActive() 
+                            ? `Deine Daten werden in deiner privaten Google Firebase-Datenbank (${getActiveFirebaseConfig().config.projectId}) verschlüsselt gespeichert – 100% DSGVO-sicher und getrennt von anderen Betrieben.`
+                            : `Deine Daten werden sicher in der AgriCloud (Firebase) verschlüsselt gespeichert und automatisch über alle deine Geräte synchronisiert.`
+                        }
+                    </p>
+                    <div className="flex flex-wrap items-center gap-2">
                         <div className="bg-white/20 text-white px-3 py-1 rounded-full text-[10px] font-bold border border-white/30 flex items-center">
                             <div className="w-1.5 h-1.5 bg-green-300 rounded-full mr-2 animate-pulse"></div>
-                            CONNECTED TO CLOUD
+                            {isCustomCloudActive() ? 'CONNECTED TO PRIVATE CLOUD' : 'CONNECTED TO CLOUD'}
                         </div>
                     </div>
                 </div>
@@ -672,4 +687,3 @@ export const SyncTab: React.FC<{ authState: any, settings: AppSettings, cloudSta
         </div>
     );
 };
-

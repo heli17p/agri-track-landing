@@ -9,8 +9,9 @@ import { MapContainer, TileLayer, Marker, useMapEvents, useMap } from 'react-lea
 import L from 'leaflet';
 import { ProfileTab, StorageTab, GeneralTab, SyncTab, EquipmentTab } from '../components/settings/SettingsTabs';
 import { DiagnosticModal, RulesHelpModal, StorageEditModal } from '../components/settings/SettingsModals';
+import { CustomCloudTab } from '../components/settings/CustomCloudTab';
 
-interface Props { initialTab?: 'profile' | 'storage' | 'general' | 'sync' | 'equipment'; }
+interface Props { initialTab?: 'profile' | 'storage' | 'general' | 'sync' | 'equipment' | 'cloud'; }
 
 // Icons Helper für Hof-Marker
 const createCustomIcon = (color: string, path: string) => L.divIcon({ className: 'custom-pin', html: `<div style="background-color: ${color}; width: 32px; height: 32px; border-radius: 50%; border: 2px solid white; display: flex; align-items: center; justify-content: center; color: white;"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">${path}</svg></div>`, iconSize: [32, 32], iconAnchor: [16, 16] });
@@ -156,10 +157,11 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
                     { id: 'profile', icon: User, label: 'Betrieb' },
                     { id: 'storage', icon: Database, label: 'Lager' },
                     { id: 'equipment', icon: Wrench, label: 'Geräte' },
-                    { id: 'general', icon: Settings, label: 'Optionen' },
-                    { id: 'sync', icon: Cloud, label: 'Sync' }
+                    { id: 'cloud', icon: Cloud, label: 'Betriebs-Cloud' },
+                    { id: 'sync', icon: RefreshCw, label: 'Sync & Backup' },
+                    { id: 'general', icon: Settings, label: 'Optionen' }
                 ].map(tab => (
-                    <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex-1 py-4 px-4 flex flex-col items-center min-w-[80px] border-b-2 transition-colors ${activeTab === tab.id ? 'border-green-600 text-green-700 bg-green-50/50' : 'border-transparent text-slate-500'}`}><tab.icon size={20} className="mb-1" /><span className="text-xs font-bold">{tab.label}</span></button>
+                    <button key={tab.id} onClick={() => setActiveTab(tab.id as any)} className={`flex-1 py-4 px-4 flex flex-col items-center min-w-[80px] border-b-2 transition-colors ${activeTab === tab.id ? 'border-green-600 text-green-700 bg-green-50/50' : 'border-transparent text-slate-500'}`}><tab.icon size={20} className="mb-1" /><span className="text-xs font-bold whitespace-nowrap">{tab.label}</span></button>
                 ))}
             </div>
         </div>
@@ -168,6 +170,7 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
             {activeTab === 'profile' && <ProfileTab profile={profile} setProfile={setProfile} onPickMap={() => setShowMapPicker('profile')} />}
             {activeTab === 'storage' && <StorageTab storages={storages} onEdit={setEditingStorage} onCreate={() => setEditingStorage({ id: generateId(), name: '', type: FertilizerType.SLURRY, capacity: 100, currentLevel: 0, dailyGrowth: 0.5, geo: { lat: 47.5, lng: 14.5 } })} />}
             {activeTab === 'equipment' && <EquipmentTab equipment={equipment} onUpdate={loadAll} />}
+            {activeTab === 'cloud' && <CustomCloudTab settings={settings} onUpdateSettings={setSettings} />}
             {activeTab === 'general' && <GeneralTab settings={settings} setSettings={setSettings} />}
             {activeTab === 'sync' && <SyncTab 
                 authState={authState} settings={settings} cloudStats={cloudStats} localStats={localStats} 
@@ -243,4 +246,3 @@ export const SettingsPage: React.FC<Props> = ({ initialTab = 'profile' }) => {
     </div>
   );
 };
-

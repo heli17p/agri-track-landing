@@ -6,20 +6,60 @@ import 'firebase/compat/firestore';
 import 'firebase/compat/auth';
 import { dbService } from './db';
 
-/* 
-  --- AGRICLOUD MASTER KONFIGURATION ---
-  Status: ACTIVE
-*/
+export interface CustomFirebaseConfig {
+  apiKey: string;
+  authDomain?: string;
+  projectId: string;
+  storageBucket?: string;
+  messagingSenderId?: string;
+  appId: string;
+  measurementId?: string;
+  farmName?: string;
+}
 
-const FIREBASE_CONFIG = {
+export const STORAGE_KEY_CUSTOM_FIREBASE = 'agritrack_custom_firebase_config';
+
+/* 
+  --- AGRICLOUD STANDARD / FALLBACK KONFIGURATION ---
+  Status: ACTIVE (Zentrales Demoprojekt)
+*/
+const DEFAULT_FIREBASE_CONFIG: CustomFirebaseConfig = {
   apiKey: "AIzaSyAyVM8YA2F3XWj0K4grk5pcbB5NMgzzoow",
   authDomain: "agritrack-austria.firebaseapp.com",
   projectId: "agritrack-austria",
   storageBucket: "agritrack-austria.firebasestorage.app",
   messagingSenderId: "384737537234",
   appId: "1:384737537234:web:372b7fb5ed90bc0f7d510b",
-  measurementId: "G-YL5BQ30Y4Z"
+  measurementId: "G-YL5BQ30Y4Z",
+  farmName: "AgriTrack Gemeinschafts-Cloud"
 };
+
+export const getCustomFirebaseConfig = (): CustomFirebaseConfig | null => {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_CUSTOM_FIREBASE);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (parsed && parsed.apiKey && parsed.projectId) {
+      return parsed;
+    }
+  } catch (e) {
+    console.error("Fehler beim Lesen der benutzerdefinierten Firebase-Config:", e);
+  }
+  return null;
+};
+
+export const getActiveFirebaseConfig = (): { config: CustomFirebaseConfig; isCustom: boolean } => {
+  const custom = getCustomFirebaseConfig();
+  if (custom) {
+    return { config: custom, isCustom: true };
+  }
+  return { config: DEFAULT_FIREBASE_CONFIG, isCustom: false };
+};
+
+const activeConfigData = getActiveFirebaseConfig();
+const FIREBASE_CONFIG = activeConfigData.config;
+export const IS_USING_CUSTOM_CLOUD = activeConfigData.isCustom;
+export const isCustomCloudActive = () => IS_USING_CUSTOM_CLOUD;
 
 // Initialize Firebase
 let db: firebase.firestore.Firestore = null as any;
@@ -45,7 +85,7 @@ try {
         }
     });
 
-    console.log("[AgriCloud] Firebase & Auth initialized successfully.");
+    console.log(`[AgriCloud] Firebase & Auth initialisiert. Modus: ${IS_USING_CUSTOM_CLOUD ? 'EIGENE BETRIEBS-CLOUD (' + FIREBASE_CONFIG.projectId + ')' : 'STANDARD-CLOUD'}`);
 } catch (e) {
     console.error("[AgriCloud] Initialization failed:", e);
 }
@@ -55,6 +95,186 @@ export { auth, db }; // Export DB for direct access if needed
 // Check Cloud Status
 export const isCloudConfigured = () => {
     return !!db && !!auth?.currentUser;
+};
+
+// Parser für Konfigurationstext (JSON oder JS Snippet)
+export const parseFirebaseConfigInput = (raw: string): CustomFirebaseConfig | null => {
+  if (!raw || !raw.trim()) return null;
+  const trimmed = raw.trim();
+
+  // 1. Reines JSON versuchen
+  try {
+    const parsed = JSON.parse(trimmed);
+    if (parsed && parsed.apiKey && (parsed.projectId || parsed.appId)) {
+      return {
+        apiKey: String(parsed.apiKey).trim(),
+        authDomain: parsed.authDomain ? String(parsed.authDomain).trim() : `${parsed.projectId}.firebaseapp.com`,
+        projectId: String(parsed.projectId || '').trim(),
+        storageBucket: parsed.storageBucket ? String(parsed.storageBucket).trim() : `${parsed.projectId}.appspot.com`,
+        messagingSenderId: parsed.messagingSenderId ? String(parsed.messagingSenderId).trim() : '',
+        appId: String(parsed.appId || '').trim(),
+        measurementId: parsed.measurementId ? String(parsed.measurementId).trim() : '',
+        farmName: parsed.farmName ? String(parsed.farmName).trim() : ''
+      };
+    }
+  } catch (e) {
+    // Weiter mit Regex-Extraktion
+  }
+
+  // 2. Extraktion per Regex für JS Snippets (const firebaseConfig = { ... })
+  const extract = (key: string): string => {
+    const regex = new RegExp(`["']?${key}["']?\\s*:\\s*["']([^"']+)["']`, 'i');
+    const match = trimmed.match(regex);
+    return match ? match[1].trim() : '';
+  };
+
+  const apiKey = extract('apiKey');
+  const projectId = extract('projectId');
+  const appId = extract('appId');
+  const authDomain = extract('authDomain');
+  const storageBucket = extract('storageBucket');
+  const messagingSenderId = extract('messagingSenderId');
+  const measurementId = extract('measurementId');
+
+  if (apiKey && projectId) {
+    return {
+      apiKey,
+      projectId,
+      appId: appId || '',
+      authDomain: authDomain || `${projectId}.firebaseapp.com`,
+      storageBucket: storageBucket || `${projectId}.appspot.com`,
+      messagingSenderId: messagingSenderId || '',
+      measurementId: measurementId || '',
+      farmName: ''
+    };
+  }
+
+  return null;
+};
+
+// Verbindungstest für ein Firebase-Projekt
+export const testCustomFirebaseConfig = async (config: CustomFirebaseConfig): Promise<{ success: boolean; message: string }> => {
+  if (!config.apiKey || !config.projectId) {
+    return { success: false, message: 'API-Key und Project-ID sind erforderlich.' };
+  }
+
+  const tempName = 'test_app_' + Date.now();
+  let tempApp: firebase.app.App | null = null;
+  try {
+    const fullConfig = {
+      apiKey: config.apiKey,
+      authDomain: config.authDomain || `${config.projectId}.firebaseapp.com`,
+      projectId: config.projectId,
+      storageBucket: config.storageBucket || `${config.projectId}.appspot.com`,
+      messagingSenderId: config.messagingSenderId || '',
+      appId: config.appId || '1:000000000000:web:0000000000000000000000'
+    };
+    tempApp = firebase.initializeApp(fullConfig, tempName);
+    const tempDb = tempApp.firestore();
+
+    const timeout = new Promise<never>((_, reject) => 
+      setTimeout(() => reject(new Error('Zeitüberschreitung (Timeout nach 6 Sek.). Bitte Internetverbindung und Projekt-ID prüfen.')), 6000)
+    );
+
+    const query = tempDb.collection('_agritrack_test').doc('handshake').get();
+    await Promise.race([query, timeout]);
+
+    return { 
+      success: true, 
+      message: `Verbindung zur Datenbank "${config.projectId}" erfolgreich hergestellt! Lese- und Schreibzugriff funktioniert.` 
+    };
+  } catch (err: any) {
+    console.error('Test DB connection error:', err);
+    const msg = err?.message || String(err);
+    if (msg.includes('permission-denied') || msg.includes('PERMISSION_DENIED')) {
+      return {
+        success: false,
+        message: `Verbindung zum Projekt "${config.projectId}" steht, aber Sicherheitsregeln blockieren den Zugriff. Bitte in der Firebase-Konsole unter "Firestore Database" -> "Regeln" den Zugriff erlauben (z. B. "allow read, write: if true;" im Testmodus).`
+      };
+    }
+    if (msg.includes('project-not-found') || msg.includes('NOT_FOUND')) {
+      return {
+        success: false,
+        message: `Projekt "${config.projectId}" wurde bei Google nicht gefunden. Bitte prüfe die Projekt-ID.`
+      };
+    }
+    return {
+      success: false,
+      message: `Verbindungsfehler: ${msg}`
+    };
+  } finally {
+    if (tempApp) {
+      try {
+        await tempApp.delete();
+      } catch (e) {}
+    }
+  }
+};
+
+// Speichern und App neu laden
+export const saveCustomFirebaseConfig = async (config: CustomFirebaseConfig) => {
+  localStorage.setItem(STORAGE_KEY_CUSTOM_FIREBASE, JSON.stringify(config));
+  const settings = loadSettings();
+  if (config.farmName && !settings.farmName) {
+    settings.farmName = config.farmName;
+  }
+  if (config.projectId && !settings.farmId) {
+    settings.farmId = config.projectId;
+  }
+  localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
+
+  if (db) {
+    try {
+      await db.terminate();
+      await db.clearPersistence();
+    } catch (e) {}
+  }
+  window.location.reload();
+};
+
+// Zurücksetzen auf Standard-Cloud
+export const clearCustomFirebaseConfig = async () => {
+  localStorage.removeItem(STORAGE_KEY_CUSTOM_FIREBASE);
+  if (db) {
+    try {
+      await db.terminate();
+      await db.clearPersistence();
+    } catch (e) {}
+  }
+  window.location.reload();
+};
+
+// Teilen-Link für Mitarbeiter/Familie generieren
+export const generateFarmShareUrl = (config: CustomFirebaseConfig, farmPin?: string): string => {
+  const payload = {
+    apiKey: config.apiKey,
+    authDomain: config.authDomain,
+    projectId: config.projectId,
+    storageBucket: config.storageBucket,
+    messagingSenderId: config.messagingSenderId,
+    appId: config.appId,
+    farmName: config.farmName || '',
+    farmPin: farmPin || ''
+  };
+  const jsonStr = JSON.stringify(payload);
+  const encoded = btoa(encodeURIComponent(jsonStr));
+  const url = new URL(window.location.origin + window.location.pathname);
+  url.searchParams.set('custom_cloud', encoded);
+  return url.toString();
+};
+
+// Teilen-Link decodieren
+export const decodeFarmShareUrl = (token: string): (CustomFirebaseConfig & { farmPin?: string }) | null => {
+  try {
+    const jsonStr = decodeURIComponent(atob(token));
+    const parsed = JSON.parse(jsonStr);
+    if (parsed && parsed.apiKey && parsed.projectId) {
+      return parsed;
+    }
+  } catch (e) {
+    console.error('Failed to decode farm share token', e);
+  }
+  return null;
 };
 
 // --- LOCAL STORAGE KEYS ---
@@ -349,4 +569,3 @@ export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'stor
         return [];
     }
 }
-
