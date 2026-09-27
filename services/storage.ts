@@ -97,10 +97,31 @@ export const isCloudConfigured = () => {
     return !!db && !!auth?.currentUser;
 };
 
-// Parser für Konfigurationstext (JSON oder JS Snippet)
+// Parser für Konfigurationstext (JSON, JS Snippet oder Kompakter Kopplungscode)
 export const parseFirebaseConfigInput = (raw: string): CustomFirebaseConfig | null => {
   if (!raw || !raw.trim()) return null;
   const trimmed = raw.trim();
+
+  // 0. Kompakter Kopplungscode versuchen (projectId~apiKey~appId~farmPin~farmName)
+  if (trimmed.includes('~')) {
+    const parts = trimmed.split('~');
+    if (parts.length >= 2) {
+      const projectId = parts[0]?.trim();
+      const apiKey = parts[1]?.trim();
+      const appId = parts[2]?.trim() || '';
+      const farmName = parts[4] ? decodeURIComponent(parts[4]) : '';
+      if (projectId && apiKey) {
+        return {
+          apiKey,
+          projectId,
+          appId,
+          authDomain: `${projectId}.firebaseapp.com`,
+          storageBucket: `${projectId}.appspot.com`,
+          farmName
+        };
+      }
+    }
+  }
 
   // 1. Reines JSON versuchen
   try {
@@ -256,28 +277,50 @@ export const clearCustomFirebaseConfig = async () => {
   window.location.reload();
 };
 
-// Teilen-Link für Mitarbeiter/Familie generieren
+// Teilen-Link für Mitarbeiter/Familie generieren (Ultra-Kompakt für schnelle QR-Code Erkennung)
 export const generateFarmShareUrl = (config: CustomFirebaseConfig, farmPin?: string): string => {
-  const payload = {
-    apiKey: config.apiKey,
-    authDomain: config.authDomain,
-    projectId: config.projectId,
-    storageBucket: config.storageBucket,
-    messagingSenderId: config.messagingSenderId,
-    appId: config.appId,
-    farmName: config.farmName || '',
-    farmPin: farmPin || ''
-  };
-  const jsonStr = JSON.stringify(payload);
-  const encoded = btoa(encodeURIComponent(jsonStr));
   const url = new URL(window.location.origin + window.location.pathname);
-  url.searchParams.set('custom_cloud', encoded);
+  // Kompaktes Format: projectId~apiKey~appId~farmPin~farmName
+  const compact = [
+    config.projectId || '',
+    config.apiKey || '',
+    config.appId || '',
+    farmPin || '',
+    encodeURIComponent(config.farmName || '')
+  ].join('~');
+  
+  url.searchParams.set('ccloud', compact);
   return url.toString();
 };
 
-// Teilen-Link decodieren
+// Teilen-Link decodieren (unterstützt kompaktes Format und altes Base64)
 export const decodeFarmShareUrl = (token: string): (CustomFirebaseConfig & { farmPin?: string }) | null => {
+  if (!token) return null;
   try {
+    // 1. Neues kompaktes Format
+    if (token.includes('~')) {
+      const parts = token.split('~');
+      if (parts.length >= 2) {
+        const projectId = parts[0]?.trim();
+        const apiKey = parts[1]?.trim();
+        const appId = parts[2]?.trim() || '';
+        const farmPin = parts[3]?.trim() || '';
+        const farmName = parts[4] ? decodeURIComponent(parts[4]) : '';
+        if (projectId && apiKey) {
+          return {
+            projectId,
+            apiKey,
+            appId,
+            authDomain: `${projectId}.firebaseapp.com`,
+            storageBucket: `${projectId}.appspot.com`,
+            farmPin,
+            farmName
+          };
+        }
+      }
+    }
+
+    // 2. Fallback: Altes Base64 Format
     const jsonStr = decodeURIComponent(atob(token));
     const parsed = JSON.parse(jsonStr);
     if (parsed && parsed.apiKey && parsed.projectId) {

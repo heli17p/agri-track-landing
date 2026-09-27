@@ -377,37 +377,67 @@ export function generateQrMatrix(text: string): boolean[][] {
 }
 
 /**
- * Draws the QR code to an HTML Canvas element.
+ * Generates an SVG string of the QR Code (infinitely crisp and sharp).
+ */
+export function generateQrSvg(text: string, options?: { size?: number; margin?: number; darkColor?: string; lightColor?: string }): string {
+  const matrix = generateQrMatrix(text);
+  const margin = options?.margin !== undefined ? options.margin : 4;
+  const darkColor = options?.darkColor || '#000000';
+  const lightColor = options?.lightColor || '#ffffff';
+  const numCells = matrix.length + margin * 2;
+  const size = options?.size || 280;
+
+  let rects = '';
+  for (let r = 0; r < matrix.length; r++) {
+    for (let c = 0; c < matrix[r].length; c++) {
+      if (matrix[r][c]) {
+        rects += `<rect x="${c + margin}" y="${r + margin}" width="1" height="1" fill="${darkColor}"/>`;
+      }
+    }
+  }
+
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${numCells} ${numCells}" width="${size}" height="${size}" shape-rendering="crispEdges">
+    <rect width="${numCells}" height="${numCells}" fill="${lightColor}"/>
+    ${rects}
+  </svg>`;
+}
+
+/**
+ * Draws the QR code to an HTML Canvas element with crisp pixel rendering.
  */
 export function drawQrToCanvas(canvas: HTMLCanvasElement, text: string, options?: { size?: number; margin?: number; darkColor?: string; lightColor?: string }) {
   try {
     const matrix = generateQrMatrix(text);
-    const size = options?.size || 240;
-    const margin = options?.margin !== undefined ? options.margin : 2;
-    const darkColor = options?.darkColor || '#0f172a';
+    const size = options?.size || 280;
+    const margin = options?.margin !== undefined ? options.margin : 4; // Quiet zone standard
+    const darkColor = options?.darkColor || '#000000';
     const lightColor = options?.lightColor || '#ffffff';
 
     const numCells = matrix.length + margin * 2;
-    const cellSize = size / numCells;
+    // Set actual pixel dimensions to high-res
+    const scale = window.devicePixelRatio || 2;
+    canvas.width = size * scale;
+    canvas.height = size * scale;
+    canvas.style.width = `${size}px`;
+    canvas.style.height = `${size}px`;
 
-    canvas.width = size;
-    canvas.height = size;
     const ctx = canvas.getContext('2d');
     if (!ctx) return false;
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.scale(scale, scale);
 
     ctx.fillStyle = lightColor;
     ctx.fillRect(0, 0, size, size);
 
+    const cellSize = size / numCells;
     ctx.fillStyle = darkColor;
     for (let r = 0; r < matrix.length; r++) {
       for (let c = 0; c < matrix[r].length; c++) {
         if (matrix[r][c]) {
-          ctx.fillRect(
-            Math.round((c + margin) * cellSize),
-            Math.round((r + margin) * cellSize),
-            Math.ceil(cellSize),
-            Math.ceil(cellSize)
-          );
+          const x = (c + margin) * cellSize;
+          const y = (r + margin) * cellSize;
+          ctx.fillRect(Math.floor(x), Math.floor(y), Math.ceil(cellSize), Math.ceil(cellSize));
         }
       }
     }

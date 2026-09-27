@@ -101,7 +101,7 @@ const App: React.FC = () => {
   useEffect(() => {
       try {
           const params = new URLSearchParams(window.location.search);
-          const cloudParam = params.get('custom_cloud');
+          const cloudParam = params.get('ccloud') || params.get('custom_cloud');
           if (cloudParam) {
               const decoded = decodeFarmShareUrl(cloudParam);
               if (decoded) {
