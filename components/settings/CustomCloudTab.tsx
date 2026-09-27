@@ -32,6 +32,7 @@ export const CustomCloudTab: React.FC<Props> = ({ settings, onUpdateSettings }) 
   const [authDomain, setAuthDomain] = useState('');
   const [farmName, setFarmName] = useState(settings.farmName || '');
   const [farmPin, setFarmPin] = useState(settings.farmPin || '');
+  const [farmId, setFarmId] = useState(settings.farmId || '');
 
   // Testing & Status State
   const [isTesting, setIsTesting] = useState(false);
@@ -57,6 +58,8 @@ service cloud.firestore {
       setAppId(active.config.appId || '');
       setAuthDomain(active.config.authDomain || '');
       setFarmName(active.config.farmName || settings.farmName || '');
+      setFarmPin(settings.farmPin || '');
+      setFarmId(settings.farmId || active.config.projectId || '');
     }
   }, [settings]);
 
@@ -119,13 +122,19 @@ service cloud.firestore {
 
     setIsSaving(true);
     try {
-      const newConfig: CustomFirebaseConfig = {
+      const cleanProjectId = projectId.trim();
+      const finalFarmId = farmId.trim() || settings.farmId || cleanProjectId;
+      const finalFarmPin = farmPin.trim() || settings.farmPin || '';
+
+      const newConfig: CustomFirebaseConfig & { farmPin?: string; farmId?: string } = {
         apiKey: apiKey.trim(),
-        projectId: projectId.trim(),
+        projectId: cleanProjectId,
         appId: appId.trim() || '1:000000000000:web:000000000000',
-        authDomain: authDomain.trim() || `${projectId.trim()}.firebaseapp.com`,
-        storageBucket: `${projectId.trim()}.appspot.com`,
-        farmName: farmName.trim()
+        authDomain: authDomain.trim() || `${cleanProjectId}.firebaseapp.com`,
+        storageBucket: `${cleanProjectId}.appspot.com`,
+        farmName: farmName.trim(),
+        farmPin: finalFarmPin,
+        farmId: finalFarmId
       };
 
       await saveCustomFirebaseConfig(newConfig);
@@ -178,6 +187,16 @@ service cloud.firestore {
             <span className="text-[10px] uppercase font-bold tracking-wider">Projekt-ID:</span>
             <span className="font-mono font-bold">{activeConfigData.config.projectId}</span>
           </div>
+          <div className="flex justify-between items-center opacity-90">
+            <span className="text-[10px] uppercase font-bold tracking-wider">Farm-ID:</span>
+            <span className="font-mono font-bold text-green-300">{settings.farmId || activeConfigData.config.projectId}</span>
+          </div>
+          {settings.farmPin && (
+            <div className="flex justify-between items-center opacity-90">
+              <span className="text-[10px] uppercase font-bold tracking-wider">Hof-PIN:</span>
+              <span className="font-mono font-bold">{settings.farmPin}</span>
+            </div>
+          )}
           <div className="flex justify-between items-center opacity-90">
             <span className="text-[10px] uppercase font-bold tracking-wider">Datenschutz:</span>
             <span className="font-bold flex items-center">
@@ -316,7 +335,7 @@ service cloud.firestore {
             </div>
             <div>
               <label className="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">
-                Betriebsname (optional)
+                Betriebsname
               </label>
               <input
                 type="text"
@@ -324,6 +343,34 @@ service cloud.firestore {
                 onChange={e => setFarmName(e.target.value)}
                 placeholder="z. B. Biohof Huber"
                 className="w-full p-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-bold outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 pt-1 border-t border-slate-100">
+            <div>
+              <label className="block text-[10px] font-black text-blue-600 uppercase tracking-widest mb-1">
+                Farm-ID (für Mitarbeiter)
+              </label>
+              <input
+                type="text"
+                value={farmId}
+                onChange={e => setFarmId(e.target.value)}
+                placeholder={projectId || "z. B. 1234567 oder Projekt-ID"}
+                className="w-full p-2.5 bg-blue-50/50 border border-blue-200 rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-black text-amber-600 uppercase tracking-widest mb-1">
+                Hof-PIN (Sicherheitscode)
+              </label>
+              <input
+                type="text"
+                value={farmPin}
+                onChange={e => setFarmPin(e.target.value)}
+                placeholder="z. B. 1234"
+                className="w-full p-2.5 bg-amber-50/50 border border-amber-200 rounded-xl text-xs font-mono font-bold outline-none focus:ring-2 focus:ring-amber-500"
+                maxLength={8}
               />
             </div>
           </div>
@@ -437,7 +484,9 @@ service cloud.firestore {
         show={showShareModal}
         onClose={() => setShowShareModal(false)}
         config={activeConfigData.config}
-        farmPin={settings.farmPin}
+        farmPin={settings.farmPin || farmPin}
+        farmId={settings.farmId || farmId || activeConfigData.config.projectId}
+        farmName={farmName || settings.farmName || activeConfigData.config.farmName}
       />
 
     </div>

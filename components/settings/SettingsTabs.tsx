@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2, X, Share2, Key, Users, UserMinus, ShieldAlert, FileOutput, FileInput, Box } from 'lucide-react';
+import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2, X, Share2, Key, Users, UserMinus, ShieldAlert, FileOutput, FileInput, Box, QrCode } from 'lucide-react';
 import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, EquipmentCategory, ActivityType } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
 import { dbService, generateId } from '../../services/db';
 import { isCustomCloudActive, getActiveFirebaseConfig } from '../../services/storage';
+import { FarmShareModal } from './FarmShareModal';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
 
@@ -490,6 +491,7 @@ export const GeneralTab: React.FC<{ settings: AppSettings, setSettings: (s: any)
 export const SyncTab: React.FC<{ authState: any, settings: AppSettings, cloudStats: any, localStats: any, connectMode: string, setConnectMode: (m: any) => void, inputFarmId: string, setInputFarmId: (v: string) => void, inputPin: string, setInputPin: (v: string) => void, searchStatus: string, foundOwnerEmail: string | null, connectError: string | null, onSearch: () => void, onJoin: () => void, onCreate: () => void, onForceUpload: () => void, onManualDownload: () => void, onShowDiagnose: () => void, onLogout: () => void }> = (props) => {
     const [members, setMembers] = useState<any[]>([]);
     const [loadingMembers, setLoadingMembers] = useState(false);
+    const [showShareModal, setShowShareModal] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const isOwner = props.authState && props.settings.ownerEmail === props.authState.email;
 
@@ -632,19 +634,35 @@ export const SyncTab: React.FC<{ authState: any, settings: AppSettings, cloudSta
                             </div>
                         </div>
                         
-                        <div className="mt-4 p-2 bg-blue-600 text-white rounded-lg flex items-center justify-center text-[10px] font-black uppercase tracking-widest cursor-pointer active:scale-95 transition-all" onClick={() => {
-                            const text = `Servus! Hier sind die Zugangsdaten für unseren Hof in der AgriTrack Austria App:\n\nFarm-ID: ${props.settings.farmId}\nHof-PIN: ${props.settings.farmPin}\n\nApp laden & unter Sync 'Hof beitreten' klicken.`;
-                            if (navigator.share) {
-                                navigator.share({ title: 'Hof Zugang teilen', text: text });
-                            } else {
-                                navigator.clipboard.writeText(text);
-                                alert("Zugangsdaten in die Zwischenablage kopiert!");
-                            }
-                        }}>
-                            <Share2 size={14} className="mr-2"/> Zugangsdaten per WhatsApp / SMS senden
+                        <div className="grid grid-cols-2 gap-2 mt-4">
+                            <div className="p-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl flex items-center justify-center text-[10px] font-black uppercase tracking-wider cursor-pointer active:scale-95 transition-all shadow-sm" onClick={() => setShowShareModal(true)}>
+                                <QrCode size={14} className="mr-1.5"/> QR-Code anzeigen
+                            </div>
+                            <div className="p-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl flex items-center justify-center text-[10px] font-black uppercase tracking-wider cursor-pointer active:scale-95 transition-all" onClick={() => {
+                                const text = `Servus! Hier sind die Zugangsdaten für unseren Hof in der AgriTrack Austria App:\n\nFarm-ID: ${props.settings.farmId}\nHof-PIN: ${props.settings.farmPin || '----'}\n\nApp laden & unter Sync 'Hof beitreten' klicken.`;
+                                if (navigator.share) {
+                                    navigator.share({ title: 'Hof Zugang teilen', text: text });
+                                } else {
+                                    navigator.clipboard.writeText(text);
+                                    alert("Zugangsdaten in die Zwischenablage kopiert!");
+                                }
+                            }}>
+                                <Share2 size={14} className="mr-1.5"/> Per WhatsApp
+                            </div>
                         </div>
                     </div>
                 </div>
+            )}
+
+            {showShareModal && (
+                <FarmShareModal
+                    show={showShareModal}
+                    onClose={() => setShowShareModal(false)}
+                    config={getActiveFirebaseConfig().config}
+                    farmPin={props.settings.farmPin}
+                    farmId={props.settings.farmId}
+                    farmName={props.settings.farmName || props.settings.farmId}
+                />
             )}
 
             <div className={`p-6 rounded-2xl border-2 flex flex-col items-center text-center shadow-sm transition-all ${props.authState && props.settings.farmId ? 'bg-green-50 border-green-200' : 'bg-slate-100 border-slate-300'}`}>

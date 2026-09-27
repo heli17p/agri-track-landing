@@ -245,14 +245,15 @@ export const testCustomFirebaseConfig = async (config: CustomFirebaseConfig): Pr
 };
 
 // Speichern und App neu laden
-export const saveCustomFirebaseConfig = async (config: CustomFirebaseConfig & { farmPin?: string }) => {
+export const saveCustomFirebaseConfig = async (config: CustomFirebaseConfig & { farmPin?: string; farmId?: string }) => {
   localStorage.setItem(STORAGE_KEY_CUSTOM_FIREBASE, JSON.stringify(config));
   const settings = loadSettings();
-  if (config.farmName && !settings.farmName) {
+  if (config.farmName) {
     settings.farmName = config.farmName;
   }
-  if (config.projectId && !settings.farmId) {
-    settings.farmId = config.projectId;
+  const targetFarmId = config.farmId || config.projectId;
+  if (targetFarmId) {
+    settings.farmId = targetFarmId;
   }
   if (config.farmPin) {
     settings.farmPin = config.farmPin;
@@ -289,15 +290,16 @@ export const clearCustomFirebaseConfig = async () => {
 };
 
 // Teilen-Link für Mitarbeiter/Familie generieren (Ultra-Kompakt für schnelle QR-Code Erkennung)
-export const generateFarmShareUrl = (config: CustomFirebaseConfig, farmPin?: string): string => {
+export const generateFarmShareUrl = (config: CustomFirebaseConfig, farmPin?: string, farmId?: string): string => {
   const url = new URL(window.location.origin + window.location.pathname);
-  // Kompaktes Format: projectId~apiKey~appId~farmPin~farmName
+  // Kompaktes Format: projectId~apiKey~appId~farmPin~farmName~farmId
   const compact = [
     config.projectId || '',
     config.apiKey || '',
     config.appId || '',
     farmPin || '',
-    encodeURIComponent(config.farmName || '')
+    encodeURIComponent(config.farmName || ''),
+    farmId || config.projectId || ''
   ].join('~');
   
   url.searchParams.set('ccloud', compact);
@@ -305,7 +307,7 @@ export const generateFarmShareUrl = (config: CustomFirebaseConfig, farmPin?: str
 };
 
 // Teilen-Link decodieren (unterstützt kompaktes Format und altes Base64)
-export const decodeFarmShareUrl = (token: string): (CustomFirebaseConfig & { farmPin?: string }) | null => {
+export const decodeFarmShareUrl = (token: string): (CustomFirebaseConfig & { farmPin?: string; farmId?: string }) | null => {
   if (!token) return null;
   try {
     // 1. Neues kompaktes Format
@@ -317,6 +319,7 @@ export const decodeFarmShareUrl = (token: string): (CustomFirebaseConfig & { far
         const appId = parts[2]?.trim() || '';
         const farmPin = parts[3]?.trim() || '';
         const farmName = parts[4] ? decodeURIComponent(parts[4]) : '';
+        const farmId = parts[5]?.trim() || projectId;
         if (projectId && apiKey) {
           return {
             projectId,
@@ -325,7 +328,8 @@ export const decodeFarmShareUrl = (token: string): (CustomFirebaseConfig & { far
             authDomain: `${projectId}.firebaseapp.com`,
             storageBucket: `${projectId}.appspot.com`,
             farmPin,
-            farmName
+            farmName,
+            farmId
           };
         }
       }

@@ -3,7 +3,7 @@ import { Database, ShieldCheck, CheckCircle2, X, Loader2 } from 'lucide-react';
 import { CustomFirebaseConfig, saveCustomFirebaseConfig } from '../services/storage';
 
 interface Props {
-  invite: CustomFirebaseConfig & { farmPin?: string };
+  invite: CustomFirebaseConfig & { farmPin?: string; farmId?: string };
   onClose: () => void;
 }
 
@@ -66,27 +66,31 @@ export const JoinFarmCloudModal: React.FC<Props> = ({ invite, onClose }) => {
 
         {/* Details */}
         <div className="p-6 space-y-4">
-          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2 text-xs">
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-4 space-y-2.5 text-xs">
             <div className="flex justify-between items-center">
-              <span className="text-slate-500 font-bold uppercase text-[9px]">Betrieb / Name:</span>
+              <span className="text-slate-500 font-bold uppercase text-[9px]">Betrieb:</span>
               <span className="font-extrabold text-slate-800">{invite.farmName || invite.projectId}</span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 font-bold uppercase text-[9px]">Cloud Projekt-ID:</span>
-              <span className="font-mono font-bold text-blue-600">{invite.projectId}</span>
+            <div className="flex justify-between items-center pt-1.5 border-t border-slate-200">
+              <span className="text-slate-500 font-bold uppercase text-[9px]">Farm-ID:</span>
+              <span className="font-mono font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                {invite.farmId || invite.projectId}
+              </span>
             </div>
-            {invite.farmPin && (
-              <div className="flex justify-between items-center pt-2 border-t border-slate-200">
-                <span className="text-slate-500 font-bold uppercase text-[9px]">Betriebs-PIN:</span>
-                <span className="font-mono font-black text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
-                  {invite.farmPin}
-                </span>
-              </div>
-            )}
+            <div className="flex justify-between items-center pt-1.5 border-t border-slate-200">
+              <span className="text-slate-500 font-bold uppercase text-[9px]">Hof-PIN:</span>
+              <span className="font-mono font-black text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
+                {invite.farmPin || 'Keine PIN (offen)'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center pt-1.5 border-t border-slate-200 text-slate-400">
+              <span className="text-slate-400 font-bold uppercase text-[9px]">Cloud Projekt:</span>
+              <span className="font-mono text-[10px] text-slate-500">{invite.projectId}</span>
+            </div>
           </div>
 
           <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 leading-snug">
-            💡 <strong>Hinweis:</strong> Nach dem Beitritt werden alle Feldarbeiten und Schläge direkt mit dieser privaten Betriebs-Cloud synchronisiert.
+            💡 <strong>Automatischer Beitritt:</strong> Farm-ID und Hof-PIN werden automatisch auf deinem Smartphone eingerichtet. Du bist sofort mit diesem Betrieb synchronisiert.
           </div>
 
           <div className="space-y-2 pt-2">

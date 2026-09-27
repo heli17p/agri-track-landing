@@ -8,9 +8,11 @@ interface Props {
   onClose: () => void;
   config: CustomFirebaseConfig;
   farmPin?: string;
+  farmId?: string;
+  farmName?: string;
 }
 
-export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin }) => {
+export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin, farmId, farmName }) => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedCode, setCopiedCode] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
@@ -19,18 +21,23 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
   const [eccLevel, setEccLevel] = useState<'L' | 'M'>('L'); // 'L' hat größere Punkte und scannt am schnellsten
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
-  // Kompakter Kopplungscode: projectId~apiKey~appId~farmPin~farmName
+  const effectiveFarmId = farmId || config.projectId;
+  const effectiveFarmName = farmName || config.farmName || config.projectId;
+  const effectiveFarmPin = farmPin || '';
+
+  // Kompakter Kopplungscode: projectId~apiKey~appId~farmPin~farmName~farmId
   const pairingCode = [
     config.projectId || '',
     config.apiKey || '',
     config.appId || '',
-    farmPin || '',
-    encodeURIComponent(config.farmName || '')
+    effectiveFarmPin,
+    encodeURIComponent(effectiveFarmName),
+    effectiveFarmId
   ].join('~');
 
   useEffect(() => {
     if (show && config) {
-      const url = generateFarmShareUrl(config, farmPin);
+      const url = generateFarmShareUrl(config, effectiveFarmPin, effectiveFarmId);
       setShareUrl(url);
 
       const render = () => {
@@ -50,7 +57,7 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
       const timer = setTimeout(render, 60);
       return () => clearTimeout(timer);
     }
-  }, [show, config, farmPin, isLarge, eccLevel]);
+  }, [show, config, effectiveFarmPin, effectiveFarmId, isLarge, eccLevel]);
 
   if (!show) return null;
 
@@ -82,7 +89,7 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
       if (!dataUrl) return;
 
       const a = document.createElement('a');
-      const cleanName = (config.farmName || config.projectId || 'betrieb')
+      const cleanName = (effectiveFarmName || 'betrieb')
         .toLowerCase()
         .replace(/[^a-z0-9_-]/g, '_');
       a.download = `agritrack-qr-${cleanName}.png`;
@@ -96,8 +103,8 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
   };
 
   const handleNativeShare = async () => {
-    const title = `AgriTrack Zugang: ${config.farmName || config.projectId}`;
-    const text = `Servus! Hier ist der Direkt-Link zur Betriebs-Cloud für unsere AgriTrack-App:\n\nBetrieb: ${config.farmName || config.projectId}\n${farmPin ? `PIN: ${farmPin}\n` : ''}\nEinfach diesen Link auf dem Smartphone öffnen:\n${shareUrl}`;
+    const title = `AgriTrack Zugang: ${effectiveFarmName}`;
+    const text = `Servus! Hier ist der Direkt-Zugang für unseren Hof in der AgriTrack-App:\n\nBetrieb: ${effectiveFarmName}\nFarm-ID: ${effectiveFarmId}\n${effectiveFarmPin ? `Hof-PIN: ${effectiveFarmPin}\n` : ''}\nEinfach diesen Link auf dem Smartphone öffnen:\n${shareUrl}`;
 
     if (navigator.share) {
       try {
@@ -205,23 +212,27 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
           </div>
 
           {/* Details Box */}
-          <div className="bg-slate-50 border border-slate-200 p-3 rounded-2xl text-left space-y-1.5 text-xs">
+          <div className="bg-slate-50 border border-slate-200 p-3.5 rounded-2xl text-left space-y-2 text-xs">
             <div className="flex justify-between items-center">
               <span className="text-slate-500 font-bold uppercase text-[9px] tracking-wider">Betrieb:</span>
-              <span className="font-extrabold text-slate-800">{config.farmName || config.projectId}</span>
+              <span className="font-extrabold text-slate-800">{effectiveFarmName}</span>
             </div>
-            <div className="flex justify-between items-center">
-              <span className="text-slate-500 font-bold uppercase text-[9px] tracking-wider">Cloud Projekt-ID:</span>
-              <span className="font-mono font-bold text-blue-600">{config.projectId}</span>
+            <div className="flex justify-between items-center pt-1.5 border-t border-slate-200">
+              <span className="text-slate-500 font-bold uppercase text-[9px] tracking-wider">Farm-ID:</span>
+              <span className="font-mono font-black text-blue-700 bg-blue-50 px-2 py-0.5 rounded border border-blue-200">
+                {effectiveFarmId}
+              </span>
             </div>
-            {farmPin && (
-              <div className="flex justify-between items-center pt-1 border-t border-slate-200">
-                <span className="text-slate-500 font-bold uppercase text-[9px] tracking-wider">Betriebs-PIN:</span>
-                <span className="font-mono font-black text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
-                  {farmPin}
-                </span>
-              </div>
-            )}
+            <div className="flex justify-between items-center pt-1.5 border-t border-slate-200">
+              <span className="text-slate-500 font-bold uppercase text-[9px] tracking-wider">Hof-PIN:</span>
+              <span className="font-mono font-black text-slate-900 bg-white px-2 py-0.5 rounded border border-slate-200">
+                {effectiveFarmPin || 'Keine PIN (offen)'}
+              </span>
+            </div>
+            <div className="flex justify-between items-center pt-1.5 border-t border-slate-200 text-slate-400">
+              <span className="text-slate-400 font-bold uppercase text-[9px] tracking-wider">Cloud Projekt:</span>
+              <span className="font-mono text-[10px] text-slate-500">{config.projectId}</span>
+            </div>
           </div>
 
           <p className="text-[11px] text-slate-500 leading-snug">
