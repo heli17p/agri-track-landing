@@ -245,7 +245,7 @@ export const testCustomFirebaseConfig = async (config: CustomFirebaseConfig): Pr
 };
 
 // Speichern und App neu laden
-export const saveCustomFirebaseConfig = async (config: CustomFirebaseConfig) => {
+export const saveCustomFirebaseConfig = async (config: CustomFirebaseConfig & { farmPin?: string }) => {
   localStorage.setItem(STORAGE_KEY_CUSTOM_FIREBASE, JSON.stringify(config));
   const settings = loadSettings();
   if (config.farmName && !settings.farmName) {
@@ -253,6 +253,9 @@ export const saveCustomFirebaseConfig = async (config: CustomFirebaseConfig) => 
   }
   if (config.projectId && !settings.farmId) {
     settings.farmId = config.projectId;
+  }
+  if (config.farmPin) {
+    settings.farmPin = config.farmPin;
   }
   localStorage.setItem(STORAGE_KEY_SETTINGS, JSON.stringify(settings));
 
@@ -262,7 +265,12 @@ export const saveCustomFirebaseConfig = async (config: CustomFirebaseConfig) => 
       await db.clearPersistence();
     } catch (e) {}
   }
-  window.location.reload();
+
+  // WICHTIG: Bereinige die URL komplett von ?ccloud=..., damit nach dem Neuladen nicht erneut die Einladungsmaske erscheint
+  if (typeof window !== 'undefined') {
+    window.history.replaceState({}, '', window.location.pathname);
+    window.location.href = window.location.pathname;
+  }
 };
 
 // Zurücksetzen auf Standard-Cloud
@@ -274,7 +282,10 @@ export const clearCustomFirebaseConfig = async () => {
       await db.clearPersistence();
     } catch (e) {}
   }
-  window.location.reload();
+  if (typeof window !== 'undefined') {
+    window.history.replaceState({}, '', window.location.pathname);
+    window.location.href = window.location.pathname;
+  }
 };
 
 // Teilen-Link für Mitarbeiter/Familie generieren (Ultra-Kompakt für schnelle QR-Code Erkennung)

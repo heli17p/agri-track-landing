@@ -13,7 +13,7 @@ import { dbService } from './services/db';
 import { syncData } from './services/sync';
 import { AdminFarmManager } from './components/AdminFarmManager';
 import { JoinFarmCloudModal } from './components/JoinFarmCloudModal';
-import { decodeFarmShareUrl, CustomFirebaseConfig } from './services/storage';
+import { decodeFarmShareUrl, CustomFirebaseConfig, getCustomFirebaseConfig } from './services/storage';
 
 // Liste der festen Super-Admins (Hardcoded Fallback)
 const CORE_ADMINS = [
@@ -105,7 +105,14 @@ const App: React.FC = () => {
           if (cloudParam) {
               const decoded = decodeFarmShareUrl(cloudParam);
               if (decoded) {
-                  setPendingCloudInvite(decoded);
+                  // Prüfe, ob genau diese Betriebs-Cloud bereits aktiv ist
+                  const currentCustom = getCustomFirebaseConfig();
+                  if (currentCustom && currentCustom.projectId === decoded.projectId && currentCustom.apiKey === decoded.apiKey) {
+                      // Bereits verbunden: URL sofort säubern, kein störendes Popup mehr
+                      window.history.replaceState({}, '', window.location.pathname);
+                  } else {
+                      setPendingCloudInvite(decoded);
+                  }
               }
           }
       } catch (e) {

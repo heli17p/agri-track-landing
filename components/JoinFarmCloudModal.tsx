@@ -1,5 +1,5 @@
-import React from 'react';
-import { Database, ShieldCheck, CheckCircle2, X } from 'lucide-react';
+import React, { useState } from 'react';
+import { Database, ShieldCheck, CheckCircle2, X, Loader2 } from 'lucide-react';
 import { CustomFirebaseConfig, saveCustomFirebaseConfig } from '../services/storage';
 
 interface Props {
@@ -8,13 +8,34 @@ interface Props {
 }
 
 export const JoinFarmCloudModal: React.FC<Props> = ({ invite, onClose }) => {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const [isDone, setIsDone] = useState(false);
+
   const handleAccept = async () => {
+    if (isProcessing || isDone) return;
     try {
-      // Save custom config
-      await saveCustomFirebaseConfig(invite);
+      setIsProcessing(true);
+      // Bereinige die URL sofort
+      if (typeof window !== 'undefined') {
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+      setIsDone(true);
+      // Kurze Verzögerung für visuelles Feedback
+      setTimeout(async () => {
+        await saveCustomFirebaseConfig(invite);
+      }, 500);
     } catch (e) {
+      setIsProcessing(false);
+      setIsDone(false);
       alert("Fehler beim Aktivieren der Betriebs-Cloud: " + e);
     }
+  };
+
+  const handleDismiss = () => {
+    if (typeof window !== 'undefined') {
+      window.history.replaceState({}, '', window.location.pathname);
+    }
+    onClose();
   };
 
   return (
@@ -24,14 +45,22 @@ export const JoinFarmCloudModal: React.FC<Props> = ({ invite, onClose }) => {
         {/* Header */}
         <div className="p-6 bg-gradient-to-r from-green-700 to-green-900 text-white text-center relative">
           <div className="w-16 h-16 bg-white/20 rounded-2xl mx-auto flex items-center justify-center mb-3 backdrop-blur border border-white/20">
-            <Database size={32} className="text-green-300" />
+            {isDone ? (
+              <CheckCircle2 size={34} className="text-white animate-bounce" />
+            ) : (
+              <Database size={32} className="text-green-300" />
+            )}
           </div>
           <span className="text-[10px] font-black uppercase tracking-widest text-green-300 bg-white/10 px-3 py-1 rounded-full border border-white/20">
-            Einladung empfangen
+            {isDone ? 'Verbindung hergestellt' : 'Einladung empfangen'}
           </span>
-          <h2 className="text-xl font-black mt-2">Betriebs-Cloud beitreten?</h2>
+          <h2 className="text-xl font-black mt-2">
+            {isDone ? 'Erfolgreich beigetreten!' : 'Betriebs-Cloud beitreten?'}
+          </h2>
           <p className="text-xs text-green-100 mt-1">
-            Du wurdest eingeladen, deine AgriTrack App mit dieser Betriebs-Datenbank zu verbinden.
+            {isDone 
+              ? 'Die App wird jetzt mit deiner Betriebs-Datenbank neu geladen...' 
+              : 'Du wurdest eingeladen, deine AgriTrack App mit dieser Betriebs-Datenbank zu verbinden.'}
           </p>
         </div>
 
@@ -63,18 +92,40 @@ export const JoinFarmCloudModal: React.FC<Props> = ({ invite, onClose }) => {
           <div className="space-y-2 pt-2">
             <button
               onClick={handleAccept}
-              className="w-full py-3.5 bg-green-600 hover:bg-green-700 text-white rounded-xl font-black text-sm shadow-lg shadow-green-900/20 flex items-center justify-center transition-all active:scale-95"
+              disabled={isProcessing || isDone}
+              className={`w-full py-3.5 rounded-xl font-black text-sm shadow-lg flex items-center justify-center transition-all ${
+                isDone 
+                  ? 'bg-emerald-600 text-white' 
+                  : 'bg-green-600 hover:bg-green-700 text-white shadow-green-900/20 active:scale-95'
+              }`}
             >
-              <CheckCircle2 size={18} className="mr-2" />
-              Jetzt verbinden & beitreten
+              {isDone ? (
+                <>
+                  <CheckCircle2 size={18} className="mr-2" />
+                  Verbunden! App lädt neu...
+                </>
+              ) : isProcessing ? (
+                <>
+                  <Loader2 size={18} className="mr-2 animate-spin" />
+                  Verbindung wird aktiviert...
+                </>
+              ) : (
+                <>
+                  <CheckCircle2 size={18} className="mr-2" />
+                  Jetzt verbinden & beitreten
+                </>
+              )}
             </button>
 
-            <button
-              onClick={onClose}
-              className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs transition-colors"
-            >
-              Abbrechen (Nicht beitreten)
-            </button>
+            {!isDone && (
+              <button
+                onClick={handleDismiss}
+                disabled={isProcessing}
+                className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl font-bold text-xs transition-colors"
+              >
+                Abbrechen (Nicht beitreten)
+              </button>
+            )}
           </div>
         </div>
 
