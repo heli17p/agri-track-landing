@@ -1,7 +1,7 @@
-import React, { useEffect, useState } from 'react';
-import { X, QrCode, Copy, Check, Share2, Smartphone, ZoomIn, ZoomOut, Sparkles, Download, CheckCircle2 } from 'lucide-react';
+import React, { useEffect, useState, useRef } from 'react';
+import { X, QrCode, Copy, Check, Share2, Smartphone, ZoomIn, ZoomOut, Sparkles, Download, CheckCircle2, Sliders, ExternalLink } from 'lucide-react';
 import { CustomFirebaseConfig, generateFarmShareUrl } from '../../services/storage';
-import { generateQrSvg } from '../../utils/qrGenerator';
+import { drawQrToCanvas, generateQrCanvasDataUrl } from '../../utils/qrGenerator';
 
 interface Props {
   show: boolean;
@@ -15,8 +15,9 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
   const [copiedCode, setCopiedCode] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
   const [shareUrl, setShareUrl] = useState('');
-  const [svgString, setSvgString] = useState<string>('');
   const [isLarge, setIsLarge] = useState(false);
+  const [eccLevel, setEccLevel] = useState<'L' | 'M'>('L'); // 'L' hat größere Punkte und scannt am schnellsten
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
 
   // Kompakter Kopplungscode: projectId~apiKey~appId~farmPin~farmName
   const pairingCode = [
@@ -32,20 +33,24 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
       const url = generateFarmShareUrl(config, farmPin);
       setShareUrl(url);
 
-      try {
-        const svg = generateQrSvg(url, {
-          size: isLarge ? 340 : 260,
-          margin: 4,
-          darkColor: '#000000',
-          lightColor: '#ffffff',
-          ecc: 'M'
-        });
-        setSvgString(svg);
-      } catch (err) {
-        console.error('Fehler beim Generieren des QR-Codes:', err);
-      }
+      const render = () => {
+        if (canvasRef.current) {
+          drawQrToCanvas(canvasRef.current, url, {
+            size: isLarge ? 360 : 280,
+            margin: 4,
+            darkColor: '#000000',
+            lightColor: '#ffffff',
+            ecc: eccLevel,
+            boostEcl: false
+          });
+        }
+      };
+
+      render();
+      const timer = setTimeout(render, 60);
+      return () => clearTimeout(timer);
     }
-  }, [show, config, farmPin, isLarge]);
+  }, [show, config, farmPin, isLarge, eccLevel]);
 
   if (!show) return null;
 
@@ -62,36 +67,29 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
   };
 
   const handleDownloadPng = () => {
-    if (!svgString) return;
+    if (!shareUrl) return;
     try {
-      const canvas = document.createElement('canvas');
-      const size = 640; // Gestochen scharfe 640x640 Auflösung für Druck & Scannen
-      canvas.width = size;
-      canvas.height = size;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
+      // Erzeugt ein gestochen scharfes, unkomprimiertes High-Res PNG (640x640px)
+      const dataUrl = generateQrCanvasDataUrl(shareUrl, {
+        size: 640,
+        margin: 4,
+        darkColor: '#000000',
+        lightColor: '#ffffff',
+        ecc: eccLevel,
+        boostEcl: false
+      });
 
-      const img = new Image();
-      const blob = new Blob([svgString], { type: 'image/svg+xml;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
+      if (!dataUrl) return;
 
-      img.onload = () => {
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, size, size);
-        ctx.drawImage(img, 0, 0, size, size);
-        URL.revokeObjectURL(url);
-
-        const a = document.createElement('a');
-        const cleanName = (config.farmName || config.projectId || 'betrieb')
-          .toLowerCase()
-          .replace(/[^a-z0-9_-]/g, '_');
-        a.download = `agritrack-qr-${cleanName}.png`;
-        a.href = canvas.toDataURL('image/png');
-        a.click();
-        setDownloaded(true);
-        setTimeout(() => setDownloaded(false), 2500);
-      };
-      img.src = url;
+      const a = document.createElement('a');
+      const cleanName = (config.farmName || config.projectId || 'betrieb')
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '_');
+      a.download = `agritrack-qr-${cleanName}.png`;
+      a.href = dataUrl;
+      a.click();
+      setDownloaded(true);
+      setTimeout(() => setDownloaded(false), 2500);
     } catch (e) {
       console.error('Fehler beim PNG-Download:', e);
     }
@@ -108,7 +106,7 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
         // User aborted
       }
     } else {
-      // Fallback: Link kopieren und WhatsApp Web öffnen falls möglich
+      // Fallback: Link kopieren und WhatsApp Web öffnen
       handleCopyLink();
       const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(text)}`;
       window.open(waUrl, '_blank');
@@ -129,7 +127,7 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
               <div className="flex items-center space-x-2">
                 <span className="text-[9px] font-black uppercase tracking-widest text-emerald-300 bg-emerald-950/70 px-2 py-0.5 rounded-full border border-emerald-500/30 flex items-center">
                   <Sparkles size={10} className="mr-1" />
-                  ISO/IEC 18004 Standard-QR
+                  ISO/IEC 18004 Pixel-Canvas
                 </span>
               </div>
               <h2 className="text-base font-black mt-0.5">Betriebs-Zugang teilen</h2>
@@ -149,16 +147,17 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
           {/* QR Code Container */}
           <div className="flex flex-col items-center justify-center">
             <div className="relative p-3.5 bg-white border-2 border-slate-200 rounded-3xl shadow-md inline-block">
-              {svgString ? (
-                <div 
-                  className="flex items-center justify-center transition-all duration-200"
-                  dangerouslySetInnerHTML={{ __html: svgString }} 
-                />
-              ) : (
-                <div className="w-[260px] h-[260px] flex items-center justify-center text-slate-400 text-xs">
-                  Erstelle QR-Code...
-                </div>
-              )}
+              {/* Gestochen scharfes Canvas mit pixel-genauer Ausrichtung */}
+              <canvas
+                ref={canvasRef}
+                className="rounded-xl transition-all duration-200 mx-auto"
+                style={{
+                  imageRendering: 'pixelated',
+                  width: isLarge ? '340px' : '260px',
+                  height: isLarge ? '340px' : '260px',
+                  display: 'block'
+                }}
+              />
 
               {/* Action Tools over QR */}
               <div className="absolute top-2 right-2 flex space-x-1">
@@ -184,6 +183,24 @@ export const FarmShareModal: React.FC<Props> = ({ show, onClose, config, farmPin
             <div className="mt-2.5 flex items-center justify-center space-x-1.5 text-xs font-bold text-slate-600">
               <Smartphone size={14} className="text-blue-600" />
               <span>Mit Smartphone-Kamera scannen</span>
+            </div>
+
+            {/* Punktgröße / Modus Umschalter für maximale Kompatibilität */}
+            <div className="mt-2 inline-flex items-center p-0.5 bg-slate-100 rounded-lg text-[11px] font-semibold text-slate-600 border border-slate-200">
+              <button
+                type="button"
+                onClick={() => setEccLevel('L')}
+                className={`px-2.5 py-1 rounded-md transition-all ${eccLevel === 'L' ? 'bg-white shadow text-blue-700 font-bold' : 'hover:text-slate-900'}`}
+              >
+                Große Punkte (Standard)
+              </button>
+              <button
+                type="button"
+                onClick={() => setEccLevel('M')}
+                className={`px-2.5 py-1 rounded-md transition-all ${eccLevel === 'M' ? 'bg-white shadow text-blue-700 font-bold' : 'hover:text-slate-900'}`}
+              >
+                Dichter (Level M)
+              </button>
             </div>
           </div>
 
