@@ -181,25 +181,37 @@ export const testCustomFirebaseConfig = async (config: CustomFirebaseConfig): Pr
 
     return { 
       success: true, 
-      message: `Verbindung zur Datenbank "${config.projectId}" erfolgreich hergestellt! Lese- und Schreibzugriff funktioniert.` 
+      message: `Verbindung zur Datenbank "${config.projectId}" erfolgreich hergestellt! Lese- und Schreibzugriff funktioniert.`,
+      projectId: config.projectId
     };
   } catch (err: any) {
     console.error('Test DB connection error:', err);
+    const code = err?.code || '';
     const msg = err?.message || String(err);
-    if (msg.includes('permission-denied') || msg.includes('PERMISSION_DENIED')) {
+    const isPermission = code === 'permission-denied' || 
+                         code === 'PERMISSION_DENIED' || 
+                         msg.toLowerCase().includes('permission') || 
+                         msg.toLowerCase().includes('insufficient') ||
+                         msg.includes('Missing or insufficient permissions');
+
+    if (isPermission) {
       return {
         success: false,
-        message: `Verbindung zum Projekt "${config.projectId}" steht, aber Sicherheitsregeln blockieren den Zugriff. Bitte in der Firebase-Konsole unter "Firestore Database" -> "Regeln" den Zugriff erlauben (z. B. "allow read, write: if true;" im Testmodus).`
+        isPermissionError: true,
+        projectId: config.projectId,
+        message: `Verbindung zu Google Firebase ("${config.projectId}") steht! Allerdings verweigern die Firestore-Sicherheitsregeln den Zugriff ("Missing or insufficient permissions").`
       };
     }
-    if (msg.includes('project-not-found') || msg.includes('NOT_FOUND')) {
+    if (msg.includes('project-not-found') || msg.includes('NOT_FOUND') || code === 'not-found') {
       return {
         success: false,
-        message: `Projekt "${config.projectId}" wurde bei Google nicht gefunden. Bitte prüfe die Projekt-ID.`
+        projectId: config.projectId,
+        message: `Projekt "${config.projectId}" wurde bei Google nicht gefunden. Bitte prüfe die Projekt-ID auf Tippfehler.`
       };
     }
     return {
       success: false,
+      projectId: config.projectId,
       message: `Verbindungsfehler: ${msg}`
     };
   } finally {

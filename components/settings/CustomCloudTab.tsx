@@ -35,8 +35,18 @@ export const CustomCloudTab: React.FC<Props> = ({ settings, onUpdateSettings }) 
 
   // Testing & Status State
   const [isTesting, setIsTesting] = useState(false);
-  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string; isPermissionError?: boolean; projectId?: string } | null>(null);
   const [isSaving, setIsSaving] = useState(false);
+  const [copiedRuleSnippet, setCopiedRuleSnippet] = useState(false);
+
+  const sampleRulesCode = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if true;
+    }
+  }
+}`;
 
   useEffect(() => {
     const active = getActiveFirebaseConfig();
@@ -321,19 +331,68 @@ export const CustomCloudTab: React.FC<Props> = ({ settings, onUpdateSettings }) 
 
         {/* Test Result Message */}
         {testResult && (
-          <div className={`p-4 rounded-2xl text-xs font-medium border flex items-start space-x-3 animate-in fade-in ${
-            testResult.success
-              ? 'bg-green-50 border-green-200 text-green-900'
-              : 'bg-red-50 border-red-200 text-red-900'
-          }`}>
-            {testResult.success ? (
-              <CheckCircle2 size={18} className="text-green-600 shrink-0 mt-0.5" />
-            ) : (
-              <AlertTriangle size={18} className="text-red-600 shrink-0 mt-0.5" />
-            )}
-            <div className="flex-1 leading-relaxed">
-              {testResult.message}
+          <div className="space-y-3 animate-in fade-in">
+            <div className={`p-4 rounded-2xl text-xs font-medium border flex items-start space-x-3 ${
+              testResult.success
+                ? 'bg-green-50 border-green-200 text-green-900'
+                : 'bg-amber-50 border-amber-200 text-amber-900'
+            }`}>
+              {testResult.success ? (
+                <CheckCircle2 size={18} className="text-green-600 shrink-0 mt-0.5" />
+              ) : (
+                <AlertTriangle size={18} className="text-amber-600 shrink-0 mt-0.5" />
+              )}
+              <div className="flex-1 leading-relaxed">
+                {testResult.message}
+              </div>
             </div>
+
+            {/* Permission Error Solver Card */}
+            {testResult.isPermissionError && (
+              <div className="bg-slate-900 text-slate-100 p-4 rounded-2xl border border-slate-800 space-y-3 text-xs">
+                <div className="flex items-center justify-between">
+                  <span className="font-extrabold text-amber-400 flex items-center">
+                    <ShieldCheck size={16} className="mr-1.5" />
+                    Lösung in 2 Schritten (Firestore-Regeln freigeben):
+                  </span>
+                  <a
+                    href={`https://console.firebase.google.com/project/${projectId.trim() || 'default'}/firestore/rules`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="inline-flex items-center px-2.5 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg font-bold text-[11px] shadow transition-all active:scale-95"
+                  >
+                    <ExternalLink size={12} className="mr-1" />
+                    Regeln in Firebase öffnen
+                  </a>
+                </div>
+
+                <p className="text-[11px] text-slate-300">
+                  Google Firestore blockiert standardmäßig fremde Zugriffe. Ersetze den Inhalt im Tab <strong>"Regeln" (Rules)</strong> durch folgenden Code und klicke auf <strong>"Veröffentlichen" (Publish)</strong>:
+                </p>
+
+                <div className="relative">
+                  <pre className="bg-black/50 text-emerald-400 p-3 rounded-xl font-mono text-[11px] overflow-x-auto border border-white/10">
+                    {sampleRulesCode}
+                  </pre>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      navigator.clipboard.writeText(sampleRulesCode);
+                      setCopiedRuleSnippet(true);
+                      setTimeout(() => setCopiedRuleSnippet(false), 2000);
+                    }}
+                    className="absolute top-2 right-2 px-2.5 py-1 bg-white/20 hover:bg-white/30 text-white rounded-md text-[10px] font-bold flex items-center backdrop-blur transition-all active:scale-95"
+                  >
+                    {copiedRuleSnippet ? <Check size={12} className="mr-1 text-green-400" /> : <Copy size={12} className="mr-1" />}
+                    {copiedRuleSnippet ? 'Kopiert!' : 'Code kopieren'}
+                  </button>
+                </div>
+
+                <p className="text-[10px] text-slate-400">
+                  Klicke danach unten einfach erneut auf <strong>"Verbindung testen"</strong>.
+                </p>
+              </div>
+            )}
           </div>
         )}
 
