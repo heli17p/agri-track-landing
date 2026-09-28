@@ -1,7 +1,7 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { X, Calendar, Leaf, Ruler, MapPin, Palette, Map as MapIcon, Save, Trash2, AlertTriangle, Truck, Wheat, Hammer, FileText, Database, Filter, Droplets, Layers, Edit2, Tag, Check, ChevronDown, ChevronUp } from 'lucide-react';
-import { Field, ActivityRecord, ActivityType, FertilizerType, HarvestType, TillageType, StorageLocation } from '../types';
+import { X, Calendar, Leaf, Ruler, MapPin, Palette, Map as MapIcon, Save, Trash2, AlertTriangle, Truck, Wheat, Hammer, FileText, Database, Filter, Droplets, Layers, Edit2, Tag, Check, ChevronDown, ChevronUp, Disc, TrendingUp, TrendingDown, Sparkles, Scale } from 'lucide-react';
+import { Field, ActivityRecord, ActivityType, FertilizerType, HarvestType, TillageType, StorageLocation, RoundBale } from '../types';
 import { dbService } from '../services/db';
 import { ActivityDetailView } from './ActivityDetailView';
 
@@ -57,11 +57,14 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
   const [filterYear, setFilterYear] = useState<number | 'all'>('all');
   const [filterType, setFilterType] = useState<ActivityType | 'all'>('all');
   const [showColorPicker, setShowColorPicker] = useState(false);
+  const [fieldBales, setFieldBales] = useState<RoundBale[]>([]);
 
   const loadHistory = async () => {
       if (field.id) {
           const activities = await dbService.getActivitiesForField(field.id);
           setHistory(activities);
+          const allB = await dbService.getBales();
+          setFieldBales(allB.filter(b => b.fieldId === field.id));
       }
   };
 
@@ -225,6 +228,101 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
               Geometrie auf Karte bearbeiten
           </button>
 
+          {/* ERTRAGS- & DÜNGEANALYSE AUS RUNDBALLEN-DATEN */}
+          {fieldBales.length > 0 && (
+            <div className="bg-gradient-to-br from-amber-50 to-emerald-50 p-4 rounded-2xl border-2 border-amber-200/80 shadow-sm space-y-3">
+              <div className="flex justify-between items-center">
+                <span className="font-extrabold text-sm text-amber-950 flex items-center">
+                  <Disc size={18} className="mr-2 text-amber-600 animate-spin-slow" />
+                  Rundballen-Ertrag & Aufwuchs
+                </span>
+                <span className="text-[11px] font-black bg-amber-600 text-white px-2.5 py-0.5 rounded-full shadow-sm">
+                  {fieldBales.length} Ballen erfasst
+                </span>
+              </div>
+
+              {(() => {
+                const totalMeters = fieldBales.reduce((s, b) => s + (b.distanceMeters || 0), 0);
+                const avgMeters = Math.round(totalMeters / fieldBales.length);
+                const balesPerHa = (fieldBales.length / (field.areaHa || 1)).toFixed(1);
+
+                // Historische Schnitte auf diesem Schlag vergleichen
+                const pastHarvests = history.filter(a => 
+                  a.type === ActivityType.HARVEST && 
+                  (a.fieldIds?.includes(field.id) || (a.fieldDistribution && a.fieldDistribution[field.id]))
+                ).sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                
+                let previousCutAmount: number | null = null;
+                let trendPercent: number | null = null;
+                if (pastHarvests.length > 1) {
+                  const prev = pastHarvests[1];
+                  previousCutAmount = prev.fieldDistribution?.[field.id] || (prev.fieldIds.length === 1 ? prev.amount : null) || null;
+                  if (previousCutAmount && previousCutAmount > 0) {
+                    trendPercent = Math.round(((fieldBales.length - previousCutAmount) / previousCutAmount) * 100);
+                  }
+                }
+                
+                // Bewertung & Dünge-Rückschluss
+                let statusText = 'Normaler, gleichmäßiger Aufwuchs.';
+                let recommendation = 'Standard-Erhaltungsdüngung beibehalten.';
+                let badgeColor = 'bg-blue-100 text-blue-900 border-blue-200';
+
+                if (avgMeters > 150 || (trendPercent !== null && trendPercent < -15)) {
+                  statusText = 'Eher schütterer Aufwuchs (hohe Fahrstrecke pro Ballen oder Ertragsrückgang).';
+                  recommendation = 'Hier wächst weniger Gras: Düngegabe gezielt erhöhen (+10-15 m³ Gülle/ha oder 15 t Mist/ha).';
+                  badgeColor = 'bg-amber-100 text-amber-900 border-amber-300';
+                } else if (avgMeters < 85 || (trendPercent !== null && trendPercent > 20)) {
+                  statusText = 'Sehr dichter, üppiger Aufwuchs (wenig Fahrstrecke pro Ballen nötig).';
+                  recommendation = 'Hoher Nährstoffentzug! Nach dem Schnitt zügig nachdüngen, um den Boden nicht auszulaugen.';
+                  badgeColor = 'bg-emerald-100 text-emerald-900 border-emerald-300';
+                }
+
+                return (
+                  <div className="space-y-2.5 text-xs">
+                    <div className="grid grid-cols-2 gap-2 bg-white/80 p-3 rounded-xl border border-amber-100">
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Ø Pressstrecke</span>
+                        <div className="text-base font-black font-mono text-slate-800">{avgMeters} m <span className="text-xs font-normal text-slate-500">/ Ballen</span></div>
+                      </div>
+                      <div>
+                        <span className="text-[10px] font-bold text-slate-400 uppercase">Ballen-Dichte</span>
+                        <div className="text-base font-black font-mono text-emerald-700">{balesPerHa} <span className="text-xs font-normal text-slate-500">Ballen / ha</span></div>
+                      </div>
+                    </div>
+
+                    {/* Vergleich mit vorherigen Schnitten */}
+                    {pastHarvests.length > 1 && previousCutAmount !== null && (
+                      <div className="bg-white/90 p-2.5 rounded-xl border border-amber-100 flex items-center justify-between text-xs">
+                        <div>
+                          <span className="text-[10px] font-bold text-slate-400 uppercase block">Vergleich zum Vorschnitt</span>
+                          <span className="font-extrabold text-slate-800">
+                            {previousCutAmount} Ballen (Vorher) ➔ {fieldBales.length} Ballen (Aktuell)
+                          </span>
+                        </div>
+                        {trendPercent !== null && (
+                          <div className={`px-2.5 py-1 rounded-lg font-black text-xs flex items-center ${
+                            trendPercent >= 0 ? 'bg-emerald-100 text-emerald-800' : 'bg-amber-100 text-amber-800'
+                          }`}>
+                            {trendPercent >= 0 ? <TrendingUp size={14} className="mr-1" /> : <TrendingDown size={14} className="mr-1" />}
+                            {trendPercent >= 0 ? `+${trendPercent}%` : `${trendPercent}%`}
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    <div className={`p-2.5 rounded-xl border ${badgeColor} space-y-1`}>
+                      <div className="font-bold flex items-center">
+                        <Sparkles size={14} className="mr-1.5" /> Dünge-Rückschluss:
+                      </div>
+                      <p className="leading-relaxed font-medium">{statusText}</p>
+                      <p className="font-bold pt-0.5">👉 {recommendation}</p>
+                    </div>
+                  </div>
+                );
+              })()}
+            </div>
+          )}
+
           {field.detailedSources && Object.keys(field.detailedSources).length > 0 && (
               <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-3">
                   <h3 className="font-bold text-slate-700 text-sm flex items-center"><Database size={16} className="mr-2 text-amber-600"/> Dünger-Herkunft (Gesamt)</h3>
@@ -300,4 +398,3 @@ export const FieldDetailView: React.FC<Props> = ({ field, onClose, onEditGeometr
     </div>
   );
 };
-

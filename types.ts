@@ -129,6 +129,34 @@ export interface FarmProfile {
   totalAreaHa: number;
 }
 
+export type BaleStatus = 'FIELD' | 'COLLECTED' | 'WRAPPED' | 'STORED';
+
+export interface RoundBale {
+  id: string;
+  number: number;               // z.B. Ballen #1, #2 auf dem Feld
+  cropType: string;             // Silage, Heu, Stroh
+  fieldId: string;
+  fieldName: string;
+  location: GeoPoint;           // Wo der Ballen abgelegt wurde
+  status: BaleStatus;           // Status im Arbeitsablauf
+  droppedAt: number;            // Timestamp Ablage
+  distanceMeters: number;       // Meter gefahren mit Presse bis Ballen voll war
+  pressingDurationSec?: number; // Sekunden gepresst
+  
+  // Logistik-Kette
+  collectedAt?: number;
+  collectorName?: string;
+  wrappedAt?: number;           // Hoflader Wickelvorgang
+  wrapperName?: string;
+  storageLocationId?: string;   // Endgültiger Lagerplatz
+  storageLocationName?: string;
+  storedAt?: number;
+
+  notes?: string;
+  year: number;
+  farmId?: string;
+}
+
 export interface ActivityRecord {
   id: string;
   date: string;
@@ -147,6 +175,7 @@ export interface ActivityRecord {
   fieldDistribution?: Record<string, number>;
   storageDistribution?: Record<string, number>;
   detailedFieldSources?: Record<string, Record<string, number>>; 
+  bales?: RoundBale[];          // NEU: Bei Ernte generierte Ballen
   farmId?: string;
   userId?: string;
 }
@@ -181,6 +210,8 @@ export interface AppSettings {
   farmId?: string;
   farmPin?: string;
   ownerEmail?: string;
+  baleStopSeconds?: number;     // Sekunden Stillstand für Ballenablage (Default: 8s)
+  baleMinDistanceMeters?: number; // Mindestdistanz zwischen zwei Ballen (Default: 15m)
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -201,6 +232,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   adminPhone: '436765624502',
   enableWhatsApp: true,
   farmId: '',
-  farmPin: ''
+  farmPin: '',
+  baleStopSeconds: 8,
+  baleMinDistanceMeters: 15
 };
-

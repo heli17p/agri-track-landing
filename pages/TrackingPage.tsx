@@ -128,9 +128,10 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           <div className="bg-green-50 border border-green-200 rounded-2xl p-5 shadow-sm">
             <h2 className="text-lg font-bold text-green-900 mb-4 flex items-center"><Navigation className="mr-2 fill-green-600 text-green-600"/> GPS Aufzeichnung</h2>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-2">
-                <button onClick={() => { setActivityType(ActivityType.FERTILIZATION); const first = categories.find(c => c.parentType === ActivityType.FERTILIZATION); setSubType(first?.name || 'Gülle'); }} className={`py-3 rounded-lg border-2 font-bold transition-all ${activityType === ActivityType.FERTILIZATION ? 'border-green-600 bg-white text-green-700 shadow-sm' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>Düngung</button>
-                <button onClick={() => { setActivityType(ActivityType.TILLAGE); const first = categories.find(c => c.parentType === ActivityType.TILLAGE); setSubType(first?.name || 'Boden'); }} className={`py-3 rounded-lg border-2 font-bold transition-all ${activityType === ActivityType.TILLAGE ? 'border-green-600 bg-white text-green-700 shadow-sm' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>Boden</button>
+              <div className="grid grid-cols-3 gap-2">
+                <button onClick={() => { setActivityType(ActivityType.FERTILIZATION); const first = categories.find(c => c.parentType === ActivityType.FERTILIZATION); setSubType(first?.name || 'Gülle'); }} className={`py-3 rounded-lg border-2 font-bold transition-all text-xs ${activityType === ActivityType.FERTILIZATION ? 'border-green-600 bg-white text-green-700 shadow-sm' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>Düngung</button>
+                <button onClick={() => { setActivityType(ActivityType.TILLAGE); const first = categories.find(c => c.parentType === ActivityType.TILLAGE); setSubType(first?.name || 'Boden'); }} className={`py-3 rounded-lg border-2 font-bold transition-all text-xs ${activityType === ActivityType.TILLAGE ? 'border-green-600 bg-white text-green-700 shadow-sm' : 'border-transparent bg-green-100/50 text-green-800/50'}`}>Boden</button>
+                <button onClick={() => { setActivityType(ActivityType.HARVEST); const first = categories.find(c => c.parentType === ActivityType.HARVEST); setSubType(first?.name || 'Silage'); }} className={`py-3 rounded-lg border-2 font-bold transition-all text-xs ${activityType === ActivityType.HARVEST ? 'border-amber-600 bg-white text-amber-700 shadow-sm' : 'border-transparent bg-amber-100/50 text-amber-800/50'}`}>Ernte / Ballen</button>
               </div>
               
               <div className="space-y-3">
@@ -184,9 +185,57 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   return (
     <div className="h-full flex flex-col bg-slate-900 overflow-hidden">
       <div className="flex-1 relative overflow-hidden z-0">
-        <TrackingMap points={tracker.trackPoints} fields={fields} storages={storages} currentLocation={tracker.currentLocation} mapStyle={mapStyle} followUser={followUser} historyTracks={filteredHistoryTracks} historyMode={historyMode} vehicleIconType="tractor" onZoomChange={setZoom} zoom={zoom} storageRadius={settings.storageRadius} activeSourceId={tracker.activeSourceId} subType={subType} isTestMode={tracker.isTestMode} onSimulateClick={tracker.simulateMovement} activityType={activityType} />
+        <TrackingMap 
+          points={tracker.trackPoints} 
+          fields={fields} 
+          storages={storages} 
+          currentLocation={tracker.currentLocation} 
+          mapStyle={mapStyle} 
+          followUser={followUser} 
+          historyTracks={filteredHistoryTracks} 
+          historyMode={historyMode} 
+          vehicleIconType="tractor" 
+          onZoomChange={setZoom} 
+          zoom={zoom} 
+          storageRadius={settings.storageRadius} 
+          activeSourceId={tracker.activeSourceId} 
+          subType={subType} 
+          isTestMode={tracker.isTestMode} 
+          onSimulateClick={tracker.simulateMovement} 
+          activityType={activityType} 
+          bales={tracker.detectedBales}
+        />
       </div>
-      <TrackingUI trackingState={tracker.trackingState} startTime={tracker.startTime} loadCounts={tracker.loadCounts} workedAreaHa={tracker.workedAreaHa} currentLocation={tracker.currentLocation} detectionCountdown={tracker.detectionCountdown} pendingStorageId={tracker.pendingStorageId} storageWarning={tracker.storageWarning} onStopClick={() => setShowSaveConfirm(true)} onDiscardClick={() => { if(confirm("Wirklich löschen?")) tracker.handleDiscard(); }} onMapStyleToggle={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} onFollowToggle={() => setFollowUser(!followUser)} onHistoryToggle={() => setHistoryMode(h => h === 'OFF' ? 'YEAR' : h === 'YEAR' ? '12M' : 'OFF')} onTestModeToggle={() => tracker.setIsTestMode(!tracker.isTestMode)} onMinimizeClick={onMinimize} followUser={followUser} historyMode={historyMode} subType={subType} activityType={activityType} isTestMode={tracker.isTestMode} activeSourceId={tracker.activeSourceId} storages={storages} wakeLockActive={tracker.wakeLockActive} />
+      <TrackingUI 
+        trackingState={tracker.trackingState} 
+        startTime={tracker.startTime} 
+        loadCounts={tracker.loadCounts} 
+        workedAreaHa={tracker.workedAreaHa} 
+        currentLocation={tracker.currentLocation} 
+        detectionCountdown={tracker.detectionCountdown} 
+        pendingStorageId={tracker.pendingStorageId} 
+        storageWarning={tracker.storageWarning} 
+        onStopClick={() => setShowSaveConfirm(true)} 
+        onDiscardClick={() => { if(confirm("Wirklich löschen?")) tracker.handleDiscard(); }} 
+        onMapStyleToggle={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} 
+        onFollowToggle={() => setFollowUser(!followUser)} 
+        onHistoryToggle={() => setHistoryMode(h => h === 'OFF' ? 'YEAR' : h === 'YEAR' ? '12M' : 'OFF')} 
+        onTestModeToggle={() => tracker.setIsTestMode(!tracker.isTestMode)} 
+        onMinimizeClick={onMinimize} 
+        followUser={followUser} 
+        historyMode={historyMode} 
+        subType={subType} 
+        activityType={activityType} 
+        isTestMode={tracker.isTestMode} 
+        activeSourceId={tracker.activeSourceId} 
+        storages={storages} 
+        wakeLockActive={tracker.wakeLockActive}
+        detectedBales={tracker.detectedBales}
+        currentBaleDistance={tracker.currentBaleDistance}
+        baleDropCountdown={tracker.baleDropCountdown}
+        lastBaleNotice={tracker.lastBaleNotice}
+        onManualBaleDrop={tracker.triggerManualBaleDrop}
+      />
       {showSaveConfirm && (
         <div className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm p-4 flex items-end pb-24">
           <div className="bg-white w-full rounded-3xl p-6 shadow-2xl space-y-4 animate-in slide-in-from-bottom-10">
@@ -200,4 +249,3 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
     </div>
   );
 };
-

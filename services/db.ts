@@ -2,7 +2,7 @@
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import { auth, db, isCloudConfigured, saveData, loadLocalData, fetchCloudData, loadSettings, saveSettings as saveStorageSettings, fetchCloudSettings, hardReset as storageHardReset, fetchFarmMasterSettings } from './storage';
-import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, FeedbackTicket, DEFAULT_SETTINGS, Equipment, EquipmentCategory, ActivityType } from '../types';
+import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, FeedbackTicket, DEFAULT_SETTINGS, Equipment, EquipmentCategory, ActivityType, RoundBale } from '../types';
 
 export const generateId = () => {
   return Math.random().toString(36).substr(2, 9);
@@ -240,6 +240,64 @@ export const dbService = {
             try { await db.collection("tillage_categories").doc(id).delete(); } catch(e) {}
         }
         notifyDbChange();
+    },
+
+    // --- Round Bales (Ballen-Tracking & Logistik) ---
+    getBales: async (): Promise<RoundBale[]> => {
+        const local = loadLocalData('bales' as any) || [];
+        return local;
+    },
+
+    saveBale: async (bale: RoundBale) => {
+        await saveData('bales' as any, bale);
+        notifyDbChange();
+    },
+
+    saveBales: async (bales: RoundBale[]) => {
+        for (const b of bales) {
+            await saveData('bales' as any, b);
+        }
+        notifyDbChange();
+    },
+
+    updateBaleStatus: async (baleId: string, status: RoundBale['status'], extra?: Partial<RoundBale>) => {
+        const all = await dbService.getBales();
+        const target = all.find(b => b.id === baleId);
+        if (!target) return;
+        const updated: RoundBale = {
+            ...target,
+            status,
+            ...(extra || {})
+        };
+        await dbService.saveBale(updated);
+        notifyDbChange();
+    },
+
+    deleteBale: async (baleId: string) => {
+        let all = loadLocalData('bales' as any) || [];
+        all = all.filter((b: any) => b.id !== baleId);
+        localStorage.setItem('agritrack_bales', JSON.stringify(all));
+        if (isCloudConfigured()) {
+            try { await db.collection("bales").doc(baleId).delete(); } catch (e) {}
+        }
+        notifyDbChange();
+    },
+
+    syncBales: async () => {
+        if (!isCloudConfigured()) return;
+        try {
+            const cloudBales = await fetchCloudData('bales' as any);
+            if (cloudBales && cloudBales.length > 0) {
+                const local = loadLocalData('bales' as any) || [];
+                const merged = new Map();
+                local.forEach((b: any) => merged.set(b.id, b));
+                cloudBales.forEach((b: any) => merged.set(b.id, b));
+                localStorage.setItem('agritrack_bales', JSON.stringify(Array.from(merged.values())));
+                notifyDbChange();
+            }
+        } catch (e) {
+            console.error("Failed to sync bales", e);
+        }
     },
 
     // --- Storage ---

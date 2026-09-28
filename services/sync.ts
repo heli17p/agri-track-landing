@@ -5,6 +5,7 @@ export const syncData = async () => {
     console.log("[Sync] Start...");
     try {
         await dbService.syncActivities();
+        await dbService.syncBales();
         console.log("[Sync] Erfolgreich abgeschlossen.");
         localStorage.setItem('lastSyncSuccess', new Date().toISOString());
         return true;

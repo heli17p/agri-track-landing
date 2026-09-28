@@ -1,7 +1,7 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { dbService, generateId } from '../services/db';
-import { Field, StorageLocation, TrackPoint, ActivityType, FertilizerType, AppSettings, ActivityRecord, GeoPoint, Equipment } from '../types';
+import { Field, StorageLocation, TrackPoint, ActivityType, FertilizerType, AppSettings, ActivityRecord, GeoPoint, Equipment, RoundBale } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
 
 type TrackingState = 'IDLE' | 'LOADING' | 'TRANSIT' | 'SPREADING';
@@ -31,6 +31,12 @@ export const useTracking = (
   
   const [workedAreaHa, setWorkedAreaHa] = useState(0);
 
+  // --- RUNDBALLEN AUTOMATIK & LOGISTIK ---
+  const [detectedBales, setDetectedBales] = useState<RoundBale[]>([]);
+  const [currentBaleDistance, setCurrentBaleDistance] = useState<number>(0); // Laufende Meter seit letztem Ballen
+  const [baleDropCountdown, setBaleDropCountdown] = useState<number | null>(null); // Countdown für Stopp (Ablage)
+  const [lastBaleNotice, setLastBaleNotice] = useState<string | null>(null);
+
   const settingsRef = useRef(settings);
   const fieldsRef = useRef(fields);
   const storagesRef = useRef(storages);
@@ -53,6 +59,14 @@ export const useTracking = (
   const lastKnownPosRef = useRef<GeoPoint | null>(null);
   const DETECTION_DELAY_MS = 30000;
 
+  // Ballen Stopp-Erkennung Refs
+  const baleStopStartTimeRef = useRef<number | null>(null);
+  const baleStopPosRef = useRef<GeoPoint | null>(null);
+  const currentBaleDistRef = useRef<number>(0);
+  const detectedBalesRef = useRef<RoundBale[]>([]);
+  const lastBaleDropTimeRef = useRef<number>(0);
+  const lastActiveFieldRef = useRef<Field | null>(null);
+
   useEffect(() => { 
     settingsRef.current = settings; 
     fieldsRef.current = fields; 
@@ -62,6 +76,10 @@ export const useTracking = (
     equipmentRef.current = selectedEquipment;
     isTestModeRef.current = isTestMode; 
   }, [settings, fields, storages, activityType, subType, selectedEquipment, isTestMode]);
+
+  useEffect(() => {
+    detectedBalesRef.current = detectedBales;
+  }, [detectedBales]);
 
   const requestWakeLock = async () => {
     if ('wakeLock' in navigator) {
@@ -94,47 +112,123 @@ export const useTracking = (
 
   useEffect(() => {
     const timer = setInterval(() => {
-      if (activityTypeRef.current !== ActivityType.FERTILIZATION) return;
-      if (!lastKnownPosRef.current) return;
+      // 1. DÜNGUNG: Hof- / Güllefass-Erkennung
+      if (activityTypeRef.current === ActivityType.FERTILIZATION && lastKnownPosRef.current) {
+        const lat = lastKnownPosRef.current.lat;
+        const lng = lastKnownPosRef.current.lng;
+        const speedKmh = lastKnownSpeedRef.current;
+        const rad = settingsRef.current.storageRadius || 20;
 
-      const lat = lastKnownPosRef.current.lat;
-      const lng = lastKnownPosRef.current.lng;
-      const speedKmh = lastKnownSpeedRef.current;
-      const rad = settingsRef.current.storageRadius || 20;
+        let nearest: StorageLocation | null = null;
+        let minDist = Infinity;
+        storagesRef.current.forEach(s => {
+          const dist = getDistance({ lat, lng }, s.geo);
+          if (dist < minDist) { minDist = dist; nearest = s; }
+        });
 
-      let nearest: StorageLocation | null = null;
-      let minDist = Infinity;
-      storagesRef.current.forEach(s => {
-        const dist = getDistance({ lat, lng }, s.geo);
-        if (dist < minDist) { minDist = dist; nearest = s; }
-      });
+        if (nearest && minDist <= rad && speedKmh < 2.5) {
+            const isCorrectType = nearest.type === (subTypeRef.current === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE);
+            if (!isCorrectType) { setStorageWarning(`${nearest.name} erkannt, aber falscher Typ!`); return; }
+            setStorageWarning(null);
+            if (activeSourceIdRef.current === nearest.id && trackingState === 'LOADING') return;
+            if (pendingStorageIdRef.current !== nearest.id) {
+                pendingStorageIdRef.current = nearest.id;
+                setPendingStorageId(nearest.id);
+                proximityStartTimeRef.current = Date.now();
+            }
+            const elapsed = Date.now() - (proximityStartTimeRef.current || Date.now());
+            const remaining = Math.max(0, Math.ceil((DETECTION_DELAY_MS - elapsed) / 1000));
+            if (remaining > 0) { setDetectionCountdown(remaining); } else {
+                activeSourceIdRef.current = nearest.id;
+                setActiveSourceId(nearest.id);
+                setLoadCounts(prev => ({ ...prev, [nearest!.id]: (prev[nearest!.id] || 0) + 1 }));
+                currentLoadIndexRef.current++;
+                setTrackingState('LOADING');
+                setDetectionCountdown(null);
+                setPendingStorageId(null);
+                proximityStartTimeRef.current = null;
+                pendingStorageIdRef.current = null;
+            }
+        } else {
+            setStorageWarning(null); proximityStartTimeRef.current = null; pendingStorageIdRef.current = null; setPendingStorageId(null); setDetectionCountdown(null);
+            if (speedKmh > 3.5 && trackingState === 'LOADING') setTrackingState('TRANSIT');
+        }
+      }
 
-      if (nearest && minDist <= rad && speedKmh < 2.5) {
-          const isCorrectType = nearest.type === (subTypeRef.current === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE);
-          if (!isCorrectType) { setStorageWarning(`${nearest.name} erkannt, aber falscher Typ!`); return; }
-          setStorageWarning(null);
-          if (activeSourceIdRef.current === nearest.id && trackingState === 'LOADING') return;
-          if (pendingStorageIdRef.current !== nearest.id) {
-              pendingStorageIdRef.current = nearest.id;
-              setPendingStorageId(nearest.id);
-              proximityStartTimeRef.current = Date.now();
+      // 2. ERNTE: Rundballen-Ablage Erkennung (Presse hält ca. 8-10 Sek. an)
+      if (activityTypeRef.current === ActivityType.HARVEST && lastKnownPosRef.current) {
+        const curPos = lastKnownPosRef.current;
+        const speedKmh = lastKnownSpeedRef.current;
+        const requiredStopSec = settingsRef.current.baleStopSeconds || 8;
+        const minDistanceBetweenBales = settingsRef.current.baleMinDistanceMeters || 15;
+
+        // Prüfe ob auf einem Feldstück
+        const currentField = fieldsRef.current.find(f => isPointInPolygon(curPos, f.boundary)) || null;
+        if (currentField) lastActiveFieldRef.current = currentField;
+
+        // Stillstand erkannt (< 1.5 km/h)
+        if (speedKmh < 1.5 && (currentField || lastActiveFieldRef.current)) {
+          if (!baleStopStartTimeRef.current) {
+            baleStopStartTimeRef.current = Date.now();
+            baleStopPosRef.current = curPos;
           }
-          const elapsed = Date.now() - (proximityStartTimeRef.current || Date.now());
-          const remaining = Math.max(0, Math.ceil((DETECTION_DELAY_MS - elapsed) / 1000));
-          if (remaining > 0) { setDetectionCountdown(remaining); } else {
-              activeSourceIdRef.current = nearest.id;
-              setActiveSourceId(nearest.id);
-              setLoadCounts(prev => ({ ...prev, [nearest!.id]: (prev[nearest!.id] || 0) + 1 }));
-              currentLoadIndexRef.current++;
-              setTrackingState('LOADING');
-              setDetectionCountdown(null);
-              setPendingStorageId(null);
-              proximityStartTimeRef.current = null;
-              pendingStorageIdRef.current = null;
+
+          const elapsedSec = Math.floor((Date.now() - baleStopStartTimeRef.current) / 1000);
+          const remainingSec = Math.max(0, requiredStopSec - elapsedSec);
+
+          if (remainingSec > 0) {
+            setBaleDropCountdown(remainingSec);
+          } else {
+            // Prüfung: Wurde hier in den letzten 30 Sek schon ein Ballen abgelegt?
+            const timeSinceLastDrop = Date.now() - lastBaleDropTimeRef.current;
+            const targetField = currentField || lastActiveFieldRef.current!;
+
+            // Prüfe Distanz zum letzten abgelegten Ballen
+            let tooClose = false;
+            if (detectedBalesRef.current.length > 0) {
+              const lastBale = detectedBalesRef.current[detectedBalesRef.current.length - 1];
+              const dist = getDistance(curPos, lastBale.location);
+              if (dist < minDistanceBetweenBales) tooClose = true;
+            }
+
+            if (timeSinceLastDrop > 25000 && !tooClose) {
+              const baleNumber = detectedBalesRef.current.length + 1;
+              const drivenDistance = Math.round(currentBaleDistRef.current || 0);
+
+              const newBale: RoundBale = {
+                id: generateId(),
+                number: baleNumber,
+                cropType: subTypeRef.current || 'Silage',
+                fieldId: targetField.id,
+                fieldName: targetField.name,
+                location: { lat: curPos.lat, lng: curPos.lng },
+                status: 'FIELD',
+                droppedAt: Date.now(),
+                distanceMeters: Math.max(10, drivenDistance),
+                year: new Date().getFullYear()
+              };
+
+              setDetectedBales(prev => [...prev, newBale]);
+              lastBaleDropTimeRef.current = Date.now();
+              currentBaleDistRef.current = 0; // Distanz für nächsten Ballen zurücksetzen
+              setCurrentBaleDistance(0);
+
+              setLastBaleNotice(`🟢 Ballen #${baleNumber} auf "${targetField.name}" erfasst! (${drivenDistance > 0 ? drivenDistance + 'm gefahren' : 'Stopp-Erkennung'})`);
+              setTimeout(() => setLastBaleNotice(null), 8000);
+            }
+
+            setBaleDropCountdown(null);
+            baleStopStartTimeRef.current = null;
+            baleStopPosRef.current = null;
           }
-      } else {
-          setStorageWarning(null); proximityStartTimeRef.current = null; pendingStorageIdRef.current = null; setPendingStorageId(null); setDetectionCountdown(null);
-          if (speedKmh > 3.5 && trackingState === 'LOADING') setTrackingState('TRANSIT');
+        } else {
+          // Fahrzeug fährt weiter
+          if (speedKmh > 2.5) {
+            setBaleDropCountdown(null);
+            baleStopStartTimeRef.current = null;
+            baleStopPosRef.current = null;
+          }
+        }
       }
     }, 1000);
     return () => clearInterval(timer);
@@ -184,6 +278,12 @@ export const useTracking = (
                 if (dist < 50) { 
                     setWorkedAreaHa(old => old + (dist * workingWidth) / 10000);
                 }
+            }
+
+            // Distanz für Rundballenpresse akkumulieren (wenn Ernte aktiv und Geschwindigkeit im Arbeitsbereich)
+            if (activityTypeRef.current === ActivityType.HARVEST && isSpreading && speedKmh >= 1.5 && dist < 50) {
+              currentBaleDistRef.current += dist;
+              setCurrentBaleDistance(Math.round(currentBaleDistRef.current));
             }
         }
         return [...prev, point];
@@ -295,6 +395,20 @@ export const useTracking = (
       Object.entries(fieldPoints).forEach(([fId, count]) => {
           fieldDist[fId] = totalPoints > 0 ? Math.round((count / totalPoints) * totalAmt * 100) / 100 : 0;
       });
+    } else if (activityTypeRef.current === ActivityType.HARVEST) {
+      unit = 'Stk';
+      const baleCount = detectedBales.length;
+      totalAmt = baleCount;
+
+      // Ballen nach Feldern aufteilen
+      detectedBales.forEach(b => {
+        fieldDist[b.fieldId] = (fieldDist[b.fieldId] || 0) + 1;
+      });
+
+      // Ballen auch in die globale Ballen-Datenbank einspeisen
+      if (detectedBales.length > 0) {
+        await dbService.saveBales(detectedBales);
+      }
     } else {
       const involvedFields = fieldsRef.current.filter(f => fIds.includes(f.id));
       totalAmt = Math.round(involvedFields.reduce((sum, f) => sum + f.areaHa, 0) * 100) / 100;
@@ -317,14 +431,17 @@ export const useTracking = (
       fieldIds: fIds, 
       amount: totalAmt, 
       unit, 
-      loadCount: activityTypeRef.current === ActivityType.FERTILIZATION ? (Object.values(loadCounts).reduce((a, b) => a + b, 0) || undefined) : undefined, 
-      notes: `${notes}\nDauer: ${durationMin} min`, 
+      loadCount: activityTypeRef.current === ActivityType.FERTILIZATION 
+        ? (Object.values(loadCounts).reduce((a, b) => a + b, 0) || undefined) 
+        : (activityTypeRef.current === ActivityType.HARVEST ? detectedBales.length : undefined), 
+      notes: `${notes}\nDauer: ${durationMin} min${detectedBales.length > 0 ? `\nErfasste Rundballen: ${detectedBales.length} Stk.` : ''}`, 
       trackPoints: [...trackPoints], 
       fieldDistribution: fieldDist, 
       storageDistribution: Object.keys(storageDist).length > 0 ? storageDist : undefined, 
       detailedFieldSources: Object.keys(detailedFieldSources).length > 0 ? detailedFieldSources : undefined, 
+      bales: detectedBales.length > 0 ? detectedBales : undefined,
       fertilizerType: activityTypeRef.current === ActivityType.FERTILIZATION ? (sub === 'Gülle' ? FertilizerType.SLURRY : FertilizerType.MANURE) : undefined, 
-      tillageType: activityTypeRef.current === ActivityType.TILLAGE ? sub as any : undefined,
+      tillageType: (activityTypeRef.current === ActivityType.TILLAGE || activityTypeRef.current === ActivityType.HARVEST) ? sub as any : undefined,
       equipmentId: equipmentRef.current?.id,
       equipmentName: equipmentRef.current?.name
     };
@@ -341,10 +458,94 @@ export const useTracking = (
     }
     await dbService.saveActivity(record);
     if (record.type === ActivityType.FERTILIZATION && record.storageDistribution) await dbService.updateStorageLevels(record.storageDistribution);
-    dbService.syncActivities(); setTrackingState('IDLE'); setTrackPoints([]); lastKnownPosRef.current = null; setWorkedAreaHa(0);
+    dbService.syncActivities(); 
+    setTrackingState('IDLE'); 
+    setTrackPoints([]); 
+    lastKnownPosRef.current = null; 
+    setWorkedAreaHa(0);
+    setDetectedBales([]);
+    setCurrentBaleDistance(0);
+    currentBaleDistRef.current = 0;
     return record;
-  }, [trackPoints, startTime, loadCounts, workedAreaHa, fields]);
+  }, [trackPoints, startTime, loadCounts, workedAreaHa, fields, detectedBales]);
 
-  return { trackingState, currentLocation, trackPoints, startTime, loadCounts, workedAreaHa, activeSourceId, detectionCountdown, pendingStorageId, storageWarning, gpsLoading, gpsError, wakeLockActive, isTestMode, setIsTestMode: (v: boolean) => { setIsTestMode(v); isTestModeRef.current = v; if (v && currentLocation) lastSimPosRef.current = { lat: currentLocation.coords.latitude, lng: currentLocation.coords.longitude }; }, simulateMovement, startGPS, stopGPS: useCallback(() => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); releaseWakeLock(); setIsTestMode(false); }, []), handleFinishLogic, handleDiscard: () => { if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); releaseWakeLock(); setTrackingState('IDLE'); setTrackPoints([]); setGpsError(null); setWorkedAreaHa(0); } };
+  // Manueller Ballen-Ablage Button (z.B. per Klick auf "Ballen ablegen")
+  const triggerManualBaleDrop = useCallback(() => {
+    if (!lastKnownPosRef.current) return;
+    const curPos = lastKnownPosRef.current;
+    const targetField = fieldsRef.current.find(f => isPointInPolygon(curPos, f.boundary)) || lastActiveFieldRef.current || fieldsRef.current[0];
+    if (!targetField) return;
+
+    const baleNumber = detectedBales.length + 1;
+    const drivenDistance = Math.round(currentBaleDistRef.current || 0);
+
+    const newBale: RoundBale = {
+      id: generateId(),
+      number: baleNumber,
+      cropType: subTypeRef.current || 'Silage',
+      fieldId: targetField.id,
+      fieldName: targetField.name,
+      location: { lat: curPos.lat, lng: curPos.lng },
+      status: 'FIELD',
+      droppedAt: Date.now(),
+      distanceMeters: Math.max(10, drivenDistance),
+      year: new Date().getFullYear()
+    };
+
+    setDetectedBales(prev => [...prev, newBale]);
+    lastBaleDropTimeRef.current = Date.now();
+    currentBaleDistRef.current = 0;
+    setCurrentBaleDistance(0);
+    setLastBaleNotice(`🟢 Ballen #${baleNumber} manuell auf "${targetField.name}" abgelegt!`);
+    setTimeout(() => setLastBaleNotice(null), 6000);
+  }, [detectedBales]);
+
+  return { 
+    trackingState, 
+    currentLocation, 
+    trackPoints, 
+    startTime, 
+    loadCounts, 
+    workedAreaHa, 
+    activeSourceId, 
+    detectionCountdown, 
+    pendingStorageId, 
+    storageWarning, 
+    gpsLoading, 
+    gpsError, 
+    wakeLockActive, 
+    isTestMode, 
+
+    // Ballen-Tracking Exports
+    detectedBales,
+    currentBaleDistance,
+    baleDropCountdown,
+    lastBaleNotice,
+    triggerManualBaleDrop,
+
+    setIsTestMode: (v: boolean) => { 
+      setIsTestMode(v); 
+      isTestModeRef.current = v; 
+      if (v && currentLocation) lastSimPosRef.current = { lat: currentLocation.coords.latitude, lng: currentLocation.coords.longitude }; 
+    }, 
+    simulateMovement, 
+    startGPS, 
+    stopGPS: useCallback(() => { 
+      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); 
+      releaseWakeLock(); 
+      setIsTestMode(false); 
+    }, []), 
+    handleFinishLogic, 
+    handleDiscard: () => { 
+      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); 
+      releaseWakeLock(); 
+      setTrackingState('IDLE'); 
+      setTrackPoints([]); 
+      setGpsError(null); 
+      setWorkedAreaHa(0);
+      setDetectedBales([]);
+      setCurrentBaleDistance(0);
+      currentBaleDistRef.current = 0;
+    } 
+  };
 };
-

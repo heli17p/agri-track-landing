@@ -26,6 +26,7 @@ export const STORAGE_KEY_STORAGE = 'agritrack_storage';
 export const STORAGE_KEY_PROFILE = 'agritrack_profile';
 export const STORAGE_KEY_EQUIPMENT = 'agritrack_equipment';
 export const STORAGE_KEY_CATEGORIES = 'agritrack_tillage_categories';
+export const STORAGE_KEY_BALES = 'agritrack_bales';
 
 /* 
   --- AGRICLOUD STANDARD / FALLBACK KONFIGURATION ---
@@ -496,7 +497,7 @@ export const fetchFarmMasterSettings = async (farmId: string): Promise<AppSettin
 
 // --- DATA HANDLING (HYBRID) ---
 
-export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment' | 'tillage_categories', data: any) => {
+export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment' | 'tillage_categories' | 'bales', data: any) => {
   // 1. ALWAYS Save Locally (Offline First / Guest Mode)
   let key = STORAGE_KEY_ACTIVITIES;
   if (type === 'trip') key = STORAGE_KEY_TRIPS;
@@ -505,6 +506,7 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
   if (type === 'profile') key = STORAGE_KEY_PROFILE;
   if (type === 'equipment') key = STORAGE_KEY_EQUIPMENT;
   if (type === 'tillage_categories') key = STORAGE_KEY_CATEGORIES; // Fix
+  if (type === 'bales') key = STORAGE_KEY_BALES;
 
   // Special handling for Profile (Single Object, not Array)
   if (type === 'profile') {
@@ -537,6 +539,7 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
           if (type === 'profile') colName = 'profiles';
           if (type === 'equipment') colName = 'equipment';
           if (type === 'tillage_categories') colName = 'tillage_categories';
+          if (type === 'bales') colName = 'bales';
 
           // Deep clone to safely remove undefined values before Firestore
           const payload = JSON.parse(JSON.stringify(data)); 
@@ -555,7 +558,7 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
               await db.collection(colName).doc(docId).set(payload);
               
               // Only log sometimes to avoid spam, or log critical ones
-              if (Math.random() > 0.8 || type === 'field' || type === 'storage' || type === 'profile') {
+              if (Math.random() > 0.8 || type === 'field' || type === 'storage' || type === 'profile' || type === 'bales') {
                   dbService.logEvent(`[Cloud] ${type} gesendet an Farm ${farmId}`);
               }
               console.log(`[AgriCloud] Synced ${type} to farm ${farmId}.`);
@@ -569,7 +572,7 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
   }
 };
 
-export const loadLocalData = (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment' | 'tillage_categories') => {
+export const loadLocalData = (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment' | 'tillage_categories' | 'bales') => {
     let key = STORAGE_KEY_ACTIVITIES;
     if (type === 'trip') key = STORAGE_KEY_TRIPS;
     if (type === 'field') key = STORAGE_KEY_FIELDS;
@@ -577,12 +580,13 @@ export const loadLocalData = (type: 'activity' | 'trip' | 'field' | 'storage' | 
     if (type === 'profile') key = STORAGE_KEY_PROFILE;
     if (type === 'equipment') key = STORAGE_KEY_EQUIPMENT;
     if (type === 'tillage_categories') key = STORAGE_KEY_CATEGORIES; // Fix
+    if (type === 'bales') key = STORAGE_KEY_BALES;
 
     const s = localStorage.getItem(key);
     return s ? JSON.parse(s) : (type === 'profile' ? null : []);
 }
 
-export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment' | 'tillage_categories', forceServer: boolean = false) => {
+export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment' | 'tillage_categories' | 'bales', forceServer: boolean = false) => {
     if (!isCloudConfigured()) return [];
     
     const settings = loadSettings();
@@ -605,6 +609,7 @@ export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'stor
         if (type === 'profile') colName = 'profiles';
         if (type === 'equipment') colName = 'equipment';
         if (type === 'tillage_categories') colName = 'tillage_categories';
+        if (type === 'bales') colName = 'bales';
         
         // Use getDocsFromServer if forceServer is true to bypass stuck cache
         // In v8 we use get({ source: 'server' })

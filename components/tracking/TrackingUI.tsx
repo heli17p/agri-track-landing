@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer, Minimize2, Sun, Hammer } from 'lucide-react';
-import { StorageLocation, FertilizerType, ActivityType } from '../../types';
+import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer, Minimize2, Sun, Hammer, Wheat, Disc, CircleDot } from 'lucide-react';
+import { StorageLocation, FertilizerType, ActivityType, RoundBale } from '../../types';
 import { HistoryFilterMode } from '../../pages/TrackingPage';
 
 interface Props {
@@ -28,6 +28,13 @@ interface Props {
   activeSourceId: string | null;
   storages: StorageLocation[];
   wakeLockActive?: boolean;
+
+  // Ballen-Tracking Erweiterungen
+  detectedBales?: RoundBale[];
+  currentBaleDistance?: number;
+  baleDropCountdown?: number | null;
+  lastBaleNotice?: string | null;
+  onManualBaleDrop?: () => void;
 }
 
 const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
@@ -64,7 +71,12 @@ export const TrackingUI: React.FC<Props> = ({
   isTestMode,
   activeSourceId,
   storages,
-  wakeLockActive = false
+  wakeLockActive = false,
+  detectedBales = [],
+  currentBaleDistance = 0,
+  baleDropCountdown = null,
+  lastBaleNotice = null,
+  onManualBaleDrop
 }) => {
   const totalLoads = Object.values(loadCounts).reduce((a, b) => a + b, 0);
   const speed = ((currentLocation?.coords.speed || 0) * 3.6).toFixed(1);
@@ -76,8 +88,13 @@ export const TrackingUI: React.FC<Props> = ({
   const usedStorages = Object.entries(loadCounts).filter(([_, count]) => count > 0);
 
   const isTillage = activityType === ActivityType.TILLAGE;
+  const isHarvest = activityType === ActivityType.HARVEST;
   
   const getStatusLabel = () => {
+    if (isHarvest) {
+      if (baleDropCountdown !== null) return 'Ballenablage...';
+      return 'Pressen...';
+    }
     if (trackingState === 'LOADING') return 'Laden...';
     if (trackingState === 'SPREADING') {
       return isTillage ? 'Bearbeitung' : 'Ausbringung';
@@ -86,6 +103,7 @@ export const TrackingUI: React.FC<Props> = ({
   };
 
   const getStatusIcon = () => {
+    if (isHarvest) return <Wheat size={18} className="text-amber-500" />;
     if (trackingState === 'LOADING') return <Database size={18}/>;
     if (trackingState === 'SPREADING') {
       return isTillage ? <Hammer size={18}/> : <Droplets size={18}/>;
@@ -107,6 +125,33 @@ export const TrackingUI: React.FC<Props> = ({
       <div className="fixed top-20 left-1/2 transform -translate-x-1/2 z-[1100] w-full max-w-[85%] flex flex-col items-center space-y-3 pointer-events-none">
         {isTestMode && (<div className="bg-orange-600/90 backdrop-blur text-white px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-widest shadow-lg animate-bounce text-center">Simulation Aktiv: Karte klicken zum Fahren</div>)}
         {storageWarning && (<div className="bg-orange-500/95 backdrop-blur text-white px-4 py-2 rounded-xl shadow-xl flex items-center space-x-2 animate-in slide-in-from-top-4 w-full justify-center"><Ban size={18}/><span className="font-bold text-xs">{storageWarning}</span></div>)}
+        
+        {/* BALLENABLAGEN COUNTDOWN (PRESSLICHT / STOPP ERKANNT) */}
+        {baleDropCountdown !== null && (
+          <div className="bg-amber-600 text-white px-8 py-4 rounded-[2rem] shadow-[0_20px_50px_rgba(217,119,6,0.4)] flex flex-col items-center space-y-1 animate-in zoom-in-95 border-4 border-white pointer-events-auto">
+             <div className="flex flex-col items-center">
+               <div className="flex items-center space-x-2 mb-1">
+                 <Disc size={22} className="animate-spin text-amber-200"/>
+                 <span className="text-[11px] font-black uppercase tracking-tighter opacity-90">Ballenablage erkannt</span>
+               </div>
+               <span className="text-xs font-bold bg-white/20 px-3 py-0.5 rounded-full mb-1">Presse steht</span>
+             </div>
+             <div className="flex items-baseline space-x-1">
+               <span className="text-4xl font-mono font-black">{baleDropCountdown}</span>
+               <span className="text-xl font-bold opacity-70">Sek</span>
+             </div>
+             <p className="text-[10px] font-bold text-amber-100">Ballen wird auf Karte abgelegt...</p>
+          </div>
+        )}
+
+        {/* NOTIFICATION BEI ERFOLGREICHER BALLENABLAGE */}
+        {lastBaleNotice && (
+          <div className="bg-emerald-600 text-white px-4 py-2.5 rounded-2xl shadow-xl flex items-center space-x-2 animate-in slide-in-from-top-4 border-2 border-emerald-400">
+            <CircleDot size={18} className="animate-pulse" />
+            <span className="text-xs font-black">{lastBaleNotice}</span>
+          </div>
+        )}
+
         {detectionCountdown !== null && (
           <div className="bg-blue-600 text-white px-8 py-4 rounded-[2rem] shadow-[0_20px_50px_rgba(37,99,235,0.4)] flex flex-col items-center space-y-1 animate-in zoom-in-95 border-4 border-white pointer-events-auto">
              <div className="flex flex-col items-center"><div className="flex items-center space-x-2 mb-1"><Timer size={22} className="animate-spin-slow text-blue-200"/><span className="text-[11px] font-black uppercase tracking-tighter opacity-90">Lagerplatz erkannt</span></div>{pendingStorageName && (<span className="text-sm font-bold bg-white/20 px-3 py-0.5 rounded-full mb-2 border border-white/10">{pendingStorageName}</span>)}</div>
@@ -114,23 +159,52 @@ export const TrackingUI: React.FC<Props> = ({
              <div className="w-full bg-blue-800/50 h-1.5 rounded-full mt-2 overflow-hidden"><div className="bg-white h-full transition-all duration-1000 ease-linear" style={{ width: `${(detectionCountdown / 30) * 100}%` }}></div></div>
           </div>
         )}
-        <div className={`bg-white/95 backdrop-blur shadow-2xl border border-slate-300 rounded-full px-5 py-2.5 flex items-center space-x-3 pointer-events-auto transition-all w-fit ${detectionCountdown !== null ? 'opacity-20 scale-75 blur-[1px]' : 'opacity-100'}`}><div className={`p-2 rounded-full text-white ${trackingState === 'LOADING' ? 'bg-amber-500 animate-pulse' : trackingState === 'SPREADING' ? 'bg-green-600 animate-pulse' : 'bg-blue-50'}`}>{getStatusIcon()}</div><div className="flex flex-col"><span className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-0.5 tracking-tighter">{activeStorageName ? `Quelle: ${activeStorageName}` : 'Live-Status'}</span><span className="font-bold text-slate-800 text-sm leading-none">{getStatusLabel()}</span></div></div>
+        <div className={`bg-white/95 backdrop-blur shadow-2xl border border-slate-300 rounded-full px-5 py-2.5 flex items-center space-x-3 pointer-events-auto transition-all w-fit ${detectionCountdown !== null || baleDropCountdown !== null ? 'opacity-20 scale-75 blur-[1px]' : 'opacity-100'}`}><div className={`p-2 rounded-full text-white ${trackingState === 'LOADING' ? 'bg-amber-500 animate-pulse' : trackingState === 'SPREADING' ? 'bg-green-600 animate-pulse' : 'bg-blue-50'}`}>{getStatusIcon()}</div><div className="flex flex-col"><span className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-0.5 tracking-tighter">{activeStorageName ? `Quelle: ${activeStorageName}` : 'Live-Status'}</span><span className="font-bold text-slate-800 text-sm leading-none">{getStatusLabel()}</span></div></div>
       </div>
 
       <div className="bg-white border-t-2 border-slate-200 p-4 pb-safe z-[1200] shadow-[0_-8px_30px_rgb(0,0,0,0.15)] shrink-0 relative">
         {activityType === ActivityType.FERTILIZATION && usedStorages.length > 0 && (
             <div className="absolute bottom-full left-0 right-0 mb-4 px-4 pointer-events-none z-[1250]"><div className="flex flex-wrap justify-center gap-2 max-w-lg mx-auto">{usedStorages.map(([sId, count]) => { const s = storages.find(st => st.id === sId); const color = getStorageColor(sId, storages); return (<div key={sId} className="bg-white/90 backdrop-blur-md shadow-lg border border-slate-200 rounded-full pl-1 pr-3 py-1 flex items-center space-x-2 animate-in slide-in-from-bottom-4 duration-300 pointer-events-auto"><div className="w-6 h-6 rounded-full flex items-center justify-center text-white shadow-sm" style={{backgroundColor: color}}><span className="text-[11px] font-black">{count}</span></div><span className="text-[10px] font-black text-slate-700 tracking-tight uppercase">{s?.name || 'Unbekannt'}</span></div>);})}</div></div>
         )}
+
+        {/* BUTTON: MANUELLE BALLENABLAGE (BEI ERNTE) */}
+        {isHarvest && (
+          <div className="absolute bottom-full left-0 right-0 mb-3 px-4 flex justify-center pointer-events-auto z-[1250]">
+            <button
+              onClick={onManualBaleDrop}
+              className="bg-gradient-to-r from-amber-500 to-yellow-600 hover:from-amber-600 hover:to-yellow-700 text-white px-5 py-2.5 rounded-full font-black text-xs shadow-xl shadow-amber-200 flex items-center space-x-2 border-2 border-white active:scale-95 transition-all"
+            >
+              <Disc size={18} />
+              <span>Ballen jetzt manuell ablegen</span>
+              <span className="bg-white/30 text-[10px] px-2 py-0.5 rounded-full font-mono">{currentBaleDistance}m</span>
+            </button>
+          </div>
+        )}
+
         <div className="flex items-center justify-between space-x-2">
           <div className="flex-1 flex items-center justify-around bg-slate-50 rounded-2xl py-3 px-2 border border-slate-100 shadow-inner">
             <div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-slate-800 leading-none">{duration}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Min</span></div>
             <div className="w-px h-8 bg-slate-200"></div>
-            {/* DYNAMISCHE ANZEIGE: Fuhren vs Hektar */}
+            
+            {/* DYNAMISCHE ANZEIGE: Düngung (Fuhren) vs Ernte (Ballen + Meter) vs Bodenbearbeitung (Hektar) */}
             {activityType === ActivityType.FERTILIZATION ? (
               <div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-amber-600 leading-none">{totalLoads}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Fuhren</span></div>
+            ) : isHarvest ? (
+              <>
+                <div className="flex flex-col items-center">
+                  <span className="text-xl font-mono font-black text-amber-600 leading-none">{detectedBales.length}</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Ballen</span>
+                </div>
+                <div className="w-px h-8 bg-slate-200"></div>
+                <div className="flex flex-col items-center" title="Meter seit letztem Ballen">
+                  <span className="text-xl font-mono font-black text-emerald-600 leading-none">{currentBaleDistance}</span>
+                  <span className="text-[9px] text-slate-400 font-bold uppercase mt-1">m / Ballen</span>
+                </div>
+              </>
             ) : (
               <div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-blue-600 leading-none">{workedAreaHa.toFixed(2)}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">Hektar</span></div>
             )}
+
             <div className="w-px h-8 bg-slate-200"></div>
             <div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-blue-600 leading-none">{speed}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">km/h</span></div>
           </div>
@@ -144,4 +218,3 @@ export const TrackingUI: React.FC<Props> = ({
     </>
   );
 };
-

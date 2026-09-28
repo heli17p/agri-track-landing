@@ -2,7 +2,7 @@
 import React, { useEffect, useMemo, useRef, memo } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Circle, Polyline, useMap, useMapEvents, Popup } from 'react-leaflet';
 import L from 'leaflet';
-import { Field, StorageLocation, TrackPoint, FertilizerType, ActivityType } from '../../types';
+import { Field, StorageLocation, TrackPoint, FertilizerType, ActivityType, RoundBale } from '../../types';
 
 interface Props {
   points: TrackPoint[];
@@ -22,6 +22,7 @@ interface Props {
   isTestMode: boolean;
   onSimulateClick?: (lat: number, lng: number) => void;
   activityType: ActivityType | string;
+  bales?: RoundBale[]; // NEU: Bales auf der Karte
 }
 
 const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
@@ -81,6 +82,40 @@ const VehicleMarker = memo(({ initialPos, externalPos, heading, isTestMode, onDr
     return <Marker position={isTestMode ? initialPos : externalPos} ref={markerRef} draggable={isTestMode} eventHandlers={{ drag: (e) => isTestMode && onDrag(e.target.getLatLng().lat, e.target.getLatLng().lng) }} icon={icon} zIndexOffset={1000} />;
 });
 
+const createBaleIcon = (bale: RoundBale) => {
+    // Status-Farben: FIELD (Goldgelb), COLLECTED (Blau), WRAPPED (Grün/Weiß gewickelt), STORED (Dunkelgrau)
+    let bg = '#eab308'; // Feld (Gold)
+    let border = '#a16207';
+    let label = `#${bale.number}`;
+
+    if (bale.status === 'COLLECTED') {
+      bg = '#3b82f6';
+      border = '#1d4ed8';
+    } else if (bale.status === 'WRAPPED') {
+      bg = '#10b981';
+      border = '#047857';
+    } else if (bale.status === 'STORED') {
+      bg = '#475569';
+      border = '#1e293b';
+    }
+
+    const html = `
+      <div style="position:relative; width: 28px; height: 28px; display:flex; align-items:center; justify-content:center;">
+        <div style="width: 24px; height: 24px; border-radius: 50%; background: ${bg}; border: 2.5px solid ${border}; box-shadow: 0 3px 6px rgba(0,0,0,0.35); display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 10px; font-family: monospace;">
+          ${bale.number}
+        </div>
+      </div>
+    `;
+
+    return L.divIcon({
+      className: 'bale-pin-icon',
+      html,
+      iconSize: [28, 28],
+      iconAnchor: [14, 14],
+      popupAnchor: [0, -14]
+    });
+};
+
 const MapController = ({ center, zoom, follow, onZoomChange, isTestMode }: any) => {
   const map = useMap();
   useEffect(() => { if (center && !isTestMode && follow) map.setView(center, zoom, { animate: true }); }, [center, zoom, follow, map, isTestMode]);
@@ -88,7 +123,7 @@ const MapController = ({ center, zoom, follow, onZoomChange, isTestMode }: any) 
   return null;
 };
 
-export const TrackingMap: React.FC<Props> = ({ points, fields, storages, currentLocation, mapStyle, followUser, historyTracks, historyMode, onZoomChange, zoom, storageRadius, isTestMode, onSimulateClick, activityType, subType }) => {
+export const TrackingMap: React.FC<Props> = ({ points, fields, storages, currentLocation, mapStyle, followUser, historyTracks, historyMode, onZoomChange, zoom, storageRadius, isTestMode, onSimulateClick, activityType, subType, bales = [] }) => {
   const center: [number, number] = currentLocation ? [currentLocation.coords.latitude, currentLocation.coords.longitude] : [47.5, 14.5];
   
   const trackSegments = useMemo(() => {
@@ -158,8 +193,32 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
           );
       })}
       
+      {/* RUNDBALLEN AUF DER KARTE */}
+      {bales.map((b) => (
+        <Marker key={b.id} position={[b.location.lat, b.location.lng]} icon={createBaleIcon(b)}>
+          <Popup>
+            <div className="p-1 space-y-1 text-xs">
+              <div className="font-extrabold text-slate-900 flex items-center justify-between">
+                <span>Rundballen #{b.number}</span>
+                <span className={`px-1.5 py-0.5 rounded text-[9px] font-bold ${
+                  b.status === 'FIELD' ? 'bg-amber-100 text-amber-800' :
+                  b.status === 'COLLECTED' ? 'bg-blue-100 text-blue-800' :
+                  b.status === 'WRAPPED' ? 'bg-emerald-100 text-emerald-800' : 'bg-slate-100 text-slate-800'
+                }`}>
+                  {b.status === 'FIELD' ? 'Auf Feld' :
+                   b.status === 'COLLECTED' ? 'Eingesammelt' :
+                   b.status === 'WRAPPED' ? 'Gewickelt' : 'Eingelagert'}
+                </span>
+              </div>
+              <div className="text-slate-600"><strong>Schlag:</strong> {b.fieldName}</div>
+              <div className="text-slate-600"><strong>Gefahrene Strecke:</strong> {b.distanceMeters} m</div>
+              <div className="text-slate-500 text-[10px]">Uhrzeit: {new Date(b.droppedAt).toLocaleTimeString()}</div>
+            </div>
+          </Popup>
+        </Marker>
+      ))}
+
       {currentLocation && <VehicleMarker initialPos={center} externalPos={center} heading={currentLocation.coords.heading} isTestMode={isTestMode} onDrag={onSimulateClick} />}
     </MapContainer>
   );
 };
-

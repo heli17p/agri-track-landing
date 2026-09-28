@@ -1,11 +1,12 @@
 
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Popup, useMap, useMapEvents, Polyline } from 'react-leaflet';
-import { Layers, Building2, Save, X, Move, MousePointerClick, Undo2, Trash2, Scissors, Check, LocateFixed, AlertTriangle, Droplets } from 'lucide-react';
+import { Layers, Building2, Save, X, Move, MousePointerClick, Undo2, Trash2, Scissors, Check, LocateFixed, AlertTriangle, Droplets, Disc, Eye, EyeOff } from 'lucide-react';
 import { dbService, generateId } from '../services/db';
-import { Field, StorageLocation, FarmProfile, FertilizerType, GeoPoint } from '../types';
+import { Field, StorageLocation, FarmProfile, FertilizerType, GeoPoint, RoundBale } from '../types';
 import { FieldDetailView } from '../components/FieldDetailView';
 import { StorageDetailView } from '../components/StorageDetailView';
+import { BaleDetailModal } from '../components/BaleDetailModal';
 import { calculateArea, splitPolygon } from '../utils/geo';
 import L from 'leaflet';
 
@@ -188,6 +189,9 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
   const [selectedField, setSelectedField] = useState<Field | null>(null);
   const [selectedStorage, setSelectedStorage] = useState<StorageLocation | null>(null);
+  const [bales, setBales] = useState<RoundBale[]>([]);
+  const [showBales, setShowBales] = useState(true);
+  const [selectedBale, setSelectedBale] = useState<RoundBale | null>(null);
 
   const [isEditing, setIsEditing] = useState(false);
   const [editingField, setEditingField] = useState<Field | null>(null);
@@ -206,6 +210,8 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
     setStorages(s);
     const p = await dbService.getFarmProfile();
     if (p.length > 0) setProfile(p[0]);
+    const b = await dbService.getBales();
+    setBales(b);
 
     if (initialEditFieldId) {
         const target = f.find(field => field.id === initialEditFieldId);
@@ -402,12 +408,55 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
                 {!isEditing && storages.map(s => (
                     <Marker key={s.id} position={[s.geo.lat, s.geo.lng]} icon={s.type === FertilizerType.SLURRY ? slurryIcon : manureIcon} {...{ eventHandlers: { click: (e: any) => { L.DomEvent.stopPropagation(e); setSelectedStorage(s); } } } as any} />
                 ))}
+
+                {/* RUNDBALLEN AUF DER KARTE (FÜR SAMMEL- UND WICKELTEAM) */}
+                {!isEditing && showBales && bales.map(bale => {
+                    let bg = '#eab308'; // Feld (Gold)
+                    let border = '#a16207';
+                    if (bale.status === 'COLLECTED') { bg = '#3b82f6'; border = '#1d4ed8'; }
+                    else if (bale.status === 'WRAPPED') { bg = '#10b981'; border = '#047857'; }
+                    else if (bale.status === 'STORED') { bg = '#475569'; border = '#1e293b'; }
+
+                    const baleIcon = L.divIcon({
+                      className: 'map-bale-pin',
+                      html: `
+                        <div style="position:relative; width: 30px; height: 30px; display:flex; align-items:center; justify-content:center; cursor:pointer;">
+                          <div style="width: 26px; height: 26px; border-radius: 50%; background: ${bg}; border: 3px solid ${border}; box-shadow: 0 4px 10px rgba(0,0,0,0.4); display: flex; align-items: center; justify-content: center; color: white; font-weight: 900; font-size: 11px; font-family: monospace;">
+                            ${bale.number}
+                          </div>
+                        </div>
+                      `,
+                      iconSize: [30, 30],
+                      iconAnchor: [15, 15]
+                    });
+
+                    return (
+                      <Marker
+                        key={bale.id}
+                        position={[bale.location.lat, bale.location.lng]}
+                        icon={baleIcon}
+                        eventHandlers={{
+                          click: (e: any) => {
+                            L.DomEvent.stopPropagation(e);
+                            setSelectedBale(bale);
+                          }
+                        }}
+                      />
+                    );
+                })}
              </MapContainer>
          </div>
 
          <div className="absolute top-4 right-4 flex flex-col space-y-2 z-[400]">
-            <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 hover:text-green-600 transition-colors"><Layers size={24} /></button>
-            <button onClick={() => navigator.geolocation.getCurrentPosition(pos => {})} className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 hover:text-blue-600 transition-colors"><LocateFixed size={24} /></button>
+            <button onClick={() => setMapStyle(prev => prev === 'standard' ? 'satellite' : 'standard')} className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 hover:text-green-600 transition-colors" title="Kartenstil"><Layers size={24} /></button>
+            <button 
+              onClick={() => setShowBales(!showBales)} 
+              className={`p-3 rounded-xl shadow-lg border transition-all ${showBales ? 'bg-amber-500 text-white border-amber-600 shadow-amber-200' : 'bg-white text-slate-400 border-slate-200'}`} 
+              title={showBales ? 'Ballen einblenden (Aktiv)' : 'Ballen ausgeblendet'}
+            >
+              <Disc size={24} />
+            </button>
+            <button onClick={() => navigator.geolocation.getCurrentPosition(pos => {})} className="bg-white p-3 rounded-xl shadow-lg border border-slate-200 text-slate-700 hover:text-blue-600 transition-colors" title="Standort"><LocateFixed size={24} /></button>
          </div>
 
          {isEditing && editingField && (
@@ -482,7 +531,15 @@ export const MapPage: React.FC<Props> = ({ initialEditFieldId, clearInitialEdit 
          {selectedStorage && (
              <StorageDetailView storage={selectedStorage} onClose={() => setSelectedStorage(null)} />
          )}
+
+         {selectedBale && (
+             <BaleDetailModal 
+               bale={selectedBale} 
+               storages={storages} 
+               onClose={() => setSelectedBale(null)} 
+               onUpdate={loadData} 
+             />
+         )}
     </div>
   );
 };
-

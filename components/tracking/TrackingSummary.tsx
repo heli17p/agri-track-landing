@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { CheckCircle, Home, Clock, Database, Truck, Square } from 'lucide-react';
+import { CheckCircle, Home, Clock, Database, Truck, Square, Disc } from 'lucide-react';
 import { ActivityRecord, Field } from '../../types';
 
 interface Props {
@@ -10,6 +10,10 @@ interface Props {
 }
 
 export const TrackingSummary: React.FC<Props> = ({ record, fields, onClose }) => {
+  const avgMeters = record.bales && record.bales.length > 0
+    ? Math.round(record.bales.reduce((s, b) => s + (b.distanceMeters || 0), 0) / record.bales.length)
+    : 0;
+
   return (
     <div className="absolute inset-0 z-[1000] flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm">
       <div className="bg-white w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]">
@@ -17,11 +21,11 @@ export const TrackingSummary: React.FC<Props> = ({ record, fields, onClose }) =>
           <div className="relative z-10 flex flex-col items-center">
             <div className="w-20 h-20 bg-white/20 rounded-full flex items-center justify-center mb-4"><CheckCircle size={48} className="text-white"/></div>
             <h2 className="text-3xl font-bold mb-1">Gespeichert!</h2>
-            <div className="text-green-100 font-medium text-sm bg-white/10 px-3 py-1 rounded-full">{record.type}</div>
+            <div className="text-green-100 font-medium text-sm bg-white/10 px-3 py-1 rounded-full">{record.type} {record.tillageType ? `• ${record.tillageType}` : ''}</div>
           </div>
         </div>
         <div className="p-6 overflow-y-auto">
-          <div className="grid grid-cols-2 gap-4 mb-6">
+          <div className="grid grid-cols-2 gap-4 mb-4">
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
               <div className="flex items-center text-slate-400 text-xs font-bold uppercase mb-1"><Clock size={12} className="mr-1"/> Dauer</div>
               <div className="text-xl font-bold text-slate-800">{record.notes?.match(/Dauer: (\d+) min/)?.[1] || 0} min</div>
@@ -31,7 +35,7 @@ export const TrackingSummary: React.FC<Props> = ({ record, fields, onClose }) =>
               <div className="text-xl font-bold text-slate-800">{record.amount} {record.unit}</div>
             </div>
             {record.loadCount && <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-              <div className="flex items-center text-slate-400 text-xs font-bold uppercase mb-1"><Truck size={12} className="mr-1"/> Fuhren</div>
+              <div className="flex items-center text-slate-400 text-xs font-bold uppercase mb-1"><Truck size={12} className="mr-1"/> {record.unit === 'Stk' ? 'Ballen' : 'Fuhren'}</div>
               <div className="text-xl font-bold text-slate-800">{record.loadCount}</div>
             </div>}
             <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
@@ -39,10 +43,26 @@ export const TrackingSummary: React.FC<Props> = ({ record, fields, onClose }) =>
               <div className="text-xl font-bold text-slate-800">{record.fieldIds.length}</div>
             </div>
           </div>
+
+          {record.bales && record.bales.length > 0 && (
+            <div className="mb-6 p-4 bg-amber-50 border border-amber-200 rounded-2xl space-y-2">
+              <div className="flex items-center justify-between">
+                <span className="font-extrabold text-xs text-amber-900 flex items-center">
+                  <Disc size={16} className="mr-1.5 text-amber-600"/> Rundballen-Auswertung
+                </span>
+                <span className="text-[11px] font-mono font-bold text-amber-700 bg-amber-100 px-2 py-0.5 rounded-full">
+                  Ø {avgMeters} m / Ballen
+                </span>
+              </div>
+              <p className="text-[11px] text-amber-800 leading-relaxed">
+                {record.bales.length} Rundballen wurden auf der Karte markiert und sind für das Sammel- und Wickelteam freigegeben.
+              </p>
+            </div>
+          )}
+
           <button onClick={onClose} className="w-full bg-slate-900 text-white py-4 rounded-xl font-bold shadow-lg flex items-center justify-center"><Home size={20} className="mr-2"/> Fertig</button>
         </div>
       </div>
     </div>
   );
 };
-

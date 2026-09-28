@@ -1,13 +1,14 @@
 
 import React, { useEffect, useState, useMemo } from 'react';
 import { dbService } from '../services/db';
-import { ActivityRecord, FarmProfile, ActivityType, HarvestType, FertilizerType, TillageType, AppSettings, DEFAULT_SETTINGS, StorageLocation } from '../types';
-import { Download, Cloud, RefreshCw, List, ChevronRight, Truck, Wheat, Hammer, Filter, ArrowUp, ArrowDown, Calendar, CheckCircle, Droplets, Layers, AlertTriangle, Calculator, Sprout, ShoppingBag, MessageSquare } from 'lucide-react';
+import { ActivityRecord, FarmProfile, ActivityType, HarvestType, FertilizerType, TillageType, AppSettings, DEFAULT_SETTINGS, StorageLocation, RoundBale } from '../types';
+import { Download, Cloud, RefreshCw, List, ChevronRight, Truck, Wheat, Hammer, Filter, ArrowUp, ArrowDown, Calendar, CheckCircle, Droplets, Layers, AlertTriangle, Calculator, Sprout, ShoppingBag, MessageSquare, Disc, Sparkles, Scale } from 'lucide-react';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { syncData } from '../services/sync';
 import { ActivityDetailView } from '../components/ActivityDetailView';
 import { StorageDetailView } from '../components/StorageDetailView';
+import { HarvestComparisonModal } from '../components/HarvestComparisonModal';
 import { getAppIcon } from '../utils/appIcons';
 
 interface Props {
@@ -18,6 +19,8 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
   const [activities, setActivities] = useState<ActivityRecord[]>([]);
   const [fields, setFields] = useState<any[]>([]);
   const [storages, setStorages] = useState<StorageLocation[]>([]);
+  const [bales, setBales] = useState<RoundBale[]>([]);
+  const [showHarvestComparison, setShowHarvestComparison] = useState(false);
   const [profile, setProfile] = useState<FarmProfile | null>(null);
   const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
   const [loading, setLoading] = useState(true);
@@ -38,6 +41,7 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
     
     setFields(await dbService.getFields());
     setStorages(await dbService.getStorageLocations());
+    setBales(await dbService.getBales());
 
     const profiles = await dbService.getFarmProfile();
     if (profiles.length) setProfile(profiles[0]);
@@ -485,6 +489,71 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
                </div>
            )}
 
+           {/* RUNDBALLEN- & DÜNGE-ANALYSE CARD */}
+           <div className="bg-gradient-to-br from-amber-500 via-amber-600 to-yellow-600 text-white p-5 rounded-2xl shadow-lg space-y-4">
+             <div className="flex justify-between items-start">
+               <div className="flex items-center space-x-3">
+                 <div className="p-2.5 bg-white/20 rounded-xl backdrop-blur">
+                   <Disc size={24} />
+                 </div>
+                 <div>
+                   <span className="text-[10px] font-black uppercase tracking-widest text-amber-200 bg-black/20 px-2 py-0.5 rounded-full">
+                     Ertrags- & Düngeanalyse
+                   </span>
+                   <h3 className="font-black text-lg mt-0.5">Rundballen & Aufwuchs</h3>
+                 </div>
+               </div>
+               <button
+                 onClick={() => setShowHarvestComparison(true)}
+                 className="px-3.5 py-1.5 bg-white text-amber-950 font-black text-xs rounded-xl shadow-md hover:bg-amber-50 active:scale-95 transition-all flex items-center"
+               >
+                 <Scale size={14} className="mr-1.5 text-amber-700" />
+                 Schnittvergleich
+               </button>
+             </div>
+
+             {(() => {
+               const targetBales = bales.filter(b => (b.year || new Date(b.droppedAt).getFullYear()) === filterYear);
+               const displayBales = targetBales.length > 0 ? targetBales : bales;
+               const totalBalesCount = displayBales.length;
+               const totalDist = displayBales.reduce((s, b) => s + (b.distanceMeters || 0), 0);
+               const avgM = totalBalesCount > 0 ? Math.round(totalDist / totalBalesCount) : 0;
+               const onFieldCount = displayBales.filter(b => b.status === 'FIELD').length;
+
+               return (
+                 <div className="space-y-3 text-xs">
+                   <div className="grid grid-cols-3 gap-2 bg-black/15 p-3 rounded-xl backdrop-blur-sm border border-white/10">
+                     <div>
+                       <span className="text-[10px] text-amber-100 font-bold uppercase block">Erfasste Ballen</span>
+                       <div className="text-xl font-mono font-black">{totalBalesCount} <span className="text-xs font-normal text-amber-200">Stk</span></div>
+                     </div>
+                     <div>
+                       <span className="text-[10px] text-amber-100 font-bold uppercase block">Ø Press-Strecke</span>
+                       <div className="text-xl font-mono font-black">{avgM} <span className="text-xs font-normal text-amber-200">m</span></div>
+                     </div>
+                     <div>
+                       <span className="text-[10px] text-amber-100 font-bold uppercase block">Noch auf Feld</span>
+                       <div className="text-xl font-mono font-black text-amber-200">{onFieldCount} <span className="text-xs font-normal text-amber-200">Stk</span></div>
+                     </div>
+                   </div>
+
+                   <div className="flex items-center justify-between text-xs pt-1">
+                     <span className="text-amber-100 flex items-center">
+                       <Sparkles size={14} className="mr-1 text-yellow-200" />
+                       {avgM > 140 ? '⚠️ Schläge mit Düngebedarf erkannt' : avgM < 85 && avgM > 0 ? '🌱 Sehr hoher Aufwuchs / Nährstoffentzug' : '🌿 Erträge auf den Schlägen im Normalbereich'}
+                     </span>
+                     <button
+                       onClick={() => setShowHarvestComparison(true)}
+                       className="text-white underline font-bold hover:text-amber-200 text-xs"
+                     >
+                       Details ansehen &rarr;
+                     </button>
+                   </div>
+                 </div>
+               );
+             })()}
+           </div>
+
            {storages.length > 0 && (
              <div className="bg-white p-4 rounded-xl shadow-sm border border-slate-100 space-y-3">
                <div className="flex justify-between items-center"><h3 className="font-bold text-lg text-slate-800">Lagerstände (Aktuell)</h3><span className="text-xs text-slate-400 font-medium cursor-pointer hover:text-blue-500" onClick={() => onNavigate('settings')}>Verwalten</span></div>
@@ -570,7 +639,15 @@ export const Dashboard: React.FC<Props> = ({ onNavigate }) => {
        </div>
        {selectedActivity && (<ActivityDetailView activity={selectedActivity} onClose={() => setSelectedActivity(null)} onUpdate={load} />)}
        {selectedStorage && (<StorageDetailView storage={selectedStorage} onClose={() => setSelectedStorage(null)} />)}
+       {showHarvestComparison && (
+         <HarvestComparisonModal
+           show={showHarvestComparison}
+           onClose={() => setShowHarvestComparison(false)}
+           fields={fields}
+           activities={activities}
+           onOpenField={(f) => onNavigate('fields')}
+         />
+       )}
     </div>
   );
 };
-
