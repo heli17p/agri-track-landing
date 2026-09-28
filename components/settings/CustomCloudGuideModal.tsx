@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, ExternalLink, Copy, Check, Shield, Database, Sparkles, CheckCircle2, ChevronRight, HelpCircle } from 'lucide-react';
+import { X, ExternalLink, Copy, Check, Shield, Database, Sparkles, CheckCircle2, ChevronRight, HelpCircle, Lock, ShieldAlert, Key } from 'lucide-react';
 
 interface Props {
   show: boolean;
@@ -10,6 +10,7 @@ interface Props {
 export const CustomCloudGuideModal: React.FC<Props> = ({ show, onClose }) => {
   const [activeStep, setActiveStep] = useState(1);
   const [copiedRule, setCopiedRule] = useState(false);
+  const [ruleMode, setRuleMode] = useState<'SIMPLE' | 'SECURE'>('SIMPLE');
 
   if (!show) return null;
 
@@ -178,31 +179,113 @@ service cloud.firestore {
             <div className="space-y-4 animate-in fade-in">
               <h3 className="font-extrabold text-slate-900 text-base">Schritt 4: Sicherheitsregeln einrichten</h3>
               <p className="text-xs text-slate-600">
-                Damit deine Geräte und Mitarbeiter ohne Berechtigungsfehler synchronisieren können, öffne in Firestore den Reiter <strong className="text-slate-900">"Regeln" (Rules)</strong>.
+                Damit deine Geräte und Mitarbeiter ohne Berechtigungsfehler synchronisieren können, öffne in Firebase im linken Menü unter <strong>"Build" &gt; "Firestore-Datenbank"</strong> den Reiter <strong className="text-slate-900">"Regeln" (Rules)</strong>.
               </p>
 
-              <div className="space-y-2">
-                <div className="flex justify-between items-center">
-                  <span className="text-[11px] font-bold text-slate-700">Empfohlene Regeln für deinen Hof:</span>
-                  <span className="text-[10px] text-slate-400">Ersetzt den gesamten Standardinhalt</span>
-                </div>
-                <div className="relative">
-                  <pre className="bg-slate-900 text-slate-200 p-4 rounded-2xl font-mono text-xs overflow-x-auto border border-slate-800">
-                    {openRules}
-                  </pre>
-                  <button
-                    onClick={() => copyToClipboard(openRules)}
-                    className="absolute top-3 right-3 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-bold flex items-center backdrop-blur transition-all active:scale-95"
-                  >
-                    {copiedRule ? <Check size={14} className="mr-1.5 text-green-400" /> : <Copy size={14} className="mr-1.5" />}
-                    {copiedRule ? 'Kopiert!' : 'Regeln kopieren'}
-                  </button>
-                </div>
+              {/* Wahlschalter für Modus */}
+              <div className="bg-slate-100 p-1.5 rounded-2xl flex space-x-1.5 border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => setRuleMode('SIMPLE')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 ${
+                    ruleMode === 'SIMPLE'
+                      ? 'bg-white text-slate-900 shadow-sm border border-slate-200'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <Sparkles size={14} className={ruleMode === 'SIMPLE' ? 'text-amber-500' : 'text-slate-400'} />
+                  <span>Option A: Schnellstart (1 Klick)</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setRuleMode('SECURE')}
+                  className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center space-x-1.5 ${
+                    ruleMode === 'SECURE'
+                      ? 'bg-white text-green-700 shadow-sm border border-green-200'
+                      : 'text-slate-500 hover:text-slate-900'
+                  }`}
+                >
+                  <Shield size={14} className={ruleMode === 'SECURE' ? 'text-green-600' : 'text-slate-400'} />
+                  <span>Option B: Google-Warnung beheben</span>
+                </button>
               </div>
 
-              <p className="text-xs text-slate-500">
-                Klicke nach dem Einfügen in der Firebase-Konsole oben rechts auf <strong className="text-slate-800">"Veröffentlichen" (Publish)</strong>.
-              </p>
+              {ruleMode === 'SIMPLE' ? (
+                <div className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <span className="text-[11px] font-bold text-slate-700 block">Regeln für Option A:</span>
+                      <span className="text-[10px] text-slate-400">Schnellste Einrichtung – ideal für den Start</span>
+                    </div>
+                    <span className="text-[10px] text-amber-700 bg-amber-50 px-2 py-0.5 rounded border border-amber-200 font-semibold">
+                      Google sendet Info-Mail
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <pre className="bg-slate-900 text-slate-200 p-4 rounded-2xl font-mono text-xs overflow-x-auto border border-slate-800">
+                      {openRules}
+                    </pre>
+                    <button
+                      onClick={() => copyToClipboard(openRules)}
+                      className="absolute top-3 right-3 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-bold flex items-center backdrop-blur transition-all active:scale-95"
+                    >
+                      {copiedRule ? <Check size={14} className="mr-1.5 text-green-400" /> : <Copy size={14} className="mr-1.5" />}
+                      {copiedRule ? 'Kopiert!' : 'Regeln kopieren'}
+                    </button>
+                  </div>
+                  <p className="text-xs text-slate-500">
+                    Ersetze den Inhalt in Firebase und klicke oben rechts auf <strong className="text-slate-800">"Veröffentlichen" (Publish)</strong>.
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-3 bg-green-50/70 border border-green-200 p-3.5 rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center space-x-1.5 text-green-900 font-bold text-xs">
+                      <CheckCircle2 size={16} className="text-green-600" />
+                      <span>Google-Warnung dauerhaft deaktivieren (Höchste Sicherheit)</span>
+                    </div>
+                  </div>
+
+                  <p className="text-xs text-slate-700 leading-relaxed">
+                    Damit Google die Warnung <em>"Ihre Sicherheitsregeln sind als 'Öffentlich' definiert"</em> einstellt, muss die Datenbank den Zugriff auf angemeldete Hof-Nutzer beschränken. Das geht in <strong>2 einfachen Schritten</strong>:
+                  </p>
+
+                  <div className="space-y-2 text-xs text-slate-700 bg-white p-3 rounded-xl border border-green-100">
+                    <div className="font-bold text-slate-800 flex items-center">
+                      <span className="w-4 h-4 bg-green-600 text-white rounded-full flex items-center justify-center text-[10px] mr-1.5">1</span>
+                      In Firebase: Authentication (Anmeldung) aktivieren
+                    </div>
+                    <p className="text-slate-600 pl-5">
+                      Klicke im linken Firebase-Menü auf <strong>"Build" &gt; "Authentication"</strong> &gt; <strong>"Erste Schritte"</strong>. Wähle bei den Anmeldemethoden <strong>"E-Mail/Passwort"</strong>, aktiviere den oberen Schalter und klicke auf <strong>"Speichern"</strong>.
+                    </p>
+
+                    <div className="font-bold text-slate-800 flex items-center pt-1">
+                      <span className="w-4 h-4 bg-green-600 text-white rounded-full flex items-center justify-center text-[10px] mr-1.5">2</span>
+                      Geschützte Sicherheitsregel einfügen
+                    </div>
+                    <p className="text-slate-600 pl-5">
+                      Gehe zurück zu <strong>Firestore-Datenbank &gt; Regeln</strong>, füge folgende Regel ein und klicke auf <strong>"Veröffentlichen"</strong>:
+                    </p>
+                  </div>
+
+                  <div className="relative">
+                    <pre className="bg-slate-900 text-slate-200 p-4 rounded-2xl font-mono text-xs overflow-x-auto border border-slate-800">
+                      {authRules}
+                    </pre>
+                    <button
+                      onClick={() => copyToClipboard(authRules)}
+                      className="absolute top-3 right-3 px-3 py-1.5 bg-green-600 hover:bg-green-700 text-white rounded-lg text-xs font-bold flex items-center shadow transition-all active:scale-95"
+                    >
+                      {copiedRule ? <Check size={14} className="mr-1.5 text-white" /> : <Copy size={14} className="mr-1.5" />}
+                      {copiedRule ? 'Kopiert!' : 'Geschützte Regel kopieren'}
+                    </button>
+                  </div>
+
+                  <div className="p-2.5 bg-green-100/80 rounded-xl text-[11px] text-green-900 font-medium">
+                    ✨ <strong>Ergebnis:</strong> Google stellt die Warn-Mails sofort ein! Mitarbeiter melden sich in AgriTrack mit ihrer E-Mail und ihrem Passwort an und haben sofort vollen Zugriff auf den Hof.
+                  </div>
+                </div>
+              )}
 
               {/* Box: Typische Firebase-Meldungen verständlich erklärt */}
               <div className="space-y-2 pt-2 border-t border-slate-100">
@@ -218,7 +301,7 @@ service cloud.firestore {
                     <strong>Ursache:</strong> Die Sicherheitsregeln wurden noch nicht veröffentlicht oder stehen auf <code>allow read, write: if false;</code> (Produktionsmodus blockiert alles), oder die 30-Tage-Testphase von Google ist abgelaufen.
                   </p>
                   <p className="text-red-800 font-medium">
-                    👉 <strong>Lösung:</strong> Kopiere einfach den obigen Block (<code>allow read, write: if true;</code>), füge ihn in Firebase unter <em>Firestore &gt; Regeln</em> ein und klicke auf <strong>"Veröffentlichen"</strong>. Danach funktioniert die Verbindung sofort wieder.
+                    👉 <strong>Lösung:</strong> Kopiere einfach Option A (<code>allow read, write: if true;</code>), füge sie unter <em>Firestore &gt; Regeln</em> ein und klicke auf <strong>"Veröffentlichen"</strong>. Danach funktioniert die Verbindung sofort wieder.
                   </p>
                 </div>
 
@@ -227,10 +310,10 @@ service cloud.firestore {
                     ⚠️ Google-Warnung: "Ihre Sicherheitsregeln sind als 'Öffentlich' definiert...":
                   </span>
                   <p className="text-amber-800">
-                    <strong>Was bedeutet das?</strong> Google versendet automatisch diese Warnung per E-Mail, wenn <code>if true</code> aktiv ist.
+                    <strong>Was bedeutet das?</strong> Google versendet automatisch diese Warnung per E-Mail, wenn Option A (<code>if true</code>) aktiv ist.
                   </p>
                   <p className="text-amber-900 font-medium">
-                    💡 <strong>Entwarnung für deinen Betrieb:</strong> Deine Datenbank ist eine <em>private Instanz</em> deines Google-Kontos. Niemand kennt deine geheime Projekt-ID oder den Hof-PIN außer du und deine Mitarbeiter. Die Warnung ist ein standardisierter Google-Hinweis und stellt im Rahmen deiner privaten Betriebs-Cloud kein Problem dar.
+                    💡 <strong>Entwarnung & Behebung:</strong> Für deine private Betriebs-Cloud ist das unbedenklich, da niemand deine geheime Projekt-ID kennt. Wenn du die Warn-E-Mails von Google jedoch komplett abstellen möchtest, schalte oben einfach auf <strong>"Option B: Google-Warnung beheben"</strong> um.
                   </p>
                 </div>
               </div>
