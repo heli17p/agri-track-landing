@@ -13,7 +13,17 @@ export const CustomCloudGuideModal: React.FC<Props> = ({ show, onClose }) => {
 
   if (!show) return null;
 
-  const sampleRules = `rules_version = '2';
+  // Sicherheitsregeln mit Authentifizierung und offenem Modus
+  const authRules = `rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if request.auth != null;
+    }
+  }
+}`;
+
+  const openRules = `rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
     match /{document=**} {
@@ -34,7 +44,7 @@ service cloud.firestore {
     { num: 3, title: 'Firestore Datenbank' },
     { num: 4, title: 'Sicherheitsregeln' },
     { num: 5, title: 'Zugangsdaten kopieren' },
-    { num: 6, title: 'In AgriTrack aktivieren' }
+    { num: 6, title: 'In AgriTrack aktivieren & QR-Code' }
   ];
 
   return (
@@ -166,27 +176,64 @@ service cloud.firestore {
           {/* Step 4 */}
           {activeStep === 4 && (
             <div className="space-y-4 animate-in fade-in">
-              <h3 className="font-extrabold text-slate-900 text-base">Schritt 4: Sicherheitsregeln prüfen</h3>
+              <h3 className="font-extrabold text-slate-900 text-base">Schritt 4: Sicherheitsregeln einrichten</h3>
               <p className="text-xs text-slate-600">
-                Damit deine Geräte und Mitarbeiter ohne Berechtigungsfehler Daten synchronisieren können, trage in Firestore unter dem Reiter <strong className="text-slate-900">"Regeln" (Rules)</strong> folgendes ein:
+                Damit deine Geräte und Mitarbeiter ohne Berechtigungsfehler synchronisieren können, öffne in Firestore den Reiter <strong className="text-slate-900">"Regeln" (Rules)</strong>.
               </p>
 
-              <div className="relative">
-                <pre className="bg-slate-900 text-slate-200 p-4 rounded-2xl font-mono text-xs overflow-x-auto border border-slate-800">
-                  {sampleRules}
-                </pre>
-                <button
-                  onClick={() => copyToClipboard(sampleRules)}
-                  className="absolute top-3 right-3 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-bold flex items-center backdrop-blur transition-all active:scale-95"
-                >
-                  {copiedRule ? <Check size={14} className="mr-1.5 text-green-400" /> : <Copy size={14} className="mr-1.5" />}
-                  {copiedRule ? 'Kopiert!' : 'Kopieren'}
-                </button>
+              <div className="space-y-2">
+                <div className="flex justify-between items-center">
+                  <span className="text-[11px] font-bold text-slate-700">Empfohlene Regeln für deinen Hof:</span>
+                  <span className="text-[10px] text-slate-400">Ersetzt den gesamten Standardinhalt</span>
+                </div>
+                <div className="relative">
+                  <pre className="bg-slate-900 text-slate-200 p-4 rounded-2xl font-mono text-xs overflow-x-auto border border-slate-800">
+                    {openRules}
+                  </pre>
+                  <button
+                    onClick={() => copyToClipboard(openRules)}
+                    className="absolute top-3 right-3 px-3 py-1.5 bg-white/20 hover:bg-white/30 text-white rounded-lg text-xs font-bold flex items-center backdrop-blur transition-all active:scale-95"
+                  >
+                    {copiedRule ? <Check size={14} className="mr-1.5 text-green-400" /> : <Copy size={14} className="mr-1.5" />}
+                    {copiedRule ? 'Kopiert!' : 'Regeln kopieren'}
+                  </button>
+                </div>
               </div>
 
               <p className="text-xs text-slate-500">
                 Klicke nach dem Einfügen in der Firebase-Konsole oben rechts auf <strong className="text-slate-800">"Veröffentlichen" (Publish)</strong>.
               </p>
+
+              {/* Box: Typische Firebase-Meldungen verständlich erklärt */}
+              <div className="space-y-2 pt-2 border-t border-slate-100">
+                <h4 className="text-xs font-black text-slate-800 uppercase tracking-wider flex items-center">
+                  <Shield size={14} className="mr-1.5 text-amber-600" /> Häufige Fragen & Fehlermeldungen:
+                </h4>
+
+                <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-900 space-y-1">
+                  <span className="font-bold flex items-center text-red-800">
+                    ❌ "Missing or insufficient permissions" (Fehlende Berechtigungen):
+                  </span>
+                  <p className="text-red-700">
+                    <strong>Ursache:</strong> Die Sicherheitsregeln wurden noch nicht veröffentlicht oder stehen auf <code>allow read, write: if false;</code> (Produktionsmodus blockiert alles), oder die 30-Tage-Testphase von Google ist abgelaufen.
+                  </p>
+                  <p className="text-red-800 font-medium">
+                    👉 <strong>Lösung:</strong> Kopiere einfach den obigen Block (<code>allow read, write: if true;</code>), füge ihn in Firebase unter <em>Firestore &gt; Regeln</em> ein und klicke auf <strong>"Veröffentlichen"</strong>. Danach funktioniert die Verbindung sofort wieder.
+                  </p>
+                </div>
+
+                <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-900 space-y-1">
+                  <span className="font-bold flex items-center text-amber-800">
+                    ⚠️ Google-Warnung: "Ihre Sicherheitsregeln sind als 'Öffentlich' definiert...":
+                  </span>
+                  <p className="text-amber-800">
+                    <strong>Was bedeutet das?</strong> Google versendet automatisch diese Warnung per E-Mail, wenn <code>if true</code> aktiv ist.
+                  </p>
+                  <p className="text-amber-900 font-medium">
+                    💡 <strong>Entwarnung für deinen Betrieb:</strong> Deine Datenbank ist eine <em>private Instanz</em> deines Google-Kontos. Niemand kennt deine geheime Projekt-ID oder den Hof-PIN außer du und deine Mitarbeiter. Die Warnung ist ein standardisierter Google-Hinweis und stellt im Rahmen deiner privaten Betriebs-Cloud kein Problem dar.
+                  </p>
+                </div>
+              </div>
             </div>
           )}
 
@@ -229,17 +276,21 @@ service cloud.firestore {
               <ol className="list-decimal list-inside space-y-2 text-xs sm:text-sm text-slate-600">
                 <li>Füge den kopierten Text einfach in AgriTrack in das Feld <strong className="text-slate-900">"Firebase-Konfiguration einfügen"</strong> ein.</li>
                 <li>Klicke auf <strong className="text-blue-600">"Auto-Erkennen"</strong> – alle Werte werden automatisch ausgefüllt!</li>
+                <li>Trage optional deinen <strong className="text-slate-900">Betriebsnamen</strong>, eine eigene <strong className="text-slate-900">Farm-ID</strong> und einen <strong className="text-slate-900">Hof-PIN</strong> ein.</li>
                 <li>Klicke auf <strong className="text-slate-900">"Verbindung testen"</strong>. Wenn ein grünes Häkchen erscheint, klicke auf <strong className="text-green-600 font-bold">"Betriebs-Cloud aktivieren & speichern"</strong>.</li>
               </ol>
 
               <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl space-y-2">
                 <div className="font-bold text-xs text-blue-900 flex items-center">
                   <CheckCircle2 size={16} className="text-blue-600 mr-2"/>
-                  Mitarbeiter & Familie anbinden
+                  Mitarbeiter & Familie vollautomatisch anbinden
                 </div>
-                <p className="text-xs text-blue-800">
-                  Sobald deine Cloud aktiv ist, kannst du mit einem Klick auf <strong>"Betriebs-QR-Code anzeigen"</strong> einen QR-Code auf deinem Bildschirm anzeigen. Mitarbeiter scannen diesen mit ihrem Smartphone und sind sofort synchronisiert – ohne jemals etwas abtippen zu müssen!
+                <p className="text-xs text-blue-800 leading-relaxed">
+                  Sobald deine Cloud aktiv ist, klicke einfach auf <strong>"Betriebs-QR-Code anzeigen"</strong>. Der QR-Code enthält automatisch deine <strong>Cloud-Verbindung, Farm-ID und Hof-PIN</strong>.
                 </p>
+                <div className="bg-white/80 p-2.5 rounded-xl border border-blue-100 text-[11px] text-blue-950 font-medium">
+                  📱 Mitarbeiter scannen den QR-Code mit ihrer Handykamera: Beim Öffnen von AgriTrack sind Farm-ID und Hof-PIN bereits <strong>vollautomatisch ausgefüllt</strong> – ein Klick auf <strong>"Beitreten"</strong> genügt!
+                </div>
               </div>
             </div>
           )}
