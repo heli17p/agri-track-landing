@@ -139,7 +139,10 @@ class ExternalGpsService {
 
   public getCapabilities() {
     const nav = typeof navigator !== 'undefined' ? (navigator as any) : {};
+    const ua = typeof navigator !== 'undefined' ? navigator.userAgent : '';
+    const isAndroid = /Android/i.test(ua);
     return {
+      isAndroid,
       hasWebSerial: !!nav.serial,
       hasWebUsb: !!nav.usb,
       hasNativeBridge: !!(typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform?.()),
@@ -324,9 +327,11 @@ class ExternalGpsService {
   }
 
   /**
-   * Auto-connect: uses Web Serial on Desktop/ChromeOS, or WebUSB (CP2102N/FTDI/CH340/u-blox) on Android Chrome.
+   * Auto-connect:
+   * - On Android Chrome: MUST use WebUSB (navigator.usb), because navigator.serial on Android only scans Bluetooth SPP ports, NOT USB-OTG!
+   * - On Desktop Chrome/Edge: uses Web Serial API (or WebUSB if requested).
    */
-  public async connectAuto(baudRate = 115200, preferWebUsb = false): Promise<boolean> {
+  public async connectAuto(baudRate = 115200, preferWebUsb?: boolean): Promise<boolean> {
     const caps = this.getCapabilities();
     if (!caps.isSecureContext) {
       this.updateStatus({
@@ -335,14 +340,24 @@ class ExternalGpsService {
       return false;
     }
 
-    if (!preferWebUsb && caps.hasWebSerial) {
+    const useWebUsbFirst = preferWebUsb ?? caps.isAndroid;
+
+    if (useWebUsbFirst) {
+      if (caps.hasWebUsb) {
+        return this.connectWebUsb(baudRate);
+      }
+      this.updateStatus({
+        lastError:
+          'Auf diesem Handy ist WebUSB im aktuellen Browser nicht verfügbar. Bitte direkt in Google Chrome öffnen (nicht im In-App-Browser).'
+      });
+      return false;
+    }
+
+    if (caps.hasWebSerial) {
       return this.connectWebSerial(baudRate);
     }
     if (caps.hasWebUsb) {
       return this.connectWebUsb(baudRate);
-    }
-    if (caps.hasWebSerial) {
-      return this.connectWebSerial(baudRate);
     }
 
     this.updateStatus({
@@ -353,7 +368,7 @@ class ExternalGpsService {
   }
 
   /**
-   * Connects via Web Serial API (Desktop Chrome / Edge / ChromeOS).
+   * Connects via Web Serial API (Desktop Chrome / Edge / ChromeOS, or Bluetooth SPP on Android).
    */
   public async connectWebSerial(baudRate = 115200): Promise<boolean> {
     const nav = navigator as any;
@@ -362,11 +377,15 @@ class ExternalGpsService {
       return false;
     }
 
-    await this.disconnect();
-    this.updateStatus({ connecting: true, lastError: null, baudRate });
-
     try {
+      // Request port FIRST so the browser user-gesture token is preserved!
       const port = await nav.serial.requestPort();
+
+      if (this.status.connected) {
+        await this.disconnect();
+      }
+      this.updateStatus({ connecting: true, lastError: null, baudRate });
+
       await port.open({ baudRate, dataBits: 8, stopBits: 1, parity: 'none' });
       this.serialPort = port;
       this.keepReading = true;
@@ -392,7 +411,7 @@ class ExternalGpsService {
       return true;
     } catch (err: any) {
       const msg = err?.name === 'NotFoundError'
-        ? 'Auswahl abgebrochen.'
+        ? 'Kein serieller Anschluss ausgewählt.'
         : `Serial-Verbindung fehlgeschlagen: ${err?.message || err}`;
       this.updateStatus({ connecting: false, connected: false, lastError: msg });
       return false;
@@ -439,13 +458,16 @@ class ExternalGpsService {
       return false;
     }
 
-    await this.disconnect();
-    this.updateStatus({ connecting: true, lastError: null, baudRate });
-
     try {
+      // Request device FIRST so the browser user-gesture token is preserved!
       const device = await nav.usb.requestDevice({
         filters: showAllDevices ? [] : USB_GPS_FILTERS
       });
+
+      if (this.status.connected) {
+        await this.disconnect();
+      }
+      this.updateStatus({ connecting: true, lastError: null, baudRate });
 
       await device.open();
       if (device.configuration === null) {
@@ -593,9 +615,9 @@ class ExternalGpsService {
     } catch (err: any) {
       let msg = `WebUSB Fehler: ${err?.message || err}`;
       if (err?.name === 'NotFoundError') {
-        msg = 'Kein USB-GPS ausgewählt.';
+        msg = 'Kein USB-GPS ausgewählt. Prüfe USB-OTG in den Handy-Einstellungen, das Datenkabel oder tippe auf „Alle USB-Geräte zeigen“.';
       } else if (err?.name === 'SecurityError' || String(err?.message).includes('claimInterface')) {
-        msg = 'USB-Schnittstelle durch System/andere App belegt (z.B. GPS Connector beenden).';
+        msg = 'USB-Schnittstelle durch System/andere App belegt (z.B. „GPS Connector“ Standard-App in Android zurücksetzen).';
       }
       this.updateStatus({ connecting: false, connected: false, lastError: msg });
       return false;

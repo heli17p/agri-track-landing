@@ -235,15 +235,29 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                         </button>
                       </div>
                     ) : (
-                      <button
-                        type="button"
-                        onClick={handleConnectExternalGps}
-                        disabled={tracker.externalGpsStatus.connecting}
-                        className="w-full py-2.5 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-bold flex items-center justify-center transition-all"
-                      >
-                        {tracker.externalGpsStatus.connecting ? <Loader2 size={14} className="animate-spin mr-1.5"/> : <Usb size={14} className="mr-1.5"/>}
-                        USB-GPS verbinden ({settings.externalGpsBaudRate || 115200} Baud)
-                      </button>
+                      <div className="space-y-1.5">
+                        <button
+                          type="button"
+                          onClick={handleConnectExternalGps}
+                          disabled={tracker.externalGpsStatus.connecting}
+                          className="w-full py-2.5 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-bold flex items-center justify-center transition-all"
+                        >
+                          {tracker.externalGpsStatus.connecting ? <Loader2 size={14} className="animate-spin mr-1.5"/> : <Usb size={14} className="mr-1.5"/>}
+                          USB-GPS verbinden ({settings.externalGpsBaudRate || 115200} Baud)
+                        </button>
+                        {externalGpsService.getCapabilities().hasWebUsb && (
+                          <button
+                            type="button"
+                            onClick={async () => {
+                              const ok = await externalGpsService.connectWebUsb(settings.externalGpsBaudRate || 115200, true);
+                              if (ok && settings.gpsSource !== 'external') await handleGpsSourceChange('external');
+                            }}
+                            className="w-full py-1.5 text-[11px] font-bold text-slate-600 hover:text-slate-900 bg-slate-100 hover:bg-slate-200 rounded-lg transition-all"
+                          >
+                            Alle USB-Geräte zeigen (WebUSB)
+                          </button>
+                        )}
+                      </div>
                     )}
                     {tracker.externalGpsStatus.lastError && (
                       <div className="text-[11px] text-red-600 font-medium bg-red-50 p-2 rounded-lg border border-red-100">
