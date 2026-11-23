@@ -1,7 +1,7 @@
 
 import React from 'react';
-import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer, Minimize2, Sun, Hammer, Wheat, Disc, CircleDot } from 'lucide-react';
-import { StorageLocation, FertilizerType, ActivityType, RoundBale } from '../../types';
+import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer, Minimize2, Sun, Hammer, Wheat, Disc, CircleDot, Usb, Compass } from 'lucide-react';
+import { StorageLocation, FertilizerType, ActivityType, RoundBale, ExternalGpsStatus } from '../../types';
 import { HistoryFilterMode } from '../../pages/TrackingPage';
 
 interface Props {
@@ -35,6 +35,9 @@ interface Props {
   baleDropCountdown?: number | null;
   lastBaleNotice?: string | null;
   onManualBaleDrop?: () => void;
+
+  // Externes GPS
+  externalGpsStatus?: ExternalGpsStatus;
 }
 
 const SLURRY_PALETTE = ['#451a03', '#78350f', '#92400e', '#b45309', '#854d0e'];
@@ -76,7 +79,8 @@ export const TrackingUI: React.FC<Props> = ({
   currentBaleDistance = 0,
   baleDropCountdown = null,
   lastBaleNotice = null,
-  onManualBaleDrop
+  onManualBaleDrop,
+  externalGpsStatus
 }) => {
   const totalLoads = Object.values(loadCounts).reduce((a, b) => a + b, 0);
   const speed = ((currentLocation?.coords.speed || 0) * 3.6).toFixed(1);
@@ -159,7 +163,24 @@ export const TrackingUI: React.FC<Props> = ({
              <div className="w-full bg-blue-800/50 h-1.5 rounded-full mt-2 overflow-hidden"><div className="bg-white h-full transition-all duration-1000 ease-linear" style={{ width: `${(detectionCountdown / 30) * 100}%` }}></div></div>
           </div>
         )}
-        <div className={`bg-white/95 backdrop-blur shadow-2xl border border-slate-300 rounded-full px-5 py-2.5 flex items-center space-x-3 pointer-events-auto transition-all w-fit ${detectionCountdown !== null || baleDropCountdown !== null ? 'opacity-20 scale-75 blur-[1px]' : 'opacity-100'}`}><div className={`p-2 rounded-full text-white ${trackingState === 'LOADING' ? 'bg-amber-500 animate-pulse' : trackingState === 'SPREADING' ? 'bg-green-600 animate-pulse' : 'bg-blue-50'}`}>{getStatusIcon()}</div><div className="flex flex-col"><span className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-0.5 tracking-tighter">{activeStorageName ? `Quelle: ${activeStorageName}` : 'Live-Status'}</span><span className="font-bold text-slate-800 text-sm leading-none">{getStatusLabel()}</span></div></div>
+        <div className={`bg-white/95 backdrop-blur shadow-2xl border border-slate-300 rounded-full px-5 py-2.5 flex items-center space-x-3 pointer-events-auto transition-all w-fit ${detectionCountdown !== null || baleDropCountdown !== null ? 'opacity-20 scale-75 blur-[1px]' : 'opacity-100'}`}>
+          <div className={`p-2 rounded-full text-white ${trackingState === 'LOADING' ? 'bg-amber-500 animate-pulse' : trackingState === 'SPREADING' ? 'bg-green-600 animate-pulse' : 'bg-blue-50'}`}>{getStatusIcon()}</div>
+          <div className="flex flex-col">
+            <span className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-0.5 tracking-tighter">{activeStorageName ? `Quelle: ${activeStorageName}` : 'Live-Status'}</span>
+            <span className="font-bold text-slate-800 text-sm leading-none">{getStatusLabel()}</span>
+          </div>
+          {externalGpsStatus?.connected && (
+            <div className="pl-2 ml-1 border-l border-slate-200 flex items-center space-x-1.5">
+              <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 text-emerald-800 border border-emerald-200">
+                <Usb size={11} className="mr-1"/>
+                {externalGpsStatus.hz} Hz
+              </span>
+              <span className="text-[10px] font-bold text-slate-600 hidden sm:inline">
+                {externalGpsStatus.fixLabel} • {externalGpsStatus.satellites} Sat
+              </span>
+            </div>
+          )}
+        </div>
       </div>
 
       <div className="bg-white border-t-2 border-slate-200 p-4 pb-safe z-[1200] shadow-[0_-8px_30px_rgb(0,0,0,0.15)] shrink-0 relative">
@@ -206,14 +227,26 @@ export const TrackingUI: React.FC<Props> = ({
             )}
 
             <div className="w-px h-8 bg-slate-200"></div>
-            <div className="flex flex-col items-center"><span className="text-xl font-mono font-black text-blue-600 leading-none">{speed}</span><span className="text-[9px] text-slate-400 font-bold uppercase mt-1">km/h</span></div>
+            <div className="flex flex-col items-center">
+              <span className="text-xl font-mono font-black text-blue-600 leading-none">{speed}</span>
+              <span className="text-[9px] text-slate-400 font-bold uppercase mt-1">
+                km/h{externalGpsStatus?.connected && externalGpsStatus.headingDeg !== null ? ` • ${Math.round(externalGpsStatus.headingDeg)}°` : ''}
+              </span>
+            </div>
           </div>
           <div className="flex items-center space-x-3 ml-2">
             <button onClick={onDiscardClick} className="w-12 h-14 bg-slate-100 text-slate-400 rounded-2xl flex items-center justify-center hover:bg-red-50 hover:text-red-500 transition-all active:scale-90 shadow-sm" title="Abbrechen"><XCircle size={28} /></button>
             <button onClick={onStopClick} className="w-20 h-14 bg-red-600 text-white rounded-2xl flex flex-col items-center justify-center shadow-lg shadow-red-200 hover:bg-red-700 active:scale-95 transition-all border-b-4 border-red-800"><Square size={20} fill="currentColor" className="mb-0.5"/><span className="text-[10px] font-black uppercase tracking-tighter">STOP</span></button>
           </div>
         </div>
-        <div className="mt-2 text-center"><span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{activityType} • {subType}</span></div>
+        <div className="mt-2 text-center flex items-center justify-center space-x-2">
+          <span className="text-[10px] font-bold text-slate-400 uppercase tracking-widest">{activityType} • {subType}</span>
+          {externalGpsStatus?.connected && (
+            <span className="text-[10px] font-bold text-emerald-600 flex items-center">
+              • <Compass size={11} className="mx-1"/> ±{externalGpsStatus.accuracyMeters}m ({externalGpsStatus.fixLabel})
+            </span>
+          )}
+        </div>
       </div>
     </>
   );

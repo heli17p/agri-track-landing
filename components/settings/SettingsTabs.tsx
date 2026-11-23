@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2, X, Share2, Key, Users, UserMinus, ShieldAlert, FileOutput, FileInput, Box, QrCode } from 'lucide-react';
-import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, EquipmentCategory, ActivityType } from '../../types';
+import { MapPin, Plus, Database, Layers, Hammer, Terminal, Cloud, ShieldCheck, CloudOff, UserPlus, Eye, EyeOff, Search, Info, DownloadCloud, RefreshCw, Truck, Zap, Radar, User, CheckCircle2, LogOut, Wrench, Ruler, Trash2, Tag, ChevronRight, ChevronDown, Wheat, Sprout, Droplets, Server, Globe, Edit2, X, Share2, Key, Users, UserMinus, ShieldAlert, FileOutput, FileInput, Box, QrCode, Usb, Smartphone, Unplug, Play } from 'lucide-react';
+import { FarmProfile, StorageLocation, FertilizerType, AppSettings, Equipment, EquipmentCategory, ActivityType, ExternalGpsStatus } from '../../types';
 import { getAppIcon, ICON_THEMES } from '../../utils/appIcons';
 import { dbService, generateId } from '../../services/db';
 import { isCustomCloudActive, getActiveFirebaseConfig } from '../../services/storage';
+import { externalGpsService } from '../../services/externalGps';
 import { FarmShareModal } from './FarmShareModal';
 import { MapContainer, TileLayer, Marker } from 'react-leaflet';
 import L from 'leaflet';
@@ -405,9 +406,158 @@ export const StorageTab: React.FC<{ storages: StorageLocation[], onEdit: (s: Sto
 
 export const GeneralTab: React.FC<{ settings: AppSettings, setSettings: (s: any) => void }> = ({ settings, setSettings }) => {
   const [showPin, setShowPin] = useState(false);
-  
+  const [extGps, setExtGps] = useState<ExternalGpsStatus>(() => externalGpsService.getStatus());
+  const caps = externalGpsService.getCapabilities();
+
+  useEffect(() => {
+    return externalGpsService.onStatusChange(setExtGps);
+  }, []);
+
+  const baudRate = settings.externalGpsBaudRate || 115200;
+
   return (
     <div className="space-y-6 max-w-lg mx-auto">
+        {/* EXTERNES USB-GPS (CP2102N / NMEA 10 HZ) */}
+        <div className="bg-white p-5 rounded-xl shadow-sm border-2 border-emerald-200 space-y-4">
+            <div className="flex items-center justify-between">
+                <h3 className="font-bold text-slate-800 flex items-center">
+                    <Usb size={18} className="mr-2 text-emerald-600"/> Externes GPS-Modul (NMEA 10 Hz)
+                </h3>
+                {extGps.connected && (
+                    <span className="px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">
+                        {extGps.hz} Hz Aktiv
+                    </span>
+                )}
+            </div>
+
+            <div className="grid grid-cols-2 gap-2">
+                <button
+                    type="button"
+                    onClick={() => setSettings({ ...settings, gpsSource: 'internal' })}
+                    className={`p-3 rounded-xl border-2 text-xs font-bold flex items-center justify-center transition-all ${
+                        (settings.gpsSource || 'internal') === 'internal'
+                            ? 'border-slate-900 bg-slate-900 text-white shadow'
+                            : 'border-slate-200 bg-slate-50 text-slate-600'
+                    }`}
+                >
+                    <Smartphone size={15} className="mr-1.5"/> Handy-GPS
+                </button>
+                <button
+                    type="button"
+                    onClick={() => setSettings({ ...settings, gpsSource: 'external' })}
+                    className={`p-3 rounded-xl border-2 text-xs font-bold flex items-center justify-center transition-all ${
+                        settings.gpsSource === 'external'
+                            ? 'border-emerald-600 bg-emerald-600 text-white shadow'
+                            : 'border-slate-200 bg-slate-50 text-slate-600'
+                    }`}
+                >
+                    <Usb size={15} className="mr-1.5"/> Externes USB-GPS
+                </button>
+            </div>
+
+            <div className="grid grid-cols-2 gap-3 items-end">
+                <div>
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">Baudrate (CP2102N)</label>
+                    <select
+                        value={baudRate}
+                        onChange={e => setSettings({ ...settings, externalGpsBaudRate: parseInt(e.target.value, 10) })}
+                        className="w-full p-2.5 border border-slate-200 rounded-lg font-bold text-xs bg-white"
+                    >
+                        <option value={9600}>9.600 Baud (Standard)</option>
+                        <option value={38400}>38.400 Baud (u-blox 10Hz)</option>
+                        <option value={57600}>57.600 Baud</option>
+                        <option value={115200}>115.200 Baud (Empfohlen)</option>
+                        <option value={230400}>230.400 Baud</option>
+                    </select>
+                </div>
+                <div>
+                    {extGps.connected ? (
+                        <button
+                            type="button"
+                            onClick={() => externalGpsService.disconnect()}
+                            className="w-full py-2.5 px-3 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-xs flex items-center justify-center"
+                        >
+                            <Unplug size={14} className="mr-1.5"/> Trennen
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => externalGpsService.connectAuto(baudRate)}
+                            disabled={extGps.connecting}
+                            className="w-full py-2.5 px-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg font-bold text-xs flex items-center justify-center shadow"
+                        >
+                            <Usb size={14} className="mr-1.5"/> {extGps.connecting ? 'Verbinde...' : 'USB-GPS verbinden'}
+                        </button>
+                    )}
+                </div>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+                {caps.hasWebUsb && !extGps.connected && (
+                    <button
+                        type="button"
+                        onClick={() => externalGpsService.connectWebUsb(baudRate, true)}
+                        className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700"
+                    >
+                        WebUSB (Alle Geräte zeigen)
+                    </button>
+                )}
+                {!extGps.connected && (
+                    <button
+                        type="button"
+                        onClick={() => externalGpsService.startSimulated10Hz()}
+                        className="text-[10px] font-bold px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 flex items-center"
+                    >
+                        <Play size={11} className="mr-1"/> 10 Hz NMEA Test-Stream
+                    </button>
+                )}
+            </div>
+
+            {extGps.lastError && (
+                <div className="p-2.5 rounded-lg bg-red-50 border border-red-200 text-xs text-red-700 font-medium">
+                    {extGps.lastError}
+                </div>
+            )}
+
+            {extGps.connected && (
+                <div className="bg-slate-900 text-slate-100 rounded-xl p-3 space-y-2 text-xs">
+                    <div className="flex items-center justify-between border-b border-slate-700 pb-2">
+                        <span className="font-bold text-emerald-400 truncate">{extGps.deviceName}</span>
+                        <span className="text-[10px] font-mono text-slate-400">{extGps.transport.toUpperCase()}</span>
+                    </div>
+                    <div className="grid grid-cols-4 gap-2 text-center">
+                        <div className="bg-slate-800 p-1.5 rounded-lg">
+                            <span className="text-[9px] text-slate-400 block">Rate</span>
+                            <span className="font-mono font-black text-emerald-400">{extGps.hz} Hz</span>
+                        </div>
+                        <div className="bg-slate-800 p-1.5 rounded-lg">
+                            <span className="text-[9px] text-slate-400 block">Fix</span>
+                            <span className="font-bold text-white text-[11px]">{extGps.fixLabel}</span>
+                        </div>
+                        <div className="bg-slate-800 p-1.5 rounded-lg">
+                            <span className="text-[9px] text-slate-400 block">Sat / HDOP</span>
+                            <span className="font-mono font-bold text-amber-300">{extGps.satellites} / {extGps.hdop}</span>
+                        </div>
+                        <div className="bg-slate-800 p-1.5 rounded-lg">
+                            <span className="text-[9px] text-slate-400 block">Kurs (COG)</span>
+                            <span className="font-mono font-bold text-blue-300">{extGps.headingDeg !== null ? `${Math.round(extGps.headingDeg)}°` : '--'}</span>
+                        </div>
+                    </div>
+                    {extGps.recentLines.length > 0 && (
+                        <div className="bg-black/50 p-2 rounded-lg font-mono text-[9px] text-emerald-300 space-y-0.5 overflow-x-auto max-h-24">
+                            {extGps.recentLines.slice(0, 4).map((l, idx) => (
+                                <div key={idx} className="truncate">{l}</div>
+                            ))}
+                        </div>
+                    )}
+                </div>
+            )}
+
+            <p className="text-[10px] text-slate-500 leading-relaxed">
+                Liest <strong>$GNGGA</strong>, <strong>$GNRMC</strong> und <strong>$GNVTG</strong> direkt per WebUSB (Android Chrome mit CP2102N / FTDI / CH340 / u-blox) oder Web Serial (Desktop) ohne Mock-Location-App.
+            </p>
+        </div>
+
         <div className="bg-white p-5 rounded-xl shadow-sm border border-slate-200">
             <h3 className="font-bold text-slate-800 mb-4 flex items-center"><Database size={18} className="mr-2 text-blue-600"/> Standard-Breiten & Volumen</h3>
             <p className="text-[10px] text-slate-400 mb-4 italic leading-tight">Hinweis: Diese Werte werden als Fallback genutzt, falls kein spezifisches Gerät ausgewählt wird.</p>

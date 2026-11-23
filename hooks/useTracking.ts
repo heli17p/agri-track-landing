@@ -1,8 +1,9 @@
 
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { dbService, generateId } from '../services/db';
-import { Field, StorageLocation, TrackPoint, ActivityType, FertilizerType, AppSettings, ActivityRecord, GeoPoint, Equipment, RoundBale } from '../types';
+import { Field, StorageLocation, TrackPoint, ActivityType, FertilizerType, AppSettings, ActivityRecord, GeoPoint, Equipment, RoundBale, ExternalGpsStatus } from '../types';
 import { getDistance, isPointInPolygon } from '../utils/geo';
+import { externalGpsService } from '../services/externalGps';
 
 type TrackingState = 'IDLE' | 'LOADING' | 'TRANSIT' | 'SPREADING';
 
@@ -28,6 +29,7 @@ export const useTracking = (
   const [gpsError, setGpsError] = useState<string | null>(null);
   const [isTestMode, setIsTestMode] = useState(false);
   const [wakeLockActive, setWakeLockActive] = useState(false);
+  const [externalGpsStatus, setExternalGpsStatus] = useState<ExternalGpsStatus>(() => externalGpsService.getStatus());
   
   const [workedAreaHa, setWorkedAreaHa] = useState(0);
 
@@ -48,6 +50,7 @@ export const useTracking = (
   const activeSourceIdRef = useRef<string | null>(null);
   const currentLoadIndexRef = useRef<number>(1);
   const watchIdRef = useRef<number | null>(null);
+  const extUnsubRef = useRef<(() => void) | null>(null);
   const wakeLockRef = useRef<any>(null);
   
   const lastSimPosRef = useRef<GeoPoint | null>(null);
@@ -80,6 +83,10 @@ export const useTracking = (
   useEffect(() => {
     detectedBalesRef.current = detectedBales;
   }, [detectedBales]);
+
+  useEffect(() => {
+    return externalGpsService.onStatusChange(setExternalGpsStatus);
+  }, []);
 
   const requestWakeLock = async () => {
     if ('wakeLock' in navigator) {
@@ -290,6 +297,11 @@ export const useTracking = (
     });
   }, [isPaused, trackingState]);
 
+  const handleNewPositionRef = useRef(handleNewPosition);
+  useEffect(() => {
+    handleNewPositionRef.current = handleNewPosition;
+  }, [handleNewPosition]);
+
   const simulateMovement = useCallback((lat: number, lng: number) => {
     const now = Date.now();
     if (now - lastSimTimeRef.current < 80) return;
@@ -300,10 +312,66 @@ export const useTracking = (
     }
     const fakePos: any = { coords: { latitude: lat, longitude: lng, accuracy: 5, speed: speedMs, heading: heading }, timestamp: now };
     lastSimPosRef.current = { lat, lng }; lastSimTimeRef.current = now;
-    handleNewPosition(fakePos);
-  }, [handleNewPosition]);
+    handleNewPositionRef.current(fakePos);
+  }, []);
 
   const startGPS = async () => {
+    const useExternal = settingsRef.current.gpsSource === 'external' || externalGpsService.isConnected();
+
+    if (useExternal) {
+      setGpsLoading(true);
+      setGpsError(null);
+      try {
+        if (!externalGpsService.isConnected()) {
+          const ok = await externalGpsService.connectAuto(settingsRef.current.externalGpsBaudRate || 115200);
+          if (!ok) {
+            const err = externalGpsService.getStatus().lastError || 'Externes USB-GPS konnte nicht verbunden werden.';
+            setGpsError(err);
+            setGpsLoading(false);
+            return;
+          }
+        }
+
+        await requestWakeLock();
+        setStartTime(Date.now());
+        setTrackingState('TRANSIT');
+        setTrackPoints([]);
+        setLoadCounts({});
+        setWorkedAreaHa(0);
+        activeSourceIdRef.current = null;
+        setActiveSourceId(null);
+        setIsPaused(false);
+        setIsTestMode(false);
+        currentLoadIndexRef.current = 1;
+
+        const st = externalGpsService.getStatus();
+        if (st.lastLat !== null && st.lastLng !== null) {
+          setCurrentLocation({
+            coords: {
+              latitude: st.lastLat,
+              longitude: st.lastLng,
+              accuracy: st.accuracyMeters,
+              altitude: st.altitudeM,
+              altitudeAccuracy: null,
+              heading: st.headingDeg,
+              speed: st.speedKmh / 3.6
+            },
+            timestamp: st.lastUpdateTs || Date.now()
+          } as GeolocationPosition);
+        }
+
+        if (extUnsubRef.current) extUnsubRef.current();
+        extUnsubRef.current = externalGpsService.onPosition((pos) => {
+          if (!isTestModeRef.current) handleNewPositionRef.current(pos);
+        });
+      } catch (err: any) {
+        setGpsError(err?.message || 'USB-GPS Startfehler.');
+      } finally {
+        setGpsLoading(false);
+      }
+      return;
+    }
+
     if (!navigator.geolocation) { setGpsError("Kein GPS."); return; }
     setGpsLoading(true); setGpsError(null);
     const timeout = setTimeout(() => { if (gpsLoading) { setGpsLoading(false); setGpsError("GPS zu schwach."); } }, 10000);
@@ -312,12 +380,13 @@ export const useTracking = (
       clearTimeout(timeout); await requestWakeLock();
       setStartTime(Date.now()); setTrackingState('TRANSIT'); setTrackPoints([]); setLoadCounts({}); setWorkedAreaHa(0);
       activeSourceIdRef.current = null; setActiveSourceId(null); setIsPaused(false); setIsTestMode(false); currentLoadIndexRef.current = 1; setCurrentLocation(initPos);
-      watchIdRef.current = navigator.geolocation.watchPosition((pos) => { if (!isTestModeRef.current) handleNewPosition(pos); }, (err) => { if (err.code === 1) setGpsError("Verweigert."); else if (err.code === 2) setGpsError("Signal verloren."); }, { enableHighAccuracy: true });
+      watchIdRef.current = navigator.geolocation.watchPosition((pos) => { if (!isTestModeRef.current) handleNewPositionRef.current(pos); }, (err) => { if (err.code === 1) setGpsError("Verweigert."); else if (err.code === 2) setGpsError("Signal verloren."); }, { enableHighAccuracy: true });
     } catch (err: any) { setGpsLoading(false); setGpsError("GPS Fehler."); } finally { setGpsLoading(false); }
   };
 
   const handleFinishLogic = useCallback(async (notes: string) => {
     if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
+    if (extUnsubRef.current) { extUnsubRef.current(); extUnsubRef.current = null; }
     releaseWakeLock();
     const durationMin = startTime ? Math.round((Date.now() - startTime) / 60000) : 0;
     const involvedFieldIds = new Set<string>();
@@ -523,6 +592,9 @@ export const useTracking = (
     lastBaleNotice,
     triggerManualBaleDrop,
 
+    // Externes GPS
+    externalGpsStatus,
+
     setIsTestMode: (v: boolean) => { 
       setIsTestMode(v); 
       isTestModeRef.current = v; 
@@ -532,12 +604,14 @@ export const useTracking = (
     startGPS, 
     stopGPS: useCallback(() => { 
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); 
+      if (extUnsubRef.current) { extUnsubRef.current(); extUnsubRef.current = null; }
       releaseWakeLock(); 
       setIsTestMode(false); 
     }, []), 
     handleFinishLogic, 
     handleDiscard: () => { 
       if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); 
+      if (extUnsubRef.current) { extUnsubRef.current(); extUnsubRef.current = null; }
       releaseWakeLock(); 
       setTrackingState('IDLE'); 
       setTrackPoints([]); 

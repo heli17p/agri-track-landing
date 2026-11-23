@@ -1,9 +1,10 @@
 
 import { useState, useEffect, useMemo } from 'react';
-import { Navigation, Play, Loader2, Truck, Hammer, Wheat, AlertTriangle, Settings, RefreshCw, Wrench, Tag, Droplets, Sprout } from 'lucide-react';
+import { Navigation, Play, Loader2, Truck, Hammer, Wheat, AlertTriangle, Settings, RefreshCw, Wrench, Tag, Droplets, Sprout, Usb, Smartphone, CheckCircle2, Unplug } from 'lucide-react';
 import { dbService } from '../services/db';
-import { Field, StorageLocation, ActivityType, DEFAULT_SETTINGS, ActivityRecord, Equipment, EquipmentCategory } from '../types';
+import { Field, StorageLocation, ActivityType, DEFAULT_SETTINGS, ActivityRecord, Equipment, EquipmentCategory, GpsSourceMode } from '../types';
 import { useTracking } from '../hooks/useTracking';
+import { externalGpsService } from '../services/externalGps';
 import { TrackingMap } from '../components/tracking/TrackingMap';
 import { TrackingUI } from '../components/tracking/TrackingUI';
 import { TrackingSummary } from '../components/tracking/TrackingSummary';
@@ -105,6 +106,19 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
     setManualMode(null);
   };
 
+  const handleGpsSourceChange = async (mode: GpsSourceMode) => {
+    const updated = { ...settings, gpsSource: mode };
+    setSettings(updated);
+    await dbService.saveSettings(updated);
+  };
+
+  const handleConnectExternalGps = async () => {
+    const ok = await externalGpsService.connectAuto(settings.externalGpsBaudRate || 115200);
+    if (ok && settings.gpsSource !== 'external') {
+      await handleGpsSourceChange('external');
+    }
+  };
+
   if (summaryRecord) return <TrackingSummary record={summaryRecord} fields={fields} onClose={() => { setSummaryRecord(null); onNavigate('DASHBOARD'); }} />;
 
   if (manualMode) {
@@ -165,6 +179,80 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
                   </select>
                 </div>
               )}
+
+              {/* GPS-QUELLE SCHNELLWAHL */}
+              <div className="bg-white/80 rounded-xl p-3 border border-green-200 space-y-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="text-[10px] font-black text-slate-500 uppercase tracking-widest">GPS-Empfänger</span>
+                  {tracker.externalGpsStatus.connected && (
+                    <span className="text-[10px] font-black text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-full flex items-center">
+                      <CheckCircle2 size={11} className="mr-1"/> {tracker.externalGpsStatus.hz} Hz • {tracker.externalGpsStatus.satellites} Sat
+                    </span>
+                  )}
+                </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleGpsSourceChange('internal')}
+                    className={`py-2 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center border transition-all ${
+                      (settings.gpsSource || 'internal') === 'internal'
+                        ? 'bg-slate-900 text-white border-slate-900 shadow-sm'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Smartphone size={14} className="mr-1.5"/> Handy-GPS
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleGpsSourceChange('external')}
+                    className={`py-2 px-2.5 rounded-lg text-xs font-bold flex items-center justify-center border transition-all ${
+                      settings.gpsSource === 'external'
+                        ? 'bg-emerald-700 text-white border-emerald-700 shadow-sm'
+                        : 'bg-white text-slate-600 border-slate-200 hover:bg-slate-50'
+                    }`}
+                  >
+                    <Usb size={14} className="mr-1.5"/> USB-GPS (10 Hz)
+                  </button>
+                </div>
+
+                {settings.gpsSource === 'external' && (
+                  <div className="pt-1 space-y-2">
+                    {tracker.externalGpsStatus.connected ? (
+                      <div className="bg-emerald-50 border border-emerald-200 rounded-lg p-2.5 flex items-center justify-between text-xs">
+                        <div>
+                          <div className="font-bold text-emerald-900">{tracker.externalGpsStatus.deviceName}</div>
+                          <div className="text-[11px] text-emerald-700">
+                            {tracker.externalGpsStatus.fixLabel} • ±{tracker.externalGpsStatus.accuracyMeters} m • {tracker.externalGpsStatus.baudRate} Baud
+                          </div>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => externalGpsService.disconnect()}
+                          className="p-2 text-red-600 hover:bg-red-50 rounded-lg"
+                          title="USB-GPS trennen"
+                        >
+                          <Unplug size={16}/>
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={handleConnectExternalGps}
+                        disabled={tracker.externalGpsStatus.connecting}
+                        className="w-full py-2.5 bg-slate-900 hover:bg-black text-white rounded-lg text-xs font-bold flex items-center justify-center transition-all"
+                      >
+                        {tracker.externalGpsStatus.connecting ? <Loader2 size={14} className="animate-spin mr-1.5"/> : <Usb size={14} className="mr-1.5"/>}
+                        USB-GPS verbinden ({settings.externalGpsBaudRate || 115200} Baud)
+                      </button>
+                    )}
+                    {tracker.externalGpsStatus.lastError && (
+                      <div className="text-[11px] text-red-600 font-medium bg-red-50 p-2 rounded-lg border border-red-100">
+                        {tracker.externalGpsStatus.lastError}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
 
               <button onClick={tracker.startGPS} disabled={tracker.gpsLoading || (filteredCategories.length === 0)} className={`w-full py-4 text-white rounded-xl font-bold flex items-center justify-center shadow-lg active:scale-[0.98] transition-all disabled:opacity-70 ${tracker.gpsError ? 'bg-slate-400' : 'bg-green-600'}`}>{tracker.gpsLoading ? <Loader2 className="animate-spin mr-2"/> : <Play size={24} className="mr-2 fill-white"/>} {tracker.gpsLoading ? 'GPS wird gesucht...' : 'Starten'}</button>
             </div>
@@ -235,6 +323,7 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
         baleDropCountdown={tracker.baleDropCountdown}
         lastBaleNotice={tracker.lastBaleNotice}
         onManualBaleDrop={tracker.triggerManualBaleDrop}
+        externalGpsStatus={tracker.externalGpsStatus}
       />
       {showSaveConfirm && (
         <div className="fixed inset-0 z-[2000] bg-black/60 backdrop-blur-sm p-4 flex items-end pb-24">

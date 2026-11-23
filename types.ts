@@ -189,6 +189,30 @@ export interface ChatMessage {
   actionLabel?: string;
 }
 
+export type GpsSourceMode = 'internal' | 'external';
+
+export interface ExternalGpsStatus {
+  connected: boolean;
+  connecting: boolean;
+  transport: 'webusb' | 'webserial' | 'native' | 'simulator' | 'none';
+  deviceName: string;
+  baudRate: number;
+  fixQuality: number;
+  fixLabel: string;
+  satellites: number;
+  hdop: number;
+  accuracyMeters: number;
+  speedKmh: number;
+  headingDeg: number | null;
+  altitudeM: number | null;
+  hz: number;
+  lastLat: number | null;
+  lastLng: number | null;
+  lastUpdateTs: number | null;
+  lastError: string | null;
+  recentLines: string[];
+}
+
 export interface AppSettings {
   slurryLoadSize: number;
   manureLoadSize: number;
@@ -212,6 +236,8 @@ export interface AppSettings {
   ownerEmail?: string;
   baleStopSeconds?: number;     // Sekunden Stillstand für Ballenablage (Default: 8s)
   baleMinDistanceMeters?: number; // Mindestdistanz zwischen zwei Ballen (Default: 15m)
+  gpsSource?: GpsSourceMode;    // 'internal' (Handy-GPS) | 'external' (USB-GPS NMEA)
+  externalGpsBaudRate?: number; // Baudrate für externes NMEA GPS (z.B. 115200, 38400, 9600)
 }
 
 export const DEFAULT_SETTINGS: AppSettings = {
@@ -234,5 +260,7 @@ export const DEFAULT_SETTINGS: AppSettings = {
   farmId: '',
   farmPin: '',
   baleStopSeconds: 8,
-  baleMinDistanceMeters: 15
+  baleMinDistanceMeters: 15,
+  gpsSource: 'internal',
+  externalGpsBaudRate: 115200
 };
