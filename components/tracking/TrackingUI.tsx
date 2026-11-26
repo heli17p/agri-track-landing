@@ -1,6 +1,6 @@
 
 import React from 'react';
-import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer, Minimize2, Sun, Hammer, Wheat, Disc, CircleDot, Usb, Compass } from 'lucide-react';
+import { Clock, Database, Droplets, Truck, Square, Layers, Ban, History, LocateFixed, XCircle, Beaker, Timer, Minimize2, Sun, Hammer, Wheat, Disc, CircleDot, Usb, Compass, Home } from 'lucide-react';
 import { StorageLocation, FertilizerType, ActivityType, RoundBale, ExternalGpsStatus } from '../../types';
 import { HistoryFilterMode } from '../../pages/TrackingPage';
 
@@ -28,6 +28,8 @@ interface Props {
   activeSourceId: string | null;
   storages: StorageLocation[];
   wakeLockActive?: boolean;
+  isReturningHome?: boolean;
+  homeDistanceMeters?: number | null;
 
   // Ballen-Tracking Erweiterungen
   detectedBales?: RoundBale[];
@@ -75,6 +77,8 @@ export const TrackingUI: React.FC<Props> = ({
   activeSourceId,
   storages,
   wakeLockActive = false,
+  isReturningHome = false,
+  homeDistanceMeters = null,
   detectedBales = [],
   currentBaleDistance = 0,
   baleDropCountdown = null,
@@ -93,33 +97,52 @@ export const TrackingUI: React.FC<Props> = ({
 
   const isTillage = activityType === ActivityType.TILLAGE;
   const isHarvest = activityType === ActivityType.HARVEST;
+
+  const formatHomeDist = (meters: number | null) => {
+    if (meters === null) return null;
+    if (meters >= 1000) return `${(meters / 1000).toFixed(1)} km`;
+    return `${meters} m`;
+  };
   
   const getStatusLabel = () => {
     if (isHarvest) {
       if (baleDropCountdown !== null) return 'Ballenablage...';
-      return 'Pressen...';
+      if (trackingState === 'SPREADING') return 'Pressen';
+      if (isReturningHome) return 'Heimfahrt';
+      return 'Transport';
     }
     if (trackingState === 'LOADING') return 'Laden...';
     if (trackingState === 'SPREADING') {
       return isTillage ? 'Bearbeitung' : 'Ausbringung';
     }
+    if (isReturningHome) return 'Heimfahrt';
     return 'Transport';
   };
 
   const getStatusIcon = () => {
-    if (isHarvest) return <Wheat size={18} className="text-amber-500" />;
     if (trackingState === 'LOADING') return <Database size={18}/>;
+    if (isHarvest && trackingState === 'SPREADING') return <Wheat size={18} />;
     if (trackingState === 'SPREADING') {
       return isTillage ? <Hammer size={18}/> : <Droplets size={18}/>;
     }
-    return <Truck size={18} className="text-blue-500" />;
+    if (isReturningHome) return <Home size={18} />;
+    return <Truck size={18} />;
   };
+
+  const getStatusCircleStyle = () => {
+    if (trackingState === 'LOADING') return 'bg-amber-500';
+    if (trackingState === 'SPREADING') return isHarvest ? 'bg-amber-600' : 'bg-green-600';
+    if (isReturningHome) return 'bg-teal-600';
+    return 'bg-blue-600';
+  };
+
+  const homeDistText = isReturningHome ? formatHomeDist(homeDistanceMeters) : null;
 
   return (
     <>
       <div className="fixed top-20 right-4 flex flex-col space-y-3 z-[1100]">
         <button onClick={onMinimizeClick} className="bg-white/95 p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur text-blue-600 active:scale-95 transition-all hover:bg-blue-50" title="In Hintergrund schalten"><Minimize2 size={24} /></button>
-        {wakeLockActive && (<div className="bg-amber-50 p-3 rounded-2xl shadow-xl border border-amber-600 text-white flex items-center justify-center animate-pulse" title="Bildschirm bleibt aktiv"><Sun size={24} fill="currentColor" /></div>)}
+        {wakeLockActive && (<div className="bg-amber-500 p-3 rounded-2xl shadow-xl border border-amber-600 text-white flex items-center justify-center" title="Bildschirm bleibt aktiv"><Sun size={24} fill="currentColor" /></div>)}
         <button onClick={onMapStyleToggle} className="bg-white/95 p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur text-slate-700 active:scale-95 transition-all"><Layers size={24} /></button>
         <button onClick={onFollowToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all ${followUser ? 'bg-blue-600 text-white' : 'bg-white/95 text-slate-700'}`}><LocateFixed size={24}/></button>
         <button onClick={onHistoryToggle} className={`p-3 rounded-2xl shadow-xl border border-slate-200 backdrop-blur active:scale-95 transition-all relative ${historyMode !== 'OFF' ? 'bg-purple-600 text-white' : 'bg-white/95 text-slate-700'}`}><History size={24}/>{historyMode !== 'OFF' && (<div className="absolute -bottom-1 -left-1 bg-white text-purple-700 text-[8px] font-black px-1.5 py-0.5 rounded-full border border-purple-200 shadow-sm">{historyMode === 'YEAR' ? 'JAHR' : '12M'}</div>)}</button>
@@ -164,10 +187,12 @@ export const TrackingUI: React.FC<Props> = ({
           </div>
         )}
         <div className={`bg-white/95 backdrop-blur shadow-2xl border border-slate-300 rounded-full px-5 py-2.5 flex items-center space-x-3 pointer-events-auto transition-all w-fit ${detectionCountdown !== null || baleDropCountdown !== null ? 'opacity-20 scale-75 blur-[1px]' : 'opacity-100'}`}>
-          <div className={`p-2 rounded-full text-white ${trackingState === 'LOADING' ? 'bg-amber-500 animate-pulse' : trackingState === 'SPREADING' ? 'bg-green-600 animate-pulse' : 'bg-blue-50'}`}>{getStatusIcon()}</div>
+          <div className={`p-2 rounded-full text-white ${getStatusCircleStyle()}`}>{getStatusIcon()}</div>
           <div className="flex flex-col">
-            <span className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-0.5 tracking-tighter">{activeStorageName ? `Quelle: ${activeStorageName}` : 'Live-Status'}</span>
-            <span className="font-bold text-slate-800 text-sm leading-none">{getStatusLabel()}</span>
+            <span className="text-[9px] font-bold text-slate-400 uppercase leading-none mb-0.5 tracking-tighter">
+              {homeDistText ? `Richtung Hof · ${homeDistText}` : activeStorageName ? `Quelle: ${activeStorageName}` : 'Live-Status'}
+            </span>
+            <span className="font-bold text-slate-800 text-sm leading-none whitespace-nowrap">{getStatusLabel()}</span>
           </div>
           {externalGpsStatus?.connected && (
             <div className="pl-2 ml-1 border-l border-slate-200 flex items-center space-x-1.5">

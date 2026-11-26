@@ -3,6 +3,7 @@ import React, { useEffect, useMemo, useRef, memo } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Circle, Polyline, useMap, useMapEvents, Popup } from 'react-leaflet';
 import L from 'leaflet';
 import { Field, StorageLocation, TrackPoint, FertilizerType, ActivityType, RoundBale } from '../../types';
+import { getDistance } from '../../utils/geo';
 
 interface Props {
   points: TrackPoint[];
@@ -66,27 +67,33 @@ const createStorageIcon = (color: string, type: FertilizerType | string) => {
     });
 };
 
-const VehicleMarker = memo(({ initialPos, externalPos, heading, isTestMode, onDrag }: any) => {
+const VehicleMarker = memo(({ lat, lng, heading, isTestMode, onDrag }: any) => {
     const markerRef = useRef<L.Marker>(null);
+    const lastHeadingRef = useRef<number>(0);
+
+    if (typeof heading === 'number' && !Number.isNaN(heading)) {
+      lastHeadingRef.current = heading;
+    }
+
     useEffect(() => {
-        if (markerRef.current) markerRef.current.setLatLng(isTestMode ? initialPos : externalPos);
-    }, [externalPos, initialPos, isTestMode]);
+        if (markerRef.current) markerRef.current.setLatLng([lat, lng]);
+    }, [lat, lng]);
+
+    const roundedHeading = Math.round(lastHeadingRef.current);
 
     const icon = useMemo(() => {
-        const rotation = heading || 0;
         const color = isTestMode ? '#3b82f6' : '#16a34a';
         const content = `<svg viewBox="0 0 50 50"><rect x="5" y="30" width="12" height="18" rx="2" fill="#1e293b"/><rect x="33" y="30" width="12" height="18" rx="2" fill="#1e293b"/><rect x="8" y="5" width="8" height="10" rx="2" fill="#1e293b"/><rect x="34" y="5" width="8" height="10" rx="2" fill="#1e293b"/><path d="M20 4 L30 4 L30 20 L34 22 L34 40 L16 40 L16 22 L20 20 Z" fill="${color}"/><rect x="14" y="24" width="22" height="14" rx="1" fill="#fff" fill-opacity="0.9" stroke="#94a3b8" stroke-width="2"/></svg>`;
-        return L.divIcon({ className: 'vehicle-cursor', html: `<div style="transform:rotate(${rotation}deg);width:100%;height:100%;">${content}</div>`, iconSize: [36, 36], iconAnchor: [18, 18] });
-    }, [heading, isTestMode]);
+        return L.divIcon({ className: 'vehicle-cursor', html: `<div style="transform:rotate(${roundedHeading}deg);transition:transform 150ms linear;width:100%;height:100%;">${content}</div>`, iconSize: [36, 36], iconAnchor: [18, 18] });
+    }, [roundedHeading, isTestMode]);
 
-    return <Marker position={isTestMode ? initialPos : externalPos} ref={markerRef} draggable={isTestMode} eventHandlers={{ drag: (e) => isTestMode && onDrag(e.target.getLatLng().lat, e.target.getLatLng().lng) }} icon={icon} zIndexOffset={1000} />;
+    return <Marker position={[lat, lng]} ref={markerRef} draggable={isTestMode} eventHandlers={{ drag: (e) => isTestMode && onDrag(e.target.getLatLng().lat, e.target.getLatLng().lng) }} icon={icon} zIndexOffset={1000} />;
 });
 
 const createBaleIcon = (bale: RoundBale) => {
     // Status-Farben: FIELD (Goldgelb), COLLECTED (Blau), WRAPPED (Grün/Weiß gewickelt), STORED (Dunkelgrau)
     let bg = '#eab308'; // Feld (Gold)
     let border = '#a16207';
-    let label = `#${bale.number}`;
 
     if (bale.status === 'COLLECTED') {
       bg = '#3b82f6';
@@ -116,15 +123,37 @@ const createBaleIcon = (bale: RoundBale) => {
     });
 };
 
-const MapController = ({ center, zoom, follow, onZoomChange, isTestMode }: any) => {
+const MapController = ({ lat, lng, zoom, follow, onZoomChange, isTestMode }: any) => {
   const map = useMap();
-  useEffect(() => { if (center && !isTestMode && follow) map.setView(center, zoom, { animate: true }); }, [center, zoom, follow, map, isTestMode]);
+  const lastCenteredRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastZoomRef = useRef<number>(zoom);
+
+  useEffect(() => {
+    if (isTestMode || !follow || typeof lat !== 'number' || typeof lng !== 'number') return;
+
+    const zoomChanged = zoom !== lastZoomRef.current;
+    const prev = lastCenteredRef.current;
+    const movedMeters = prev ? getDistance(prev, { lat, lng }) : Infinity;
+
+    // Nur nachführen, wenn echte Bewegung >= 1.5 m stattfand oder Zoom geändert wurde
+    if (!prev || zoomChanged || movedMeters >= 40) {
+      map.setView([lat, lng], zoom, { animate: true, duration: 0.3 });
+      lastCenteredRef.current = { lat, lng };
+      lastZoomRef.current = zoom;
+    } else if (movedMeters >= 1.5) {
+      map.panTo([lat, lng], { animate: false });
+      lastCenteredRef.current = { lat, lng };
+    }
+  }, [lat, lng, zoom, follow, map, isTestMode]);
+
   useMapEvents({ zoomend: () => onZoomChange(map.getZoom()) });
   return null;
 };
 
-export const TrackingMap: React.FC<Props> = ({ points, fields, storages, currentLocation, mapStyle, followUser, historyTracks, historyMode, onZoomChange, zoom, storageRadius, isTestMode, onSimulateClick, activityType, subType, bales = [] }) => {
-  const center: [number, number] = currentLocation ? [currentLocation.coords.latitude, currentLocation.coords.longitude] : [47.5, 14.5];
+export const TrackingMap: React.FC<Props> = ({ points, fields, storages, currentLocation, mapStyle, followUser, historyTracks, historyMode, onZoomChange, zoom, storageRadius, isTestMode, onSimulateClick, activityType, bales = [] }) => {
+  const lat = currentLocation ? currentLocation.coords.latitude : 47.5;
+  const lng = currentLocation ? currentLocation.coords.longitude : 14.5;
+  const center: [number, number] = [lat, lng];
   
   const trackSegments = useMemo(() => {
     if (points.length < 2) return [];
@@ -152,7 +181,7 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
   return (
     <MapContainer center={center} zoom={zoom} style={{ height: '100%', width: '100%' }} zoomControl={false} preferCanvas={true}>
       <TileLayer url={mapStyle === 'standard' ? "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" : "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"} />
-      <MapController center={center} zoom={zoom} follow={followUser} onZoomChange={onZoomChange} isTestMode={isTestMode} />
+      <MapController lat={lat} lng={lng} zoom={zoom} follow={followUser} onZoomChange={onZoomChange} isTestMode={isTestMode} />
       {fields.map(f => <Polygon key={f.id} positions={f.boundary.map(p => [p.lat, p.lng])} pathOptions={{ color: f.color || (f.type === 'Acker' ? '#92400E' : '#15803D'), fillOpacity: 0.2, weight: 1 }} />)}
       
       {/* VERBESSERTE HISTORIE: Farblich abgesetzt je nach Typ */}
@@ -218,7 +247,7 @@ export const TrackingMap: React.FC<Props> = ({ points, fields, storages, current
         </Marker>
       ))}
 
-      {currentLocation && <VehicleMarker initialPos={center} externalPos={center} heading={currentLocation.coords.heading} isTestMode={isTestMode} onDrag={onSimulateClick} />}
+      {currentLocation && <VehicleMarker lat={lat} lng={lng} heading={currentLocation.coords.heading} isTestMode={isTestMode} onDrag={onSimulateClick} />}
     </MapContainer>
   );
 };

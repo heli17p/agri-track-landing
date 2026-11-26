@@ -19,6 +19,7 @@ export const getDistance = (p1: GeoPoint, p2: GeoPoint): number => {
 
 // Ray-casting algorithm for Point in Polygon
 export const isPointInPolygon = (point: GeoPoint, polygon: GeoPoint[]): boolean => {
+  if (!polygon || polygon.length < 3) return false;
   let inside = false;
   for (let i = 0, j = polygon.length - 1; i < polygon.length; j = i++) {
     const xi = polygon[i].lat, yi = polygon[i].lng;
@@ -29,6 +30,62 @@ export const isPointInPolygon = (point: GeoPoint, polygon: GeoPoint[]): boolean 
     if (intersect) inside = !inside;
   }
   return inside;
+};
+
+// Shortest distance in meters from point P to segment A-B (local equirectangular projection)
+export const getDistanceToSegment = (p: GeoPoint, a: GeoPoint, b: GeoPoint): number => {
+  const refLatRad = ((p.lat + a.lat + b.lat) / 3) * (Math.PI / 180);
+  const latScale = 111132;
+  const lngScale = 111319 * Math.cos(refLatRad);
+
+  const px = p.lng * lngScale;
+  const py = p.lat * latScale;
+  const ax = a.lng * lngScale;
+  const ay = a.lat * latScale;
+  const bx = b.lng * lngScale;
+  const by = b.lat * latScale;
+
+  const dx = bx - ax;
+  const dy = by - ay;
+  const lenSq = dx * dx + dy * dy;
+  if (lenSq === 0) {
+    return Math.hypot(px - ax, py - ay);
+  }
+  const t = Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / lenSq));
+  const projX = ax + t * dx;
+  const projY = ay + t * dy;
+  return Math.hypot(px - projX, py - projY);
+};
+
+// Returns 0 if point is inside polygon, otherwise minimum distance in meters to polygon boundary
+export const getDistanceToPolygonEdge = (point: GeoPoint, polygon: GeoPoint[]): number => {
+  if (!polygon || polygon.length < 3) return Infinity;
+  if (isPointInPolygon(point, polygon)) return 0;
+  let minDist = Infinity;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    const d = getDistanceToSegment(point, a, b);
+    if (d < minDist) minDist = d;
+  }
+  return minDist;
+};
+
+// Compass bearing in degrees [0..360) from point A to point B
+export const getBearing = (from: GeoPoint, to: GeoPoint): number => {
+  const φ1 = (from.lat * Math.PI) / 180;
+  const φ2 = (to.lat * Math.PI) / 180;
+  const Δλ = ((to.lng - from.lng) * Math.PI) / 180;
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  const θ = Math.atan2(y, x);
+  return ((θ * 180) / Math.PI + 360) % 360;
+};
+
+// Smallest angular difference [0..180] between two headings in degrees
+export const getAngleDiff = (a: number, b: number): number => {
+  const diff = Math.abs(((a - b + 540) % 360) - 180);
+  return diff;
 };
 
 // Precise Area Calculation (Projected Shoelace Formula)
@@ -162,4 +219,3 @@ export const splitPolygon = (polygon: GeoPoint[], cutterPoints: GeoPoint[]): [Ge
 
     return [geoPoly1, geoPoly2];
 };
-
