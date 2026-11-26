@@ -1,7 +1,7 @@
 
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
-import { auth, db, isCloudConfigured, saveData, loadLocalData, fetchCloudData, loadSettings, saveSettings as saveStorageSettings, fetchCloudSettings, hardReset as storageHardReset, fetchFarmMasterSettings } from './storage';
+import { auth, db, isCloudConfigured, saveData, loadLocalDataAsync, replaceLocalCollection, deleteLocalItem, fetchCloudData, loadSettings, saveSettings as saveStorageSettings, fetchCloudSettings, hardReset as storageHardReset, fetchFarmMasterSettings } from './storage';
 import { ActivityRecord, Field, StorageLocation, FarmProfile, AppSettings, FeedbackTicket, DEFAULT_SETTINGS, Equipment, EquipmentCategory, ActivityType, RoundBale } from '../types';
 
 export const generateId = () => {
@@ -113,8 +113,8 @@ export const dbService = {
 
     // --- Activities ---
     getActivities: async (): Promise<ActivityRecord[]> => {
-        const local = loadLocalData('activity');
-        return local;
+        const local = await loadLocalDataAsync<ActivityRecord[]>('activity');
+        return local || [];
     },
     
     saveActivity: async (activity: ActivityRecord) => {
@@ -123,12 +123,12 @@ export const dbService = {
     },
 
     deleteActivity: async (id: string) => {
-        const allActivities = loadLocalData('activity');
+        const allActivities = (await loadLocalDataAsync<ActivityRecord[]>('activity')) || [];
         const target = allActivities.find((a: any) => a.id === id);
 
         if (target && target.storageDistribution) {
-            const storages = loadLocalData('storage');
-            let storageChanged = false;
+            const storages = (await loadLocalDataAsync<StorageLocation[]>('storage')) || [];
+            const changedStorages: StorageLocation[] = [];
 
             Object.entries(target.storageDistribution).forEach(([storageId, amount]) => {
                 const storeIndex = storages.findIndex((s: any) => s.id === storageId);
@@ -138,21 +138,20 @@ export const dbService = {
                     const amountToAdd = Number(amount); 
                     if (!isNaN(amountToAdd)) {
                         storages[storeIndex].currentLevel = Math.min(capacity, current + amountToAdd);
-                        storageChanged = true;
+                        changedStorages.push(storages[storeIndex]);
                     }
                 }
             });
 
-            if (storageChanged) {
-                localStorage.setItem('agritrack_storage', JSON.stringify(storages));
+            if (changedStorages.length > 0) {
+                await replaceLocalCollection('storage', storages);
                 if (isCloudConfigured()) {
-                    storages.forEach((s: any) => saveData('storage', s));
+                    await Promise.all(changedStorages.map((s) => saveData('storage', s)));
                 }
             }
         }
 
-        const remainingActivities = allActivities.filter((a: any) => a.id !== id);
-        localStorage.setItem('agritrack_activities', JSON.stringify(remainingActivities));
+        await deleteLocalItem('activity', id);
         
         if (isCloudConfigured()) {
             try {
@@ -165,13 +164,13 @@ export const dbService = {
     },
 
     getActivitiesForField: async (fieldId: string) => {
-        const acts = loadLocalData('activity');
+        const acts = (await loadLocalDataAsync<ActivityRecord[]>('activity')) || [];
         return acts.filter((a: any) => a.fieldIds && a.fieldIds.includes(fieldId));
     },
 
     // --- Fields ---
     getFields: async (): Promise<Field[]> => {
-        return loadLocalData('field');
+        return (await loadLocalDataAsync<Field[]>('field')) || [];
     },
 
     saveField: async (field: Field) => {
@@ -180,9 +179,7 @@ export const dbService = {
     },
 
     deleteField: async (id: string) => {
-        let fields = loadLocalData('field');
-        fields = fields.filter((f: any) => f.id !== id);
-        localStorage.setItem('agritrack_fields', JSON.stringify(fields));
+        await deleteLocalItem('field', id);
         
         if (isCloudConfigured()) {
             try { await db.collection("fields").doc(id).delete(); } catch(e) {}
@@ -192,7 +189,7 @@ export const dbService = {
 
     // --- Equipment ---
     getEquipment: async (): Promise<Equipment[]> => {
-        return loadLocalData('equipment');
+        return (await loadLocalDataAsync<Equipment[]>('equipment')) || [];
     },
 
     saveEquipment: async (equipment: Equipment) => {
@@ -201,9 +198,7 @@ export const dbService = {
     },
 
     deleteEquipment: async (id: string) => {
-        let items = loadLocalData('equipment');
-        items = items.filter((s: any) => s.id !== id);
-        localStorage.setItem('agritrack_equipment', JSON.stringify(items));
+        await deleteLocalItem('equipment', id);
         if (isCloudConfigured()) {
             try { await db.collection("equipment").doc(id).delete(); } catch(e) {}
         }
@@ -212,7 +207,7 @@ export const dbService = {
 
     // --- Equipment Categories (Typen) ---
     getEquipmentCategories: async (): Promise<EquipmentCategory[]> => {
-        let cats = loadLocalData('tillage_categories' as any);
+        let cats = (await loadLocalDataAsync<EquipmentCategory[]>('tillage_categories')) || [];
         if (!cats || cats.length === 0) {
             cats = [
                 { id: 'cat_slurry', name: 'Gülle', parentType: ActivityType.FERTILIZATION },
@@ -221,20 +216,18 @@ export const dbService = {
                 { id: 'cat_mulch', name: 'Schlegeln', parentType: ActivityType.TILLAGE },
                 { id: 'cat_mower', name: 'Mähwerk', parentType: ActivityType.HARVEST }
             ];
-            localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cats));
+            await replaceLocalCollection('tillage_categories', cats);
         }
         return cats;
     },
 
     saveEquipmentCategory: async (category: EquipmentCategory) => {
-        await saveData('tillage_categories' as any, category);
+        await saveData('tillage_categories', category);
         notifyDbChange();
     },
 
     deleteEquipmentCategory: async (id: string) => {
-        let cats = loadLocalData('tillage_categories' as any);
-        cats = cats.filter((c: any) => c.id !== id);
-        localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cats));
+        await deleteLocalItem('tillage_categories', id);
         
         if (isCloudConfigured()) {
             try { await db.collection("tillage_categories").doc(id).delete(); } catch(e) {}
@@ -244,18 +237,18 @@ export const dbService = {
 
     // --- Round Bales (Ballen-Tracking & Logistik) ---
     getBales: async (): Promise<RoundBale[]> => {
-        const local = loadLocalData('bales' as any) || [];
-        return local;
+        const local = await loadLocalDataAsync<RoundBale[]>('bales');
+        return local || [];
     },
 
     saveBale: async (bale: RoundBale) => {
-        await saveData('bales' as any, bale);
+        await saveData('bales', bale);
         notifyDbChange();
     },
 
     saveBales: async (bales: RoundBale[]) => {
         for (const b of bales) {
-            await saveData('bales' as any, b);
+            await saveData('bales', b);
         }
         notifyDbChange();
     },
@@ -274,9 +267,7 @@ export const dbService = {
     },
 
     deleteBale: async (baleId: string) => {
-        let all = loadLocalData('bales' as any) || [];
-        all = all.filter((b: any) => b.id !== baleId);
-        localStorage.setItem('agritrack_bales', JSON.stringify(all));
+        await deleteLocalItem('bales', baleId);
         if (isCloudConfigured()) {
             try { await db.collection("bales").doc(baleId).delete(); } catch (e) {}
         }
@@ -286,13 +277,13 @@ export const dbService = {
     syncBales: async () => {
         if (!isCloudConfigured()) return;
         try {
-            const cloudBales = await fetchCloudData('bales' as any);
+            const cloudBales = await fetchCloudData('bales');
             if (cloudBales && cloudBales.length > 0) {
-                const local = loadLocalData('bales' as any) || [];
+                const local = (await loadLocalDataAsync<RoundBale[]>('bales')) || [];
                 const merged = new Map();
                 local.forEach((b: any) => merged.set(b.id, b));
                 cloudBales.forEach((b: any) => merged.set(b.id, b));
-                localStorage.setItem('agritrack_bales', JSON.stringify(Array.from(merged.values())));
+                await replaceLocalCollection('bales', Array.from(merged.values()));
                 notifyDbChange();
             }
         } catch (e) {
@@ -302,7 +293,7 @@ export const dbService = {
 
     // --- Storage ---
     getStorageLocations: async (): Promise<StorageLocation[]> => {
-        return loadLocalData('storage');
+        return (await loadLocalDataAsync<StorageLocation[]>('storage')) || [];
     },
 
     saveStorageLocation: async (storage: StorageLocation) => {
@@ -335,9 +326,7 @@ export const dbService = {
     },
 
     deleteStorage: async (id: string) => {
-        let items = loadLocalData('storage');
-        items = items.filter((s: any) => s.id !== id);
-        localStorage.setItem('agritrack_storage', JSON.stringify(items));
+        await deleteLocalItem('storage', id);
         
         if(isCloudConfigured()) {
             try { await db.collection("storages").doc(id).delete(); } catch(e) {}
@@ -346,7 +335,7 @@ export const dbService = {
     },
 
     processStorageGrowth: async () => {
-        const storages = loadLocalData('storage');
+        const storages = (await loadLocalDataAsync<StorageLocation[]>('storage')) || [];
         const lastCheck = localStorage.getItem('last_storage_growth_check');
         const now = Date.now();
         
@@ -365,7 +354,7 @@ export const dbService = {
                 });
                 
                 if (changed) {
-                    localStorage.setItem('agritrack_storage', JSON.stringify(storages));
+                    await replaceLocalCollection('storage', storages);
                     notifyDbChange();
                     if(isCloudConfigured()) {
                         Promise.all(storages.map((s: any) => saveData('storage', s))).catch(console.error);
@@ -380,7 +369,7 @@ export const dbService = {
 
     // --- Profile ---
     getFarmProfile: async (): Promise<FarmProfile[]> => {
-        const p = loadLocalData('profile');
+        const p = await loadLocalDataAsync<FarmProfile | null>('profile');
         return p ? [p] : [];
     },
 
@@ -454,12 +443,12 @@ export const dbService = {
         const cloudCategories = await fetchCloudData('tillage_categories' as any, true);
         
         let updateCount = 0;
-        if (cloudActivities.length > 0) { localStorage.setItem('agritrack_activities', JSON.stringify(cloudActivities)); updateCount += cloudActivities.length; }
-        if (cloudFields.length > 0) { localStorage.setItem('agritrack_fields', JSON.stringify(cloudFields)); updateCount += cloudFields.length; }
-        if (cloudStorages.length > 0) { localStorage.setItem('agritrack_storage', JSON.stringify(cloudStorages)); updateCount += cloudStorages.length; }
-        if (cloudProfiles.length > 0) { localStorage.setItem('agritrack_profile', JSON.stringify(cloudProfiles[0])); updateCount += 1; }
-        if (cloudEquipment.length > 0) { localStorage.setItem('agritrack_equipment', JSON.stringify(cloudEquipment)); updateCount += cloudEquipment.length; }
-        if (cloudCategories.length > 0) { localStorage.setItem('agritrack_tillage_categories', JSON.stringify(cloudCategories)); updateCount += cloudCategories.length; }
+        if (cloudActivities.length > 0) { await replaceLocalCollection('activity', cloudActivities); updateCount += cloudActivities.length; }
+        if (cloudFields.length > 0) { await replaceLocalCollection('field', cloudFields); updateCount += cloudFields.length; }
+        if (cloudStorages.length > 0) { await replaceLocalCollection('storage', cloudStorages); updateCount += cloudStorages.length; }
+        if (cloudProfiles.length > 0) { await replaceLocalCollection('profile', cloudProfiles[0]); updateCount += 1; }
+        if (cloudEquipment.length > 0) { await replaceLocalCollection('equipment', cloudEquipment); updateCount += cloudEquipment.length; }
+        if (cloudCategories.length > 0) { await replaceLocalCollection('tillage_categories', cloudCategories); updateCount += cloudCategories.length; }
 
         if (currentLocalSettings.farmId) {
             const masterSettings = await fetchFarmMasterSettings(currentLocalSettings.farmId);
@@ -480,12 +469,13 @@ export const dbService = {
     // --- Backup & Restore (JSON) ---
     exportBackup: async () => {
         const backup = {
-            activities: loadLocalData('activity'),
-            fields: loadLocalData('field'),
-            storages: loadLocalData('storage'),
-            profile: loadLocalData('profile'),
-            equipment: loadLocalData('equipment'),
-            categories: loadLocalData('tillage_categories' as any),
+            activities: await loadLocalDataAsync('activity'),
+            fields: await loadLocalDataAsync('field'),
+            storages: await loadLocalDataAsync('storage'),
+            profile: await loadLocalDataAsync('profile'),
+            equipment: await loadLocalDataAsync('equipment'),
+            categories: await loadLocalDataAsync('tillage_categories'),
+            bales: await loadLocalDataAsync('bales'),
             settings: loadSettings(),
             exportDate: new Date().toISOString(),
             appVersion: '2.4.8'
@@ -510,12 +500,13 @@ export const dbService = {
                     const data = JSON.parse(e.target?.result as string);
                     if (!data.fields || !data.settings) throw new Error("Ungültiges Backup-Format.");
 
-                    if (data.activities) localStorage.setItem('agritrack_activities', JSON.stringify(data.activities));
-                    if (data.fields) localStorage.setItem('agritrack_fields', JSON.stringify(data.fields));
-                    if (data.storages) localStorage.setItem('agritrack_storage', JSON.stringify(data.storages));
-                    if (data.profile) localStorage.setItem('agritrack_profile', JSON.stringify(data.profile));
-                    if (data.equipment) localStorage.setItem('agritrack_equipment', JSON.stringify(data.equipment));
-                    if (data.categories) localStorage.setItem('agritrack_tillage_categories', JSON.stringify(data.categories));
+                    if (data.activities) await replaceLocalCollection('activity', data.activities);
+                    if (data.fields) await replaceLocalCollection('field', data.fields);
+                    if (data.storages) await replaceLocalCollection('storage', data.storages);
+                    if (data.profile) await replaceLocalCollection('profile', data.profile);
+                    if (data.equipment) await replaceLocalCollection('equipment', data.equipment);
+                    if (data.categories) await replaceLocalCollection('tillage_categories', data.categories);
+                    if (data.bales) await replaceLocalCollection('bales', data.bales);
                     if (data.settings) localStorage.setItem('agritrack_settings_full', JSON.stringify(data.settings));
 
                     addLog("Backup-Datei erfolgreich importiert.");
@@ -585,12 +576,12 @@ export const dbService = {
             console.warn("Ping failed, trying upload anyway...", e);
         }
 
-        const acts = loadLocalData('activity') || [];
-        const fields = loadLocalData('field') || [];
-        const storages = loadLocalData('storage') || [];
-        const equipment = loadLocalData('equipment') || [];
-        const categories = loadLocalData('tillage_categories' as any) || [];
-        const profile = loadLocalData('profile');
+        const acts = (await loadLocalDataAsync<ActivityRecord[]>('activity')) || [];
+        const fields = (await loadLocalDataAsync<Field[]>('field')) || [];
+        const storages = (await loadLocalDataAsync<StorageLocation[]>('storage')) || [];
+        const equipment = (await loadLocalDataAsync<Equipment[]>('equipment')) || [];
+        const categories = (await loadLocalDataAsync<EquipmentCategory[]>('tillage_categories')) || [];
+        const profile = await loadLocalDataAsync<FarmProfile | null>('profile');
         
         const allItems = [
             ...acts.map((i: any) => ({ type: 'activity', data: i })),
@@ -695,11 +686,15 @@ export const dbService = {
     },
 
     getLocalStats: async () => {
-        const acts = (loadLocalData('activity') || []).length;
-        const fields = (loadLocalData('field') || []).length;
-        const storages = (loadLocalData('storage') || []).length;
-        const equip = (loadLocalData('equipment') || []).length;
-        return { total: acts + fields + storages + equip };
+        const [acts, fields, storages, equip] = await Promise.all([
+            loadLocalDataAsync<ActivityRecord[]>('activity'),
+            loadLocalDataAsync<Field[]>('field'),
+            loadLocalDataAsync<StorageLocation[]>('storage'),
+            loadLocalDataAsync<Equipment[]>('equipment')
+        ]);
+        return {
+            total: (acts?.length || 0) + (fields?.length || 0) + (storages?.length || 0) + (equip?.length || 0)
+        };
     },
 
     getCloudStats: async (farmId: string) => {

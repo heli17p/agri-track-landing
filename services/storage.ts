@@ -1,10 +1,19 @@
 
 // Fix: Removed non-existent exported members 'Activity' and 'Trip' from '../types'
-import { AppSettings, DEFAULT_SETTINGS, Field, StorageLocation, FarmProfile, Equipment } from '../types';
+import { AppSettings, DEFAULT_SETTINGS, Field, StorageLocation, FarmProfile, Equipment, TrackPoint } from '../types';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/firestore';
 import 'firebase/compat/auth';
 import { dbService } from './db';
+import {
+  CollectionType,
+  idbGetCollection,
+  idbUpsertItem,
+  idbReplaceCollection,
+  idbDeleteItem,
+  idbClearAll,
+  getIndexedDbStorageEstimate
+} from './indexedDb';
 
 export interface CustomFirebaseConfig {
   apiKey: string;
@@ -371,8 +380,9 @@ export const decodeFarmShareUrl = (token: string): (CustomFirebaseConfig & { far
 export const hardReset = async () => {
     try {
         console.log("[System] Starte Hard Reset...");
-        // 1. Clear Local Storage
+        // 1. Clear Local Storage & IndexedDB
         localStorage.clear();
+        await idbClearAll();
         
         // 2. Clear Firestore Persistence (Deep Clean)
         if (db) {
@@ -495,39 +505,36 @@ export const fetchFarmMasterSettings = async (farmId: string): Promise<AppSettin
     }
 };
 
-// --- DATA HANDLING (HYBRID) ---
-
-export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment' | 'tillage_categories' | 'bales', data: any) => {
-  // 1. ALWAYS Save Locally (Offline First / Guest Mode)
-  let key = STORAGE_KEY_ACTIVITIES;
-  if (type === 'trip') key = STORAGE_KEY_TRIPS;
-  if (type === 'field') key = STORAGE_KEY_FIELDS;
-  if (type === 'storage') key = STORAGE_KEY_STORAGE;
-  if (type === 'profile') key = STORAGE_KEY_PROFILE;
-  if (type === 'equipment') key = STORAGE_KEY_EQUIPMENT;
-  if (type === 'tillage_categories') key = STORAGE_KEY_CATEGORIES; // Fix
-  if (type === 'bales') key = STORAGE_KEY_BALES;
-
-  // Special handling for Profile (Single Object, not Array)
-  if (type === 'profile') {
-      localStorage.setItem(key, JSON.stringify(data));
-  } else {
-      // Array-based types
-      const existingStr = localStorage.getItem(key);
-      let existing = existingStr ? JSON.parse(existingStr) : [];
-      
-      const index = existing.findIndex((e: any) => e.id === data.id);
-      if (index >= 0) existing[index] = data;
-      else existing.unshift(data);
-      
-      localStorage.setItem(key, JSON.stringify(existing));
+// Thin track points only if a single Firestore document approaches the 1 MiB limit,
+// while preserving first/last points and all spreading/storage state transitions.
+const compactTrackPointsForCloud = (points: TrackPoint[], maxPoints = 6500): TrackPoint[] => {
+  if (!Array.isArray(points) || points.length <= maxPoints) return points;
+  const result: TrackPoint[] = [];
+  const step = Math.ceil(points.length / maxPoints);
+  for (let i = 0; i < points.length; i++) {
+    const prev = points[i - 1];
+    const cur = points[i];
+    const next = points[i + 1];
+    const isEndpoint = i === 0 || i === points.length - 1;
+    const isTransition =
+      (prev && (prev.isSpreading !== cur.isSpreading || prev.storageId !== cur.storageId || prev.loadIndex !== cur.loadIndex)) ||
+      (next && (next.isSpreading !== cur.isSpreading || next.storageId !== cur.storageId || next.loadIndex !== cur.loadIndex));
+    if (isEndpoint || isTransition || i % step === 0) {
+      result.push(cur);
+    }
   }
+  return result;
+};
+
+// --- DATA HANDLING (HYBRID: IndexedDB Local + Firestore Cloud) ---
+
+export const saveData = async (type: CollectionType, data: any) => {
+  // 1. ALWAYS Save Locally in IndexedDB (Offline First / Guest Mode, no 5 MB limit)
+  await idbUpsertItem(type, data);
 
   // 2. Sync to Cloud (Only if Logged In)
   if (isCloudConfigured()) {
       const settings = loadSettings();
-      // Target Farm ID: Either from settings OR private user ID
-      // FORCE STRING to prevent type mismatch issues
       let farmId = settings.farmId ? String(settings.farmId).trim() : ('PERSONAL_' + auth.currentUser!.uid);
       const farmPin = settings.farmPin || '';
 
@@ -542,22 +549,28 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
           if (type === 'bales') colName = 'bales';
 
           // Deep clone to safely remove undefined values before Firestore
-          const payload = JSON.parse(JSON.stringify(data)); 
-          
+          const payload = JSON.parse(JSON.stringify(data));
+
+          // Guard against Firestore's 1 MiB per-document limit on ultra-long 10 Hz sessions
+          if (type === 'activity' && Array.isArray(payload.trackPoints) && payload.trackPoints.length > 5000) {
+            const rawLen = JSON.stringify(payload).length;
+            if (rawLen > 820000) {
+              const targetCount = Math.max(2500, Math.floor(payload.trackPoints.length * (750000 / rawLen)));
+              payload.trackPoints = compactTrackPointsForCloud(payload.trackPoints, targetCount);
+            }
+          }
+
           payload.syncedAt = firebase.firestore.Timestamp.now();
-          payload.userId = auth.currentUser!.uid; 
-          payload.farmId = farmId;               
-          payload.farmPin = farmPin;             
-          
-          // Use ID as doc ID to allow updates (prevent duplicates)
-          // For profile, use farmId as key to ensure one profile per farm
+          payload.userId = auth.currentUser!.uid;
+          payload.farmId = farmId;
+          payload.farmPin = farmPin;
+
           let docId = data.id;
           if (type === 'profile') docId = farmId;
 
           if (docId) {
               await db.collection(colName).doc(docId).set(payload);
-              
-              // Only log sometimes to avoid spam, or log critical ones
+
               if (Math.random() > 0.8 || type === 'field' || type === 'storage' || type === 'profile' || type === 'bales') {
                   dbService.logEvent(`[Cloud] ${type} gesendet an Farm ${farmId}`);
               }
@@ -572,19 +585,37 @@ export const saveData = async (type: 'activity' | 'trip' | 'field' | 'storage' |
   }
 };
 
-export const loadLocalData = (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment' | 'tillage_categories' | 'bales') => {
+export const loadLocalDataAsync = async <T = any>(type: CollectionType): Promise<T> => {
+  return idbGetCollection<T>(type);
+};
+
+export const replaceLocalCollection = async (type: CollectionType, data: any): Promise<void> => {
+  await idbReplaceCollection(type, data);
+};
+
+export const deleteLocalItem = async (type: CollectionType, id: string): Promise<void> => {
+  await idbDeleteItem(type, id);
+};
+
+export const clearAllLocalCollections = async (): Promise<void> => {
+  await idbClearAll();
+};
+
+export { getIndexedDbStorageEstimate };
+
+export const loadLocalData = (type: CollectionType) => {
     let key = STORAGE_KEY_ACTIVITIES;
     if (type === 'trip') key = STORAGE_KEY_TRIPS;
     if (type === 'field') key = STORAGE_KEY_FIELDS;
     if (type === 'storage') key = STORAGE_KEY_STORAGE;
     if (type === 'profile') key = STORAGE_KEY_PROFILE;
     if (type === 'equipment') key = STORAGE_KEY_EQUIPMENT;
-    if (type === 'tillage_categories') key = STORAGE_KEY_CATEGORIES; // Fix
+    if (type === 'tillage_categories') key = STORAGE_KEY_CATEGORIES;
     if (type === 'bales') key = STORAGE_KEY_BALES;
 
     const s = localStorage.getItem(key);
     return s ? JSON.parse(s) : (type === 'profile' ? null : []);
-}
+};
 
 export const fetchCloudData = async (type: 'activity' | 'trip' | 'field' | 'storage' | 'profile' | 'equipment' | 'tillage_categories' | 'bales', forceServer: boolean = false) => {
     if (!isCloudConfigured()) return [];

@@ -1,6 +1,5 @@
 
-import { auth } from './storage';
-import { dbService } from './db';
+import { auth, clearAllLocalCollections } from './storage';
 import firebase from 'firebase/compat/app';
 import 'firebase/compat/auth';
 
@@ -67,6 +66,7 @@ export const authService = {
                 'agritrack_guest_mode'
             ];
             keysToRemove.forEach(key => localStorage.removeItem(key));
+            await clearAllLocalCollections();
             
             await auth.signOut();
             window.location.reload();
@@ -97,4 +97,3 @@ const translateAuthError = (code: string): Error => {
         default: return new Error(`Fehler: ${code}`);
     }
 };
-
