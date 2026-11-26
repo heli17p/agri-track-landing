@@ -73,6 +73,7 @@ export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, stora
   const [date, setDate] = useState<string>(new Date().toISOString().substring(0, 10));
   const [selectedFieldIds, setSelectedFieldIds] = useState<Set<string>>(new Set());
   const [notes, setNotes] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   useEffect(() => {
       const load = async () => {
@@ -110,6 +111,8 @@ export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, stora
   };
 
   const handleSave = () => {
+    if (isSubmitting) return;
+    setIsSubmitting(true);
     const isManure = selectedCategory.toLowerCase().includes('mist') || selectedCategory.toLowerCase().includes('fest');
     const loadSize = settings ? (isManure ? settings.manureLoadSize : settings.slurryLoadSize) : 10;
     const totalVolume = unit === 'Fuhren' ? amount * loadSize : amount;
@@ -210,7 +213,7 @@ export const ManualFertilizationForm: React.FC<BaseFormProps> = ({ fields, stora
                  </label>
                  <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full border p-3 rounded-lg text-sm bg-white" rows={2} placeholder="Spezielle Hinweise zur Düngung..."/>
             </div>
-            <button onClick={handleSave} disabled={amount <= 0 || selectedFieldIds.size === 0} className="w-full bg-green-600 text-white py-4 rounded-xl font-black shadow-lg shadow-green-100 disabled:opacity-50 mt-4 uppercase tracking-widest">Aktivität Speichern</button>
+            <button onClick={handleSave} disabled={isSubmitting || amount <= 0 || selectedFieldIds.size === 0} className="w-full bg-green-600 text-white py-4 rounded-xl font-black shadow-lg shadow-green-100 disabled:opacity-50 mt-4 uppercase tracking-widest">{isSubmitting ? 'Speichert...' : 'Aktivität Speichern'}</button>
         </div>
     </div>
   );
@@ -224,6 +227,7 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
     const [selectedFieldIds, setSelectedFieldIds] = useState<Set<string>>(new Set());
     const [notes, setNotes] = useState('');
     const [isZukauf, setIsZukauf] = useState(false); // NEU: Zukauf Modus
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         const load = async () => {
@@ -245,6 +249,8 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
     };
 
     const handleSave = () => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         const selectedFields = isZukauf ? [] : fields.filter(f => selectedFieldIds.has(f.id));
         const totalArea = selectedFields.reduce((sum, f) => sum + f.areaHa, 0);
         const finalIsoDate = getSmartDateISO(date);
@@ -336,10 +342,10 @@ export const HarvestForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
                 </div>
                 <button 
                     onClick={handleSave} 
-                    disabled={amount <= 0 || (!isZukauf && selectedFieldIds.size === 0)} 
+                    disabled={isSubmitting || amount <= 0 || (!isZukauf && selectedFieldIds.size === 0)} 
                     className="w-full bg-green-600 text-white py-4 rounded-xl font-black shadow-lg uppercase tracking-widest disabled:opacity-50"
                 >
-                    Speichern
+                    {isSubmitting ? 'Speichert...' : 'Speichern'}
                 </button>
             </div>
         </div>
@@ -352,6 +358,7 @@ export const TillageForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
     const [date, setDate] = useState<string>(new Date().toISOString().substring(0, 10));
     const [selectedFieldIds, setSelectedFieldIds] = useState<Set<string>>(new Set());
     const [notes, setNotes] = useState('');
+    const [isSubmitting, setIsSubmitting] = useState(false);
 
     useEffect(() => {
         const load = async () => {
@@ -372,6 +379,8 @@ export const TillageForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
     };
 
     const handleSave = () => {
+        if (isSubmitting) return;
+        setIsSubmitting(true);
         const selectedFields = fields.filter(f => selectedFieldIds.has(f.id));
         const totalArea = selectedFields.reduce((sum, f) => sum + f.areaHa, 0);
         const finalIsoDate = getSmartDateISO(date);
@@ -435,9 +444,8 @@ export const TillageForm: React.FC<BaseFormProps> = ({ fields, onCancel, onSave,
                      </label>
                      <textarea value={notes} onChange={(e) => setNotes(e.target.value)} className="w-full border p-3 rounded-lg text-sm bg-white" rows={2} placeholder="Besonderheiten (z.B. Test einer neuen Maschine)..."/>
                 </div>
-                <button onClick={handleSave} disabled={selectedFieldIds.size === 0 || !tillageType} className="w-full bg-green-600 text-white py-4 rounded-xl font-black shadow-lg uppercase tracking-widest">Speichern</button>
+                <button onClick={handleSave} disabled={isSubmitting || selectedFieldIds.size === 0 || !tillageType} className="w-full bg-green-600 text-white py-4 rounded-xl font-black shadow-lg uppercase tracking-widest disabled:opacity-50">{isSubmitting ? 'Speichert...' : 'Speichern'}</button>
             </div>
         </div>
     );
 };
-

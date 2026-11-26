@@ -1,5 +1,5 @@
 
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Navigation, Play, Loader2, Truck, Hammer, Wheat, AlertTriangle, Settings, RefreshCw, Wrench, Tag, Droplets, Sprout, Usb, Smartphone, CheckCircle2, Unplug } from 'lucide-react';
 import { dbService } from '../services/db';
 import { Field, StorageLocation, ActivityType, DEFAULT_SETTINGS, ActivityRecord, Equipment, EquipmentCategory, GpsSourceMode } from '../types';
@@ -35,6 +35,8 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   const [summaryRecord, setSummaryRecord] = useState<ActivityRecord | null>(null);
   const [showSaveConfirm, setShowSaveConfirm] = useState(false);
   const [saveNotes, setSaveNotes] = useState('');
+  const [isSaving, setIsSaving] = useState(false);
+  const savingRef = useRef(false);
   const [zoom, setZoom] = useState(18);
 
   const selectedEquipment = useMemo(() => 
@@ -92,18 +94,36 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
   useEffect(() => { onTrackingStateChange(tracker.trackingState !== 'IDLE'); }, [tracker.trackingState]);
 
   const handleFinish = async () => {
-    const record = await tracker.handleFinishLogic(saveNotes);
-    setSummaryRecord(record);
-    setShowSaveConfirm(false);
-    setSaveNotes('');
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setIsSaving(true);
+    try {
+      const record = await tracker.handleFinishLogic(saveNotes);
+      if (record) {
+        setSummaryRecord(record);
+      }
+      setShowSaveConfirm(false);
+      setSaveNotes('');
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
+    }
   };
 
   const handleManualSave = async (record: ActivityRecord) => {
-    await dbService.saveActivity(record);
-    if (record.type === ActivityType.FERTILIZATION && record.storageDistribution) await dbService.updateStorageLevels(record.storageDistribution);
-    dbService.syncActivities();
-    setSummaryRecord(record);
-    setManualMode(null);
+    if (savingRef.current) return;
+    savingRef.current = true;
+    setIsSaving(true);
+    try {
+      await dbService.saveActivity(record);
+      if (record.type === ActivityType.FERTILIZATION && record.storageDistribution) await dbService.updateStorageLevels(record.storageDistribution);
+      dbService.syncActivities();
+      setSummaryRecord(record);
+      setManualMode(null);
+    } finally {
+      savingRef.current = false;
+      setIsSaving(false);
+    }
   };
 
   const handleGpsSourceChange = async (mode: GpsSourceMode) => {
@@ -344,8 +364,13 @@ export const TrackingPage: React.FC<Props> = ({ onMinimize, onNavigate, onTracki
           <div className="bg-white w-full rounded-3xl p-6 shadow-2xl space-y-4 animate-in slide-in-from-bottom-10">
             <h3 className="font-black text-xl text-slate-800">Aufzeichnung beenden</h3>
             <div className="bg-blue-50 p-4 rounded-2xl border border-blue-100 flex items-center mb-2"><Wrench size={24} className="text-blue-600 mr-3 shrink-0"/><div><div className="text-[10px] font-black text-blue-400 uppercase tracking-widest leading-none">Gerät</div><div className="font-bold text-blue-900">{selectedEquipment ? selectedEquipment.name : 'Standard'}</div></div></div>
-            <textarea value={saveNotes} onChange={e => setSaveNotes(e.target.value)} className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm outline-none" placeholder="Notizen..." rows={2} />
-            <div className="flex space-x-3"><button onClick={() => setShowSaveConfirm(false)} className="flex-1 py-4 bg-slate-100 font-bold rounded-2xl text-slate-600">Zurück</button><button onClick={handleFinish} className="flex-1 py-4 bg-green-600 text-white font-bold rounded-2xl shadow-lg">Speichern</button></div>
+            <textarea value={saveNotes} disabled={isSaving} onChange={e => setSaveNotes(e.target.value)} className="w-full border-2 border-slate-100 p-3 rounded-2xl text-sm outline-none disabled:opacity-60" placeholder="Notizen..." rows={2} />
+            <div className="flex space-x-3">
+              <button disabled={isSaving} onClick={() => setShowSaveConfirm(false)} className="flex-1 py-4 bg-slate-100 font-bold rounded-2xl text-slate-600 disabled:opacity-50">Zurück</button>
+              <button disabled={isSaving} onClick={handleFinish} className="flex-1 py-4 bg-green-600 text-white font-bold rounded-2xl shadow-lg flex items-center justify-center disabled:opacity-70">
+                {isSaving ? <><Loader2 size={18} className="animate-spin mr-2"/> Speichert...</> : 'Speichern'}
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -52,6 +52,8 @@ export const useTracking = (
   const watchIdRef = useRef<number | null>(null);
   const extUnsubRef = useRef<(() => void) | null>(null);
   const wakeLockRef = useRef<any>(null);
+  const isFinishingRef = useRef<boolean>(false);
+  const sessionIdRef = useRef<string | null>(null);
   
   const lastSimPosRef = useRef<GeoPoint | null>(null);
   const lastSimTimeRef = useRef<number>(0);
@@ -333,6 +335,8 @@ export const useTracking = (
         }
 
         await requestWakeLock();
+        sessionIdRef.current = generateId();
+        isFinishingRef.current = false;
         setStartTime(Date.now());
         setTrackingState('TRANSIT');
         setTrackPoints([]);
@@ -378,16 +382,25 @@ export const useTracking = (
     try {
       const initPos: any = await new Promise((res, rej) => { navigator.geolocation.getCurrentPosition(res, (err) => { clearTimeout(timeout); rej(err); }, { enableHighAccuracy: true, timeout: 10000 }); });
       clearTimeout(timeout); await requestWakeLock();
+      sessionIdRef.current = generateId();
+      isFinishingRef.current = false;
       setStartTime(Date.now()); setTrackingState('TRANSIT'); setTrackPoints([]); setLoadCounts({}); setWorkedAreaHa(0);
       activeSourceIdRef.current = null; setActiveSourceId(null); setIsPaused(false); setIsTestMode(false); currentLoadIndexRef.current = 1; setCurrentLocation(initPos);
       watchIdRef.current = navigator.geolocation.watchPosition((pos) => { if (!isTestModeRef.current) handleNewPositionRef.current(pos); }, (err) => { if (err.code === 1) setGpsError("Verweigert."); else if (err.code === 2) setGpsError("Signal verloren."); }, { enableHighAccuracy: true });
     } catch (err: any) { setGpsLoading(false); setGpsError("GPS Fehler."); } finally { setGpsLoading(false); }
   };
 
-  const handleFinishLogic = useCallback(async (notes: string) => {
-    if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current);
-    if (extUnsubRef.current) { extUnsubRef.current(); extUnsubRef.current = null; }
-    releaseWakeLock();
+  const handleFinishLogic = useCallback(async (notes: string): Promise<ActivityRecord | null> => {
+    if (isFinishingRef.current) return null;
+    isFinishingRef.current = true;
+
+    try {
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current);
+        watchIdRef.current = null;
+      }
+      if (extUnsubRef.current) { extUnsubRef.current(); extUnsubRef.current = null; }
+      releaseWakeLock();
     const durationMin = startTime ? Math.round((Date.now() - startTime) / 60000) : 0;
     const involvedFieldIds = new Set<string>();
     trackPoints.forEach(p => { if (p.isSpreading) { const field = fieldsRef.current.find(f => isPointInPolygon(p, f.boundary)); if (field) involvedFieldIds.add(field.id); } });
@@ -492,8 +505,9 @@ export const useTracking = (
       Object.entries(loadCounts).forEach(([sId, count]) => storageDist[sId] = Math.round(count * loadSize));
     }
 
+    const recordId = sessionIdRef.current || generateId();
     const record: ActivityRecord = {
-      id: generateId(), 
+      id: recordId, 
       date: new Date().toISOString(), 
       type: activityTypeRef.current, 
       year: new Date().getFullYear(), 
@@ -516,18 +530,20 @@ export const useTracking = (
     };
 
     if (record.detailedFieldSources) {
-        for (const [fId, sourceMap] of Object.entries(record.detailedFieldSources)) {
+        const fieldSavePromises = Object.entries(record.detailedFieldSources).map(async ([fId, sourceMap]) => {
             const field = fieldsRef.current.find(f => f.id === fId);
             if (field) {
                 const cur = field.detailedSources || {};
                 for (const [sId, amt] of Object.entries(sourceMap)) cur[sId] = (cur[sId] || 0) + amt;
                 await dbService.saveField({ ...field, detailedSources: cur });
             }
-        }
+        });
+        await Promise.all(fieldSavePromises);
     }
     await dbService.saveActivity(record);
     if (record.type === ActivityType.FERTILIZATION && record.storageDistribution) await dbService.updateStorageLevels(record.storageDistribution);
     dbService.syncActivities(); 
+    sessionIdRef.current = null;
     setTrackingState('IDLE'); 
     setTrackPoints([]); 
     lastKnownPosRef.current = null; 
@@ -536,6 +552,9 @@ export const useTracking = (
     setCurrentBaleDistance(0);
     currentBaleDistRef.current = 0;
     return record;
+    } finally {
+      isFinishingRef.current = false;
+    }
   }, [trackPoints, startTime, loadCounts, workedAreaHa, fields, detectedBales]);
 
   // Manueller Ballen-Ablage Button (z.B. per Klick auf "Ballen ablegen")
@@ -610,9 +629,14 @@ export const useTracking = (
     }, []), 
     handleFinishLogic, 
     handleDiscard: () => { 
-      if (watchIdRef.current !== null) navigator.geolocation.clearWatch(watchIdRef.current); 
+      if (watchIdRef.current !== null) {
+        navigator.geolocation.clearWatch(watchIdRef.current); 
+        watchIdRef.current = null;
+      }
       if (extUnsubRef.current) { extUnsubRef.current(); extUnsubRef.current = null; }
       releaseWakeLock(); 
+      isFinishingRef.current = false;
+      sessionIdRef.current = null;
       setTrackingState('IDLE'); 
       setTrackPoints([]); 
       setGpsError(null); 

@@ -47,6 +47,7 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
   const [deleteStep, setDeleteStep] = useState<'idle' | 'confirm'>('idle');
   const [isDirty, setIsDirty] = useState(false);
   const [isEditingFields, setIsEditingFields] = useState(false);
+  const [isProcessing, setIsProcessing] = useState(false);
   const [mapStyle, setMapStyle] = useState<'standard' | 'satellite'>('standard');
 
   useEffect(() => {
@@ -70,17 +71,29 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
   };
 
   const handleSave = async () => {
-      await dbService.saveActivity(editedActivity);
-      onUpdate();
-      onClose();
+      if (isProcessing) return;
+      setIsProcessing(true);
+      try {
+          await dbService.saveActivity(editedActivity);
+          onUpdate();
+          onClose();
+      } finally {
+          setIsProcessing(false);
+      }
   };
 
   const handleDelete = async () => {
+      if (isProcessing) return;
       if (deleteStep === 'idle') setDeleteStep('confirm');
       else {
-          await dbService.deleteActivity(activity.id);
-          onUpdate();
-          onClose();
+          setIsProcessing(true);
+          try {
+              await dbService.deleteActivity(activity.id);
+              onUpdate();
+              onClose();
+          } finally {
+              setIsProcessing(false);
+          }
       }
   };
 
@@ -240,9 +253,8 @@ export const ActivityDetailView: React.FC<Props> = ({ activity, onClose, onUpdat
             </div>
         </div>
 
-        <div className="p-4 bg-white border-t border-slate-200 shrink-0 space-y-2">{isDirty && <button onClick={handleSave} className="w-full py-4 bg-green-600 text-white rounded-2xl font-black flex items-center justify-center shadow-lg shadow-green-100"><Save size={20} className="mr-2"/> Änderungen Speichern</button>}<button onClick={handleDelete} className={`w-full py-4 rounded-2xl font-black flex items-center justify-center border-2 ${deleteStep === 'confirm' ? 'bg-red-600 border-red-600 text-white animate-pulse' : 'bg-white border-red-50 text-red-500'}`}>{deleteStep === 'confirm' ? <><AlertTriangle size={20} className="mr-2"/> Unwiderruflich löschen?</> : <><Trash2 size={20} className="mr-2"/> Tätigkeit Löschen</>}</button></div>
+        <div className="p-4 bg-white border-t border-slate-200 shrink-0 space-y-2">{isDirty && <button disabled={isProcessing} onClick={handleSave} className="w-full py-4 bg-green-600 text-white rounded-2xl font-black flex items-center justify-center shadow-lg shadow-green-100 disabled:opacity-60"><Save size={20} className="mr-2"/> {isProcessing ? 'Speichert...' : 'Änderungen Speichern'}</button>}<button disabled={isProcessing} onClick={handleDelete} className={`w-full py-4 rounded-2xl font-black flex items-center justify-center border-2 disabled:opacity-60 ${deleteStep === 'confirm' ? 'bg-red-600 border-red-600 text-white animate-pulse' : 'bg-white border-red-50 text-red-500'}`}>{deleteStep === 'confirm' ? <><AlertTriangle size={20} className="mr-2"/> Unwiderruflich löschen?</> : <><Trash2 size={20} className="mr-2"/> Tätigkeit Löschen</>}</button></div>
       </div>
     </div>
   );
 };
-
